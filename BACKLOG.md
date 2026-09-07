@@ -1,0 +1,78 @@
+# Development backlog
+
+Updated: 2026-09-08. `[x]` means implemented and checked within the stated scope. `[ ]` means pending. Order inside each milestone is intentional; no launch dates are promised.
+
+## M1 — Extensible base (current)
+
+- [x] **BASE-01 — Versioned bundled app registration.** Validate unique IDs, API version, scope, capabilities and layout. Derive initial apps from manifests. Gate: an app with a new ID can open without shell edits; invalid manifests fail clearly. Unit coverage and Host details provide the proof.
+- [x] **BASE-02 — Window lifecycle.** Keep minimized apps mounted; close unmounts them; dock reopens closed apps; maintain full focus order. Preserve toolbar/dock work area. Gate: three-app focus/minimize/close tests, browser walkthrough, frontend build. One instance per app remains the current limit.
+- [x] **BASE-03 — App render failure containment.** Catch rendering/lifecycle failures per app and offer reopen; host replacement resets host app boundaries. Gate: a deliberately failing development fixture leaves sibling windows usable. Async/event failures remain the app's responsibility; this is not a sandbox.
+- [ ] **BASE-04 — Testable provider selection (partly implemented).** CommandProbe/ProbeContext now remove the concrete SSH dependency; ordered provider selection uses a total deadline and preserves available services without exec. Complete shared probe caching and unknown-system fixtures. Gate: deterministic recognized, unknown, no-exec, failed and timed-out probes, plus regression on the authorized Linux host.
+- [ ] **BASE-05 — Session-bound app services.** Separate app APIs from connection/profile administration. Bind every host operation to a session and declared service capability; reject stale/unsupported requests natively. Gate: a replacement host cannot receive an old app request. Requires BASE-04 contract review. Bundled webview code still remains trusted.
+- [ ] **BASE-06 — Generic filesystem navigation.** Providers return root/home/parent semantics and opaque paths. Remove Unix-root assumptions from Files before claiming Windows or appliance browsing. Gate: Unix, drive-root and virtual-root fixtures; no React OS checks. Requires BASE-04.
+- [ ] **BASE-07 — Contributor starter and contract harness.** Generate a minimal app/provider module and validate its manifest/fixtures. Gate: follow docs from a clean checkout, add a sample app and fixture provider without changing shell code. Depends on BASE-04/05; current app guide is an interim source-extension workflow.
+- [ ] **BASE-08 — Connection-neutral service contracts.** Extract generic lifecycle, identity and optional file/terminal/command/API service contracts from the russh-dependent core. SSH implements the first adapter; absent services are valid. Connector configuration uses versioned adapter-owned settings and credential references, not universal host/user/key fields. Gate: neutral contract module has no russh/Tauri dependencies; existing SSH UI passes regression tests. Comes before BASE-05/06.
+- [ ] **BASE-09 — Composite workspace bindings.** Route each service role to an explicit adapter instance. Separate workspace, connection and service identities/generations; own shared-resource leases and per-leg cancellation/teardown. Gate: fake FTP-like files plus serial-like console in one workspace; losing files leaves console usable, shared resources close once, stale results/approvals are rejected, and no implicit path mapping or endpoint substitution. Requires BASE-08.
+- [ ] **BASE-10 — Capability status and partial UI.** Model available/unsupported/checking/disconnected/denied per binding, including a reason and source. Apps distinguish required from optional features; read-only files remain browsable without writes; unsupported apps/actions are disabled. The current simpler capability array now disables unavailable launcher/dock entries. Gate: fixtures for console-only, files-only, API-only and partially disconnected workspaces. Requires BASE-09; native broker enforces availability too.
+
+Next core sequence: finish BASE-04, then BASE-08, BASE-09/10 and BASE-05/06. These seams take precedence over broad protocol implementation.
+
+## M2 — Everyday workspace
+
+- [ ] **CORE-01 — Named profiles.** Persist non-secret profile settings, provider preference and connection history; import/edit/export with no passwords in exports by default. Gate: restart retains profiles, validation is clear, storage migration tested.
+- [ ] **CORE-02 — Host trust and authentication UX.** Verified fingerprint enrollment, changed-key refusal, known_hosts marker handling, SSH agent and keyboard-interactive support in separate reviewable slices. Gate: unknown/changed/revoked fixtures and native authentication tests; no silent trust downgrade.
+- [ ] **CORE-03 — App instances and close behavior.** Multiple terminals; distinguish app ID from instance ID; close asks when an app has unsaved work. Gate: separate PTYs, correct cleanup, reconnect invalidation. Requires BASE-02/05. Closing today's Terminal ends its shell; minimize preserves it.
+- [ ] **CORE-04 — Transfers.** Upload/download queue with progress, cancel and bounded memory. Gate: interrupted transfers report actual outcomes; no silent overwrite, temporary-file cleanup and large-file checks. Requires BASE-05/06.
+- [ ] **CORE-05 — File changes.** New folder, rename, delete and text editing with conflict handling and explicit destructive-action UX. Gate: tests in a designated disposable remote directory, permissions failures, concurrent edits and disconnects. Requires CORE-04; no writes to arbitrary test-host data.
+- [ ] **CORE-06 — Connection recovery.** Visible reconnect state, cancellation during connect, idle/disconnected terminal behavior and slow-link handling. Gate: failure scenarios do not freeze the desktop or substitute preview data.
+- [ ] **UX-01 — Desktop polish.** Keyboard focus cycling, move/resize accessibility, snapping, touch targets, window bounds during viewport changes and session-scoped layout persistence. Gate: desktop/tablet walkthrough with no obscured controls. Preserve the approved visual direction.
+
+## M3 — Remote providers
+
+- [ ] **HOST-01 — Linux variants and Raspberry Pi OS.** Fixtures and live checks for Ubuntu/Debian, Alpine/BusyBox and Raspberry Pi OS. Gate: missing utilities, unprivileged users and disabled SFTP degrade honestly. Raspberry Pi hardware alone is not a provider.
+- [ ] **HOST-02 — macOS over SSH.** Darwin detection, BSD utility differences, paths, SFTP and shell negotiation. Gate: fixture coverage plus authorized macOS host test. Requires BASE-04/06; source implementation alone is experimental.
+- [ ] **HOST-03 — Windows OpenSSH.** Detect configured default shell, support PowerShell/cmd differences and drive paths without POSIX assumptions. Gate: native host tests for listing, preview, PTY and session lifecycle. Requires BASE-04/06 and an authorized Windows SSH endpoint.
+- [ ] **HOST-04 — First appliance provider.** Start with one chosen RouterOS/MikroTik version or another requested device; document exact SSH exec/shell/file capabilities. Gate: terminal-only devices remain useful and unavailable apps explain why. No mandatory SFTP, uname, POSIX shell or custom agent. Device/version and fixture access remain to be selected.
+
+## M4 — External extensions
+
+- [ ] **EXT-01 — Package contract.** SDK version negotiation, namespaced IDs, service requirements, settings, lifecycle and declared permissions. Gate: compatible/incompatible fixtures and migration policy. Requires M1 and second-provider experience.
+- [ ] **EXT-02 — Isolation and broker.** Isolated extension rendering/execution, native enforcement of app/host/operation grants, cancellation/resource limits and revocation. Gate: malicious fixture cannot call unrestricted Tauri commands, steal credentials, change hosts or exceed grants. Required before external package installation.
+- [ ] **EXT-03 — Install/update/remove.** Provenance, permission review, integrity, rollback and uninstall cleanup. Gate: tampered package, incompatible version and revoked permission scenarios. Requires EXT-01/02. Marketplace is a later distribution choice.
+- [ ] **EXT-04 — Provider packaging.** Choose reviewed built-in Rust providers versus an isolated external adapter format. Gate: no unrestricted native dynamic-library loading presented as a safe plugin system. Requires HOST-04 and EXT-02.
+- [ ] **EXT-05 — Connector packaging.** Extend the SDK to connection adapter schemas, lifecycle and optional service implementations. Gate: adding a connector does not edit desktop apps or grant arbitrary network/device access. Requires BASE-08/09 and EXT-02.
+
+## Additional connection adapters (after composition proof)
+
+Scope is flexibility now, not implementing every protocol now. Pick the first real adapter from an actual device need after BASE-08/09; each task is independently shippable and requires authorized test access.
+
+- [ ] **LINK-01 — Serial console.** Device selection, baud/framing/flow control, exclusive ownership, reconnect and byte I/O. Gate: real loopback/device tests, unplug/replug and resource release. No automatic Linux detection writes into the console; resizing is optional.
+- [ ] **LINK-02 — Telnet console.** Correct protocol negotiation and console behavior, explicit connection/trust presentation, cleanup and timeout tests. Gate: supported device fixture plus authorized real target. No automatic fallback from failed SSH.
+- [ ] **LINK-03 — FTP file services.** Listing/read/transfer support with server path conventions and explicit connection security properties. Gate: disposable server tests for partial support, encoding, cancellation and listing variants; Files app remains protocol-neutral. Prove composition with a separate console leg.
+- [ ] **LINK-04 — One structured device API.** Select one documented target, implement typed capabilities and connector-specific credentials. Gate: useful operation without terminal/exec/SFTP and partial-failure fixtures. Do not invent a universal vendor API.
+
+## M5 — Optional AI assistant
+
+- [x] **AI-00 — WispCrew reuse assessment.** Inspect local source, runtime dependencies, tool defaults and approval interfaces; record findings and integration choices in docs/ai-integration.md. No WispCrew source copied, changed, or executed.
+- [ ] **AI-01 — Integration spike.** Compare an optional WispCrew connection with extraction of a portable agent kernel. Measure package size, startup, cancellation and desktop/mobile feasibility. Gate: fake-model streaming demo through a replaceable assistant service; decide runtime location before implementation. Requires BASE-05; do not ship a placeholder chat as functioning AI.
+- [ ] **AI-02 — Assistant app.** Explicit model setup, streaming, cancellation, conversation per host and user-selected context. Gate: Files/Terminal run with AI disabled; no terminal/file content sent automatically. Requires AI-01.
+- [ ] **AI-03 — Host tools and approvals.** Start with host info and file reads; add command/write actions with concrete previews, session-bound approval, audit results and step/time budgets. Gate: cancellation, host switch, expired approval and tool failure tests; never inherit WispCrew's local filesystem/shell defaults. Requires AI-02 and native operation broker.
+
+## M6 — Distribution and community
+
+- [x] **SHIP-00 — Private source repository.** Initialized local Git on main and created `techartdev/ShellCanvas`, verified PRIVATE. Source includes architecture, backlog and fixtures; build output, dependencies and local credentials are excluded. No hosted workflows are added.
+- [ ] **SHIP-01 — Local verification and releases.** Create a reproducible local verification entry point and release checklist. Source control is initialized for the user-authorized private ShellCanvas repository. Public publication and hosted CI remain separate decisions.
+- [ ] **SHIP-02 — Desktop release matrix.** Optimized Windows, macOS and Linux packages; startup/package size measurements; accessibility, key storage and platform prerequisites documented. Signing/update strategy follows verified builds.
+- [ ] **SHIP-03 — Tablet feasibility.** Tauri Android/iOS spikes covering SSH lifecycle, key import, terminal IME, external keyboard and touch window management. Gate: actual device tests; browser responsiveness is insufficient. Phone refinement follows tablet proof.
+- [ ] **SHIP-04 — Web gateway design.** Authenticated gateway, per-user host access, credential policy and private-network routing. Gate: threat model and deployment prototype before offering hosted access. Commercial terms remain open.
+- [x] **COMM-00 — Product name.** User selected ShellCanvas; app title, package/crate names, application identity and documentation updated. Workspace folder stays in its existing location.
+- [ ] **COMM-01 — Community launch.** Prepare contribution templates, supported-system matrix, SDK examples and release notes. Domain/trademark checks and public release remain separate from the private repository. No paid-tier commitment yet.
+
+## Validation record
+
+- M0: owner-authorized Linux transport/SFTP/PTY probe and user-tested native Files/Terminal. Only the tested target is confirmed.
+- M1 app slice: 10 frontend tests passed; browser walkthrough verified three mounted minimized apps, Files navigation surviving minimize, close removing the instance, reopen resetting it, and maximize filling the 1162px work area from toolbar bottom (44px) to dock top (774px). The failure fixture recovered while its sibling counter retained state. Native SSH transport is unchanged; additional OS/device support and external extensions remain pending.
+- Windows debug executable rebuilt successfully with the app slice; native UI and remote SSH flows were not re-exercised in this slice.
+- Rust workspace tests passed (2 core tests; no new Rust changes).
+- Connection-neutral probe slice: 6 Rust tests and clippy passed; 11 frontend tests passed. Console-only UI fixture disables Files with a reason while Terminal and Host details remain available. The owner-authorized read-only Linux SSH/SFTP/PTY regression passed. These fixtures do not establish serial/Telnet/FTP/API support or complete composite-session support.
+- ShellCanvas name applied and Windows debug build produced at `target/debug/shellcanvas.exe`; browser title and desktop branding verified. Workspace directory remains unchanged.

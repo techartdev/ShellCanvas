@@ -1,0 +1,14 @@
+node_modules/
+dist/
+target/
+src-tauri/gen/
+.local/
+*.log
+*.tsbuildinfo
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+id_rsa*
+id_ed25519*
