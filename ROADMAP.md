@@ -30,6 +30,8 @@ M3 can progress alongside M2 when representative hosts are available. The provid
 
 ## Current implementation slice
 
+Delivery focus is now everyday core workflows: stable terminal layout, saved hosts, context menus/clipboard, then multiple simultaneous host workspaces and basic file actions. Architectural seams should support these concrete workflows; additional protocols and apps remain deferred.
+
 The first M1 slice removes hardcoded app startup and window layouts from the shell. Manifests choose startup and layout; a generic window lifecycle tracks focus, minimize and close; render failures stay in the affected app. Host details demonstrates a third app with the generic frame and existing provider data. The next slice introduces a transport-independent probe context, a total detection budget, and disabled launchers for missing capabilities. The live connection implementation remains SSH/SFTP.
 
 This is **not** the external plugin runtime, a completed provider SDK, new remote OS support, or a working AI integration.
@@ -38,4 +40,4 @@ This is **not** the external plugin runtime, a completed provider SDK, new remot
 
 [BACKLOG.md](BACKLOG.md) is the single task list. Each item has an ID, dependencies and an observable completion gate. Check an item only after implementation and appropriate validation; distinguish fixtures, browser previews, native builds, and live-host results. Update this roadmap when scope changes, and update the backlog after each development slice.
 
-Next implementation sequence: finish **BASE-04 provider test seam**, then **BASE-08 service contracts**, **BASE-09 composite bindings**, and **BASE-05 scoped app services**. A mixed-adapter fixture must prove partial failure and resource ownership before implementing a second real connection adapter. See [the architecture](docs/architecture.md), [app guide](docs/apps.md), [provider matrix](docs/providers.md), and [AI integration notes](docs/ai-integration.md).
+Next implementation slice: **CORE-07 multiple host workspaces**, with **BASE-05/08 scoped services and lifecycle** implemented as needed. File context actions and transfers follow. The mixed-adapter fixture remains a gate before a second real connection adapter, rather than blocking these everyday workflows. See [the architecture](docs/architecture.md), [app guide](docs/apps.md), [provider matrix](docs/providers.md), and [AI integration notes](docs/ai-integration.md).

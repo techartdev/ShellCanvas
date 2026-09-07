@@ -1,10 +1,12 @@
 // SPDX-License-Identifier: MPL-2.0
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Terminal as XTerminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import { Circle, RotateCcw } from "lucide-react";
 import "@xterm/xterm/css/xterm.css";
 import type { AppContext, TerminalSession } from "../sdk";
+import { ContextMenu } from "../components/ContextMenu";
+import { clipboard } from "../clipboard";
 export function Terminal({
   session,
   services,
@@ -12,8 +14,36 @@ export function Terminal({
   reportError,
 }: AppContext) {
   const container = useRef<HTMLDivElement>(null);
+  const instance = useRef<XTerminal | null>(null);
+  const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
+  const closeMenu = useCallback(() => setMenu(null), []);
+  const [ready, setReady] = useState(false);
   const [status, setStatus] = useState("Opening shell…");
   const [attempt, setAttempt] = useState(0);
+  async function copy() {
+    const text = instance.current?.getSelection();
+    if (!text) return;
+    try {
+      await clipboard.writeText(text);
+    } catch (error) {
+      reportError(`Copy failed: ${error}`);
+    }
+  }
+  async function paste() {
+    const target = instance.current;
+    if (!target || !ready) return;
+    try {
+      const text = await clipboard.readText();
+      // Never paste into a replacement shell after an asynchronous clipboard read.
+      if (instance.current !== target) return;
+      target.paste(text);
+      target.focus();
+    } catch (error) {
+      reportError(`Paste failed: ${error}`);
+    }
+  }
+  const clipboardActions = useRef({ copy, paste });
+  clipboardActions.current = { copy, paste };
   useEffect(() => {
     if (!container.current || !session) return;
     let disposed = false;
@@ -45,11 +75,54 @@ export function Terminal({
     const fit = new FitAddon();
     terminal.loadAddon(fit);
     terminal.open(container.current);
-    const observer = new ResizeObserver(() => {
-      if (container.current?.clientWidth) fit.fit();
-    });
+    instance.current = terminal;
+    setReady(false);
+    let frame = 0;
+    const scheduleFit = () => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => {
+        if (
+          !disposed &&
+          container.current?.clientWidth &&
+          container.current.clientHeight
+        )
+          fit.fit();
+      });
+    };
+    const observer = new ResizeObserver(scheduleFit);
     observer.observe(container.current);
     fit.fit();
+    void document.fonts.ready.then(() => {
+      if (!disposed) scheduleFit();
+    });
+    terminal.attachCustomKeyEventHandler((event) => {
+      if (
+        event.key === "ContextMenu" ||
+        (event.shiftKey && event.key === "F10")
+      ) {
+        if (event.type === "keydown") {
+          event.preventDefault();
+          const rect = container.current!.getBoundingClientRect();
+          setMenu({ x: rect.left + 24, y: rect.top + 24 });
+        }
+        return false;
+      }
+      const command = (event.ctrlKey && event.shiftKey) || event.metaKey;
+      if (
+        command &&
+        !event.altKey &&
+        ["c", "v"].includes(event.key.toLowerCase())
+      ) {
+        if (event.type === "keydown") {
+          event.preventDefault();
+          void (event.key.toLowerCase() === "c"
+            ? clipboardActions.current.copy()
+            : clipboardActions.current.paste());
+        }
+        return false;
+      }
+      return true; // Ctrl+C remains a remote interrupt.
+    });
     setStatus("Opening shell…");
     const input = terminal.onData((data) => {
       void remote?.write(data).catch((e) => {
@@ -67,9 +140,11 @@ export function Terminal({
         if (event.type === "output") terminal.write(new Uint8Array(event.data));
         else if (event.type === "closed") {
           closed = true;
+          setReady(false);
           setStatus("Shell closed");
         } else {
           closed = true;
+          setReady(false);
           setStatus(event.data);
         }
       })
@@ -79,6 +154,7 @@ export function Terminal({
           return;
         }
         remote = handle;
+        setReady(!closed);
         if (!closed)
           setStatus(
             preview
@@ -92,6 +168,8 @@ export function Terminal({
       });
     return () => {
       disposed = true;
+      instance.current = null;
+      cancelAnimationFrame(frame);
       observer.disconnect();
       input.dispose();
       resize.dispose();
@@ -108,7 +186,66 @@ export function Terminal({
         </span>
         <span>SSH</span>
       </div>
-      <div className="terminal-container" ref={container} />
+      <div
+        className="terminal-container"
+        onContextMenu={(event) => {
+          event.preventDefault();
+          setMenu({ x: event.clientX, y: event.clientY });
+        }}
+        onKeyDown={(event) => {
+          if (
+            event.key === "ContextMenu" ||
+            (event.shiftKey && event.key === "F10")
+          ) {
+            event.preventDefault();
+            const rect = event.currentTarget.getBoundingClientRect();
+            setMenu({ x: rect.left + 24, y: rect.top + 24 });
+          }
+        }}
+      >
+        <div className="terminal-viewport" ref={container} />
+      </div>
+      {menu && (
+        <ContextMenu
+          {...menu}
+          close={closeMenu}
+          actions={[
+            {
+              id: "copy",
+              label: "Copy",
+              shortcut: "Ctrl+Shift+C",
+              disabled: !instance.current?.hasSelection(),
+              run: () => {
+                void copy();
+              },
+            },
+            {
+              id: "paste",
+              label: "Paste",
+              shortcut: "Ctrl+Shift+V",
+              disabled: !ready,
+              run: () => {
+                void paste();
+              },
+            },
+            {
+              id: "select-all",
+              label: "Select all",
+              run: () => instance.current?.selectAll(),
+            },
+            {
+              id: "clear",
+              label: "Clear scrollback",
+              run: () => instance.current?.clear(),
+            },
+            {
+              id: "new-shell",
+              label: "New shell",
+              run: () => setAttempt((value) => value + 1),
+            },
+          ]}
+        />
+      )}
       <footer className="terminal-footer">
         <span title={status}>{status}</span>
         <button

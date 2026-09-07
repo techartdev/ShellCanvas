@@ -429,6 +429,15 @@ export default function App() {
           busy={connecting}
           error={error}
           preview={!native}
+          save={async (profile) => {
+            const saved = await services.saveProfile(profile);
+            setProfiles(await services.profiles());
+            return saved;
+          }}
+          remove={async (id) => {
+            await services.removeProfile(id);
+            setProfiles(await services.profiles());
+          }}
           close={() => setConnectOpen(false)}
           submit={(options, name) => void connect(options, name)}
         />

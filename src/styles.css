@@ -811,6 +811,7 @@ button:active:not(:disabled) {
   background: #111b26;
 }
 .terminal-tabs {
+  flex-shrink: 0;
   height: 37px;
   background: #172430;
   border-bottom: 1px solid #758c9c10;
@@ -839,9 +840,18 @@ button:active:not(:disabled) {
   letter-spacing: 1px;
 }
 .terminal-container {
-  flex: 1;
+  position: relative;
+  flex: 1 1 0%;
   min-height: 0;
-  padding: 21px 16px 8px;
+  min-width: 0;
+  overflow: hidden;
+  --terminal-inset: 21px 16px 8px;
+}
+.terminal-viewport {
+  position: absolute;
+  inset: var(--terminal-inset);
+  /* Clip painting without letting focus scroll this wrapper; xterm owns scrolling. */
+  overflow: clip;
 }
 .terminal-container .xterm {
   height: 100%;
@@ -853,6 +863,8 @@ button:active:not(:disabled) {
   background: #71899b44;
 }
 .terminal-footer {
+  position: relative;
+  background: #111b26;
   height: 30px;
   flex-shrink: 0;
   display: flex;
@@ -875,6 +887,37 @@ button:active:not(:disabled) {
   align-items: center;
   gap: 5px;
   white-space: nowrap;
+}
+.context-menu {
+  position: fixed;
+  z-index: 1000;
+  width: 236px;
+  padding: 6px;
+  border: 1px solid #96b7c238;
+  border-radius: 11px;
+  background: #22333ff5;
+  box-shadow: 0 14px 45px #06111b99;
+  backdrop-filter: blur(18px);
+}
+.context-menu button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  width: 100%;
+  padding: 9px 10px;
+  text-align: left;
+  border-radius: 6px;
+  font-size: 12px;
+}
+.context-menu button:focus-visible {
+  background: #91b3c020;
+  outline: 1px solid #9cc6c280;
+}
+.context-menu kbd {
+  font: inherit;
+  font-size: 10px;
+  color: #98adbb;
 }
 .app-empty {
   display: flex;
@@ -1419,6 +1462,35 @@ button:active:not(:disabled) {
 .connect-dialog .inline-error {
   margin: 10px 0;
 }
+.profile-actions,
+.profile-removal {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin: 6px 0 16px;
+}
+.profile-actions button,
+.profile-removal button {
+  padding: 8px 11px;
+  border: 1px solid #9cbaba30;
+  border-radius: 6px;
+  font-size: 10px;
+  color: #bbd6cf;
+}
+.profile-actions button:last-child:not(:first-child) {
+  margin-left: auto;
+  color: #b7a6a6;
+}
+.profile-message,
+.profile-removal {
+  font-size: 11px;
+  line-height: 1.5;
+  color: #a8cdbb;
+}
+.profile-message {
+  margin: 8px 0 14px;
+}
 .preview-explanation {
   font-size: 11px;
   line-height: 1.6;
@@ -1476,7 +1548,7 @@ button:active:not(:disabled) {
     grid-template-columns: minmax(160px, 1fr) 90px 65px;
   }
   .terminal-container {
-    padding: 28px 23px 10px;
+    --terminal-inset: 28px 23px 10px;
   }
 }
 @media (max-height: 760px) and (min-width: 900px) {
@@ -1653,7 +1725,7 @@ button:active:not(:disabled) {
     width: 135px;
   }
   .terminal-container {
-    padding-top: 16px;
+    --terminal-inset: 16px 16px 8px;
   }
 }
 @media (max-width: 560px) {

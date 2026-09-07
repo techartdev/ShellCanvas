@@ -3,5 +3,9 @@
   "identifier": "main-window",
   "description": "Bundled desktop shell only. No remote web content or third-party extensions.",
   "windows": ["main"],
-  "permissions": ["core:default"]
+  "permissions": [
+    "core:default",
+    "clipboard-manager:allow-read-text",
+    "clipboard-manager:allow-write-text"
+  ]
 }

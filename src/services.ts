@@ -4,6 +4,8 @@ import type { HostServices, TerminalEvent } from "./sdk";
 export const native = isTauri();
 export const nativeServices: HostServices = {
   profiles: () => invoke("profiles"),
+  saveProfile: (profile) => invoke("save_profile", { profile }),
+  removeProfile: (id) => invoke("remove_profile", { id }),
   connect: (options) => invoke("connect", { options }),
   disconnect: () => invoke("disconnect"),
   alive: (sessionId) => invoke("session_alive", { sessionId }),

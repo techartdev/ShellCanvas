@@ -32,7 +32,9 @@ Windows output: `target/debug/shellcanvas.exe`. This debug build is for local ev
 - Real SSH connections with private-key/passphrase or password authentication.
 - Strict verification against the user's existing `~/.ssh/known_hosts`. Unknown and changed keys are refused. No automatic trust enrollment or security downgrade.
 - Import of basic, explicit `Host` blocks from `~/.ssh/config`. Select the profile and supply any missing username.
+- Save, edit and remove named host profiles in the native connection dialog. Saved entries live in the application data directory, independently of SSH config; passwords and passphrases are excluded. Use **Save host** before connecting if you want to keep an entry.
 - An xterm.js terminal with binary output streaming, input, PTY resize, and independent SSH channels.
+- Terminal right-click menu: Copy, Paste, Select all, Clear scrollback and New shell. Ctrl+Shift+C/V (or Cmd+C/V on macOS) handles clipboard actions; Ctrl+C remains the remote interrupt. Shift+F10 opens the menu. The terminal viewport stays contained above its footer while resizing.
 - Read-only SFTP directory browsing, filtering, parent/back navigation, and UTF-8 file previews up to 256 KiB.
 - Linux detection behind a system-provider interface; generic SSH fallback when no provider matches.
 - A bundled app registry with local/host scope and capability requirements. No calculator is included.
@@ -43,7 +45,7 @@ Windows output: `target/debug/shellcanvas.exe`. This debug build is for local ev
 
 - One connected host workspace and one terminal app at a time. Reconnecting starts a new shell; it does not restore remote processes.
 - The file explorer does not yet upload, download, edit, rename, or delete files. **The terminal is a real shell with all permissions of the authenticated account**, including root when selected.
-- Passwords and key passphrases are not persisted. Key files remain in their existing location. Secure credential-vault integration and saved app-specific profiles are future work. Wallpaper preference alone is stored in local storage.
+- Passwords and key passphrases are not persisted. Key files remain in their existing location. Named SSH profiles are stored as versioned `hosts.json` in Tauri's app data directory (Windows: `%APPDATA%/dev.shellcanvas.client`), with atomic replacement and a cross-process lock. Unrecognized/corrupt files are reported and preserved. Secure credential-vault integration remains future work. Wallpaper preference is stored in local storage.
 - The importer is not a full OpenSSH configuration interpreter: `Include`, `Match`, wildcard defaults, `ProxyCommand`, `ProxyJump`, SSH agents, hardware keys, and host certificates are unsupported. Imported fields are editable before connecting.
 - `known_hosts` files with `@cert-authority` or `@revoked` markers are refused rather than partially interpreted. Ordinary and hashed host entries are handled by russh. Use the exact hostname/IP under which the key is recorded.
 - Connection loss is detected through SSH transport closure and keepalives; it can take roughly a minute to recognize an unreachable network peer.

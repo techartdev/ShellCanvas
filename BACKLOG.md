@@ -2,6 +2,10 @@
 
 Updated: 2026-09-08. `[x]` means implemented and checked within the stated scope. `[ ]` means pending. Order inside each milestone is intentional; no launch dates are promised.
 
+## Immediate delivery focus — everyday basics
+
+Prioritize a dependable working desktop over adding protocols or more bundled apps. Current slice: terminal resize/scroll containment, saved host CRUD, and terminal context-menu/clipboard actions. Next: CORE-07 multi-host workspaces using the minimum BASE-05/08 service boundaries needed for session isolation; then Files context actions/clipboard and transfers. Keep the composite-adapter architecture as a constraint rather than building every adapter now.
+
 ## M1 — Extensible base (current)
 
 - [x] **BASE-01 — Versioned bundled app registration.** Validate unique IDs, API version, scope, capabilities and layout. Derive initial apps from manifests. Gate: an app with a new ID can open without shell edits; invalid manifests fail clearly. Unit coverage and Host details provide the proof.
@@ -15,16 +19,20 @@ Updated: 2026-09-08. `[x]` means implemented and checked within the stated scope
 - [ ] **BASE-09 — Composite workspace bindings.** Route each service role to an explicit adapter instance. Separate workspace, connection and service identities/generations; own shared-resource leases and per-leg cancellation/teardown. Gate: fake FTP-like files plus serial-like console in one workspace; losing files leaves console usable, shared resources close once, stale results/approvals are rejected, and no implicit path mapping or endpoint substitution. Requires BASE-08.
 - [ ] **BASE-10 — Capability status and partial UI.** Model available/unsupported/checking/disconnected/denied per binding, including a reason and source. Apps distinguish required from optional features; read-only files remain browsable without writes; unsupported apps/actions are disabled. The current simpler capability array now disables unavailable launcher/dock entries. Gate: fixtures for console-only, files-only, API-only and partially disconnected workspaces. Requires BASE-09; native broker enforces availability too.
 
-Next core sequence: finish BASE-04, then BASE-08, BASE-09/10 and BASE-05/06. These seams take precedence over broad protocol implementation.
+Build BASE-05/08 incrementally alongside CORE-07. Full BASE-09/10 composition remains planned; avoid broad protocol implementation until core workflows are dependable.
 
 ## M2 — Everyday workspace
 
-- [ ] **CORE-01 — Named profiles.** Persist non-secret profile settings, provider preference and connection history; import/edit/export with no passwords in exports by default. Gate: restart retains profiles, validation is clear, storage migration tested.
+- [x] **CORE-01a — Saved host CRUD.** Create, edit and remove named SSH profiles beside imported SSH config entries. Versioned connector-tagged JSON in the native app data directory; atomic replacement and cross-process locking. No passwords/passphrases. Gate: persistence/concurrency/corruption tests and dialog fixture create/edit/reopen/remove checks. Save is explicit; connecting alone does not save a host.
+- [ ] **CORE-01b — Profile polish.** Search/group hosts, optional history, import/export, provider preferences and migrations for additional adapter types. Credential vault remains a separate decision.
+- [x] **CORE-00 — Terminal containment and actions.** Separate terminal viewport from footer, coalesce resize/fit and clip without scrolling the outer wrapper. Context menu provides copy/paste/select-all/clear scrollback/new shell; Escape/arrows and Shift+F10 supported. Native text clipboard plugin; no clipboard monitoring. Gate: varied-height fixture, menu/focus/clipboard fake tests and native build. OS clipboard round trip remains to be validated in a running native app.
 - [ ] **CORE-02 — Host trust and authentication UX.** Verified fingerprint enrollment, changed-key refusal, known_hosts marker handling, SSH agent and keyboard-interactive support in separate reviewable slices. Gate: unknown/changed/revoked fixtures and native authentication tests; no silent trust downgrade.
 - [ ] **CORE-03 — App instances and close behavior.** Multiple terminals; distinguish app ID from instance ID; close asks when an app has unsaved work. Gate: separate PTYs, correct cleanup, reconnect invalidation. Requires BASE-02/05. Closing today's Terminal ends its shell; minimize preserves it.
 - [ ] **CORE-04 — Transfers.** Upload/download queue with progress, cancel and bounded memory. Gate: interrupted transfers report actual outcomes; no silent overwrite, temporary-file cleanup and large-file checks. Requires BASE-05/06.
 - [ ] **CORE-05 — File changes.** New folder, rename, delete and text editing with conflict handling and explicit destructive-action UX. Gate: tests in a designated disposable remote directory, permissions failures, concurrent edits and disconnects. Requires CORE-04; no writes to arbitrary test-host data.
 - [ ] **CORE-06 — Connection recovery.** Visible reconnect state, cancellation during connect, idle/disconnected terminal behavior and slow-link handling. Gate: failure scenarios do not freeze the desktop or substitute preview data.
+- [ ] **CORE-07 — Multiple host workspaces (next).** Replace the global active connection with a session registry; host switcher preserves independent Files/Terminal/window state. Close/disconnect only the selected workspace, and scope terminal ownership plus every request to its session/generation. Gate: two authorized hosts or protocol fixtures live at once; switching/closing one never routes input to or tears down the other. Refactor scoped services as part of this work; do not just render duplicate desktops over the current singleton backend.
+- [ ] **CORE-08 — Files actions and shared menus.** Reuse the keyboard-accessible menu for open/preview, parent/back/refresh, copy path/name and selected-file actions. Gate: selection, disabled actions, dismissal and clipboard handling work across windows. Upload/download and remote changes follow CORE-04/05.
 - [ ] **UX-01 — Desktop polish.** Keyboard focus cycling, move/resize accessibility, snapping, touch targets, window bounds during viewport changes and session-scoped layout persistence. Gate: desktop/tablet walkthrough with no obscured controls. Preserve the approved visual direction.
 
 ## M3 — Remote providers

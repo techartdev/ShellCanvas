@@ -10,6 +10,7 @@ use std::{
 };
 use tauri::{ipc::Channel, State};
 use tokio::sync::{mpsc, Mutex, RwLock};
+mod profile_store;
 
 struct ActiveSession {
     id: u64,
@@ -35,8 +36,29 @@ fn error(e: impl std::fmt::Display) -> String {
 }
 
 #[tauri::command]
-fn profiles() -> Vec<HostProfile> {
-    local_profiles()
+async fn profiles(app: tauri::AppHandle) -> Result<Vec<HostProfile>, String> {
+    let dir = profile_store::storage_dir(&app)?;
+    tauri::async_runtime::spawn_blocking(move || {
+        let mut saved = profile_store::list(&dir)?;
+        saved.extend(local_profiles());
+        Ok(saved)
+    })
+    .await
+    .map_err(error)?
+}
+#[tauri::command]
+async fn save_profile(app: tauri::AppHandle, profile: HostProfile) -> Result<HostProfile, String> {
+    let dir = profile_store::storage_dir(&app)?;
+    tauri::async_runtime::spawn_blocking(move || profile_store::save(&dir, profile))
+        .await
+        .map_err(error)?
+}
+#[tauri::command]
+async fn remove_profile(app: tauri::AppHandle, id: String) -> Result<(), String> {
+    let dir = profile_store::storage_dir(&app)?;
+    tauri::async_runtime::spawn_blocking(move || profile_store::remove(&dir, &id))
+        .await
+        .map_err(error)?
 }
 
 #[tauri::command]
@@ -216,9 +238,12 @@ async fn close_terminal(terminal_id: u64, state: State<'_, DesktopState>) -> Res
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_clipboard_manager::init())
         .manage(DesktopState::default())
         .invoke_handler(tauri::generate_handler![
             profiles,
+            save_profile,
+            remove_profile,
             session_alive,
             connect,
             disconnect,

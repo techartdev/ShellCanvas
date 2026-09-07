@@ -37,6 +37,12 @@ function directory(path: string): Directory {
 }
 export const previewServices: HostServices = {
   profiles: async () => [],
+  saveProfile: async () => {
+    throw new Error("Save hosts in the native app.");
+  },
+  removeProfile: async () => {
+    throw new Error("Manage saved hosts in the native app.");
+  },
   connect: async () => {
     throw new Error("Open the native desktop app to connect over SSH.");
   },

@@ -2,13 +2,14 @@
 import type { ComponentType } from "react";
 export type Capability = "terminal" | "files.read";
 export interface HostProfile {
+  id?: string;
   name: string;
   host: string;
   port: number;
   username: string;
   keyPath: string;
 }
-export interface ConnectOptions extends Omit<HostProfile, "name"> {
+export interface ConnectOptions extends Omit<HostProfile, "name" | "id"> {
   password?: string;
   passphrase?: string;
 }
@@ -46,6 +47,8 @@ export interface TerminalSession {
 }
 export interface HostServices {
   profiles(): Promise<HostProfile[]>;
+  saveProfile(profile: HostProfile): Promise<HostProfile>;
+  removeProfile(id: string): Promise<void>;
   connect(options: ConnectOptions): Promise<Session>;
   disconnect(): Promise<void>;
   alive(sessionId: number): Promise<boolean>;

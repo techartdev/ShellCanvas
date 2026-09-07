@@ -17,6 +17,8 @@ export function ConnectDialog({
   close,
   submit,
   preview,
+  save,
+  remove,
 }: {
   profiles: HostProfile[];
   busy: boolean;
@@ -24,6 +26,8 @@ export function ConnectDialog({
   close(): void;
   submit(options: ConnectOptions, label: string): void;
   preview: boolean;
+  save(profile: HostProfile): Promise<HostProfile>;
+  remove(id: string): Promise<void>;
 }) {
   const dialog = useRef<HTMLDialogElement>(null);
   const [options, setOptions] = useState<ConnectOptions>({
@@ -35,15 +39,92 @@ export function ConnectDialog({
     passphrase: "",
   });
   const [label, setLabel] = useState("");
+  const [selected, setSelected] = useState("");
+  const [savedId, setSavedId] = useState<string | undefined>();
+  const [saving, setSaving] = useState(false);
+  const [saveMessage, setSaveMessage] = useState("");
+  const [saveError, setSaveError] = useState("");
+  const [confirmRemove, setConfirmRemove] = useState(false);
+  const locked = busy || saving;
   const [method, setMethod] = useState("key");
   function select(profile: HostProfile) {
-    setOptions({ ...profile, password: "", passphrase: "" });
+    setOptions({
+      host: profile.host,
+      port: profile.port,
+      username: profile.username,
+      keyPath: profile.keyPath,
+      password: "",
+      passphrase: "",
+    });
     setLabel(profile.name);
+    setSavedId(profile.id);
+    setSaveMessage("");
+    setSaveError("");
+    setConfirmRemove(false);
     setMethod(profile.keyPath ? "key" : "password");
   }
   useEffect(() => {
-    if (profiles[0]) select(profiles[0]);
-  }, [profiles]);
+    if (profiles[0]) {
+      select(profiles[0]);
+      setSelected(profiles[0].id ?? "import-0");
+    }
+  }, []);
+  function newProfile() {
+    setSelected("");
+    setSavedId(undefined);
+    setLabel("");
+    setMethod("key");
+    setOptions({
+      host: "",
+      port: 22,
+      username: "",
+      keyPath: "",
+      password: "",
+      passphrase: "",
+    });
+    setSaveError("");
+    setSaveMessage("");
+    setConfirmRemove(false);
+  }
+  async function saveHost() {
+    setSaving(true);
+    setSaveMessage("");
+    setSaveError("");
+    try {
+      const saved = await save({
+        id: savedId,
+        name: label || options.host,
+        host: options.host,
+        port: options.port,
+        username: options.username,
+        keyPath: method === "key" ? options.keyPath : "",
+      });
+      setSavedId(saved.id);
+      setSelected(saved.id!);
+      setLabel(saved.name);
+      setSaveMessage("Host saved on this device.");
+    } catch (error) {
+      setSaveError(String(error));
+    } finally {
+      setSaving(false);
+    }
+  }
+  async function removeHost() {
+    if (!savedId) return;
+    setSaving(true);
+    setSaveError("");
+    try {
+      await remove(savedId);
+      newProfile();
+      setSaveMessage(
+        "Saved host removed. Remote host and SSH config are unchanged.",
+      );
+    } catch (error) {
+      setSaveError(String(error));
+    } finally {
+      setSaving(false);
+    }
+  }
   useEffect(() => {
     const previous = document.activeElement as HTMLElement | null;
     const controls = () =>
@@ -74,19 +155,20 @@ export function ConnectDialog({
   }, []);
   useEffect(() => {
     function escape(e: KeyboardEvent) {
-      if (e.key === "Escape" && !busy) close();
+      if (e.key === "Escape" && !locked) close();
     }
     window.addEventListener("keydown", escape);
     return () => window.removeEventListener("keydown", escape);
-  }, [busy, close]);
+  }, [locked, close]);
   function field(name: keyof ConnectOptions, value: string | number) {
+    setSaveMessage("");
     setOptions((old) => ({ ...old, [name]: value }));
   }
   return (
     <div
       className="modal-backdrop"
       onClick={(e) => {
-        if (e.target === e.currentTarget && !busy) close();
+        if (e.target === e.currentTarget && !locked) close();
       }}
     >
       <dialog
@@ -99,7 +181,7 @@ export function ConnectDialog({
         <button
           className="dialog-close icon-button"
           aria-label="Close connection dialog"
-          disabled={busy}
+          disabled={locked}
           onClick={close}
         >
           <X size={19} />
@@ -129,22 +211,48 @@ export function ConnectDialog({
             );
           }}
         >
-          <fieldset disabled={busy || preview}>
-            {profiles.length > 0 && (
-              <label className="form-field">
-                From your SSH config
-                <select
-                  aria-label="SSH profile"
-                  onChange={(e) => select(profiles[Number(e.target.value)])}
-                >
-                  {profiles.map((p, i) => (
-                    <option key={`${p.name}-${i}`} value={i}>
-                      {p.name} · {p.host}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            )}
+          <fieldset disabled={locked || preview}>
+            <label className="form-field">
+              Your hosts
+              <select
+                aria-label="Host profile"
+                value={selected}
+                onChange={(e) => {
+                  if (!e.target.value) {
+                    newProfile();
+                    return;
+                  }
+                  const profile = profiles.find(
+                    (p, i) => (p.id ?? `import-${i}`) === e.target.value,
+                  );
+                  if (profile) {
+                    select(profile);
+                    setSelected(e.target.value);
+                  }
+                }}
+              >
+                <option value="">New host…</option>
+                {profiles.map((p, i) => (
+                  <option
+                    key={p.id ?? `import-${i}`}
+                    value={p.id ?? `import-${i}`}
+                  >
+                    {p.id ? "Saved" : "SSH config"} · {p.name} · {p.host}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="form-field">
+              Name <span className="optional">optional</span>
+              <input
+                placeholder="My server"
+                value={label}
+                onChange={(e) => {
+                  setLabel(e.target.value);
+                  setSaveMessage("");
+                }}
+              />
+            </label>
             <div className="form-row">
               <label className="form-field grow">
                 Host
@@ -231,7 +339,52 @@ export function ConnectDialog({
                 />
               </label>
             )}
+            <div className="profile-actions">
+              <button
+                type="button"
+                disabled={
+                  !options.host.trim() ||
+                  !options.username.trim() ||
+                  !Number.isInteger(options.port) ||
+                  options.port < 1 ||
+                  options.port > 65535 ||
+                  (method === "key" && !options.keyPath.trim())
+                }
+                onClick={() => void saveHost()}
+              >
+                {savedId ? "Update saved host" : "Save host"}
+              </button>
+              {savedId && (
+                <button
+                  type="button"
+                  onClick={() => setConfirmRemove(!confirmRemove)}
+                >
+                  Remove saved host
+                </button>
+              )}
+            </div>
+            {confirmRemove && (
+              <div className="profile-removal">
+                <span>Remove this saved connection?</span>
+                <button type="button" onClick={() => void removeHost()}>
+                  Remove
+                </button>
+                <button type="button" onClick={() => setConfirmRemove(false)}>
+                  Keep
+                </button>
+              </div>
+            )}
           </fieldset>
+          {saveMessage && (
+            <p className="profile-message" role="status">
+              {saveMessage}
+            </p>
+          )}
+          {saveError && (
+            <div className="inline-error" role="alert">
+              {saveError}
+            </div>
+          )}
           {error && (
             <div role="alert" className="inline-error">
               {error}
@@ -246,7 +399,7 @@ export function ConnectDialog({
           <button
             className="primary-button connect-submit"
             type="submit"
-            disabled={busy || preview}
+            disabled={locked || preview}
           >
             {busy ? (
               <>
