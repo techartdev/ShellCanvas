@@ -11,11 +11,22 @@ function Fixture() {
   const [fixture, setFixture] = useState(() =>
     filesystemFixture("virtual", record),
   );
+  const [clipboardText, setClipboardText] = useState(fixture.locations.child);
+  const [rejectCopy, setRejectCopy] = useState(false);
+  const [rejectPaste, setRejectPaste] = useState(false);
   function record(text: string) {
     setEvents((old) => [...old.slice(-29), text]);
   }
-  clipboard.writeText = async (text) => record(`copy ${text}`);
-  clipboard.readText = async () => fixture.locations.child;
+  clipboard.writeText = async (text) => {
+    if (rejectCopy) throw new Error("Fixture clipboard write refused");
+    setClipboardText(text);
+    record(`copy ${text}`);
+  };
+  clipboard.readText = async () => {
+    if (rejectPaste) throw new Error("Fixture clipboard read refused");
+    record(`clipboard read ${clipboardText}`);
+    return clipboardText;
+  };
   return (
     <>
       <App
@@ -42,7 +53,9 @@ function Fixture() {
             onChange={(e) => {
               const value = e.target.value as FileFixture;
               setKind(value);
-              setFixture(filesystemFixture(value, record));
+              const next = filesystemFixture(value, record);
+              setFixture(next);
+              setClipboardText(next.locations.child);
               setEvents([]);
             }}
           >
@@ -50,6 +63,30 @@ function Fixture() {
             <option value="drives">Drive roots</option>
             <option value="virtual">Opaque locations</option>
           </select>
+        </label>
+        <label>
+          Clipboard text{" "}
+          <textarea
+            aria-label="Fixture clipboard text"
+            value={clipboardText}
+            onChange={(event) => setClipboardText(event.target.value)}
+          />
+        </label>
+        <label>
+          <input
+            type="checkbox"
+            checked={rejectCopy}
+            onChange={(event) => setRejectCopy(event.target.checked)}
+          />{" "}
+          Refuse clipboard copy
+        </label>
+        <label>
+          <input
+            type="checkbox"
+            checked={rejectPaste}
+            onChange={(event) => setRejectPaste(event.target.checked)}
+          />{" "}
+          Refuse clipboard paste
         </label>
         <pre aria-label="Filesystem events">{events.join("\n")}</pre>
       </details>

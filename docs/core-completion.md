@@ -15,6 +15,8 @@ Additional protocols are optional until these core workflows work well. Connecti
 
 ## Evidence and outstanding work
 
+- Files text Copy now handles native edit events as well as keydown shortcuts. Preview Copy uses its own selection or full text; editable controls keep native behavior. Browser checks passed exact opaque paths, selected/full preview text, second-window clipboard navigation and clipboard refusal/recovery; 60 frontend tests and the standard Windows debug build passed. The terminal fixture was rechecked at 500px and 260px: unused row pixels match the terminal background and remain above the footer. The existing terminal fix required no further source change.
+
 - Bundled apps now declare required and optional services, and the generic window supplies a stable app-scoped handle. Undeclared calls reject before reaching the provider; optional services do not become launch requirements. App transfer-ticket ownership and workspace clipboard sharing are checked. Sixty frontend tests, a custom-app rejection fixture and bundled editor/terminal/Files/settings walkthroughs passed. See [app service declarations](app-services.md). This is trusted-module enforcement; native extension isolation and composite policy remain open.
 
 - Workspace-scoped Cut/Paste now moves one item between Files windows through the existing no-replacement move service. Shared indicators, keyboard/native edit events, cancellation, revision retention, source-window closure, opaque tokens and collision retry passed browser checks; 54 frontend tests and the normal Windows build passed. Disconnect/late-result isolation and relocation/deletion invalidation have unit coverage. Native GUI Cut/Paste and remote copy remain open; see [file clipboard](file-clipboard.md).

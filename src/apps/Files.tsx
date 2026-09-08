@@ -183,6 +183,7 @@ export function Files({
   const previewPending = useRef(false);
   const root = useRef<HTMLDivElement>(null);
   const pathField = useRef<HTMLInputElement>(null);
+  const previewBody = useRef<HTMLPreElement>(null);
   const [menu, setMenu] = useState<{
     x: number;
     y: number;
@@ -265,9 +266,25 @@ export function Files({
   async function copyText(text: string) {
     try {
       await clipboard.writeText(text);
+      setError((previous) =>
+        previous.startsWith("Copy failed:") ? "" : previous,
+      );
     } catch (e) {
       setError(`Copy failed: ${e}`);
     }
+  }
+  function previewText() {
+    const selection = window.getSelection();
+    const text =
+      selection &&
+      previewBody.current?.contains(selection.anchorNode) &&
+      previewBody.current?.contains(selection.focusNode)
+        ? selection.toString()
+        : "";
+    return text || document?.text || "";
+  }
+  function copySelection() {
+    void copyText(document ? previewText() : selected || directory.path);
   }
   function cut(entry: FileEntry) {
     if (!canMove || cutState.working || !entry.revision) return;
@@ -304,7 +321,7 @@ export function Files({
       const path = await clipboard.readText();
       if (current !== request.current) return;
       if (!path || path.length > 4096 || /[\0\r\n]/.test(path))
-        throw new Error("The clipboard must contain one file or folder path.");
+        throw new Error("The clipboard must contain one folder path.");
       void navigate(path);
     } catch (e) {
       setError(`Cannot open clipboard path: ${e}`);
@@ -601,6 +618,17 @@ export function Files({
     <div
       className={`files-app ${preferences.filesCompact ? "compact-files" : ""}`}
       ref={root}
+      onCopy={(event) => {
+        if (
+          (event.target as HTMLElement).closest(
+            'input,textarea,[contenteditable="true"],[role="menu"],dialog',
+          )
+        )
+          return;
+        event.preventDefault();
+        event.stopPropagation();
+        copySelection();
+      }}
       onCut={(event) => {
         if (
           document ||
@@ -636,14 +664,15 @@ export function Files({
           pathField.current?.select();
           return;
         }
-        if (target.closest("input,textarea")) return;
+        if (
+          target.closest(
+            'input,textarea,[contenteditable="true"],[role="menu"],dialog',
+          )
+        )
+          return;
         if (command && event.key.toLowerCase() === "c") {
           event.preventDefault();
-          void copyText(
-            (document && window.getSelection()?.toString()) ||
-              selected ||
-              directory.path,
-          );
+          copySelection();
         } else if (command && event.key.toLowerCase() === "x" && !document) {
           event.preventDefault();
           const entry = entries.find((entry) => entry.path === selected);
@@ -917,6 +946,9 @@ export function Files({
               </button>
             </div>
             <pre
+              ref={previewBody}
+              tabIndex={0}
+              aria-label="File preview text"
               onContextMenu={(event) => {
                 event.preventDefault();
                 setMenu({ x: event.clientX, y: event.clientY });
@@ -1072,10 +1104,7 @@ export function Files({
                   {
                     id: "copy-text",
                     label: "Copy text",
-                    run: () =>
-                      void copyText(
-                        window.getSelection()?.toString() || document.text,
-                      ),
+                    run: () => void copyText(previewText()),
                   },
                   {
                     id: "copy-document-path",
