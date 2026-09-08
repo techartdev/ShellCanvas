@@ -11,6 +11,89 @@ vi.mock("@tauri-apps/api/core", () => ({
   },
 }));
 import { nativeServices } from "./services";
+import { bindSession } from "./session-services";
+import { previewSession } from "./preview";
+
+it("captures each source once and attaches it to all native service requests", async () => {
+  const files = { instance: 11, generation: 1, adapter: "files" };
+  const consoleSource = { instance: 12, generation: 1, adapter: "console" };
+  const settings = { instance: 13, generation: 1, adapter: "settings" };
+  const session: Session = {
+    ...previewSession,
+    id: 700,
+    services: [
+      { capability: "files.read", state: "available", source: files },
+      { capability: "terminal", state: "available", source: consoleSource },
+      { capability: "host.settings", state: "available", source: settings },
+    ],
+  };
+  const bound = nativeServices.bindSources!(session);
+  files.generation = 2;
+  const requests = [
+    () => bound.list(700),
+    () => bound.preview(700, "opaque"),
+    () => bound.readText(700, "opaque"),
+    () => bound.saveText(700, "opaque", "text", "rev"),
+    () => bound.createText(700, "opaque", "name", "text"),
+    () => bound.makeDirectory(700, "opaque", "name"),
+    () => bound.renameEntry(700, "opaque", "name", "rev", []),
+    () => bound.moveEntry(700, "opaque", "target", "rev", []),
+    () => bound.removeEntry(700, "opaque", "rev"),
+    () => bound.chooseDownload(700, "opaque", "rev"),
+    () => bound.chooseDownloads(700, [{ path: "opaque", revision: "rev" }]),
+    () => bound.chooseUploads(700, "opaque"),
+    () => bound.prepareCopy(700, "opaque", "rev", "target"),
+    () => bound.copyToSystem(700, [{ path: "opaque", revision: "rev" }]),
+    () => bound.cutToSystem(700, "opaque", "rev"),
+    () => bound.pasteSystemFiles(700, "opaque"),
+  ];
+  for (const request of requests) {
+    await request();
+    expect(invoke.mock.lastCall?.[1].binding).toEqual({
+      ...files,
+      generation: 1,
+    });
+  }
+  await bound.readHostSettings(700);
+  expect(invoke.mock.lastCall?.[1].binding).toEqual(settings);
+  await bound.applyHostSetting(700, "timezone", "UTC", "rev");
+  expect(invoke.mock.lastCall?.[1].binding).toEqual(settings);
+  const terminal = await bound.terminal(700, 80, 24, () => {});
+  expect(invoke.mock.lastCall?.[1].binding).toEqual(consoleSource);
+  // Existing stream/ticket handles remain usable for cleanup after retirement.
+  await terminal.close();
+  expect(invoke.mock.lastCall?.[1]).not.toHaveProperty("binding");
+  await bound.cancelTransfer(700, 7);
+  expect(invoke.mock.lastCall?.[1]).not.toHaveProperty("binding");
+  const before = invoke.mock.calls.length;
+  await expect(bound.list(701)).rejects.toThrow("another workspace");
+  const missing = nativeServices.bindSources!({ ...session, services: [] });
+  await expect(missing.list(700)).rejects.toThrow("No accepted connection");
+  expect(invoke.mock.calls.length).toBe(before);
+});
+
+it("availability updates cannot silently repin an accepted app service", async () => {
+  const first = { instance: 21, generation: 1, adapter: "files" };
+  const next = { instance: 22, generation: 1, adapter: "files" };
+  const session: Session = {
+    ...previewSession,
+    id: 800,
+    services: [{ capability: "files.read", state: "available", source: first }],
+  };
+  const owner = bindSession(nativeServices, session);
+  const replaced: Session = {
+    ...session,
+    services: [{ capability: "files.read", state: "available", source: next }],
+  };
+  owner.updateAvailability(replaced);
+  await owner.services.list();
+  expect(invoke.mock.lastCall?.[1].binding).toEqual(first);
+  const accepted = bindSession(nativeServices, replaced);
+  await accepted.services.list();
+  expect(invoke.mock.lastCall?.[1].binding).toEqual(next);
+  owner.dispose();
+  accepted.dispose();
+});
 
 const options = {
   host: "server",

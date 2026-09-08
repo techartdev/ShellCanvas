@@ -20,6 +20,8 @@ mod extension_probe;
 mod host_trust;
 mod native_ipc;
 mod profile_store;
+#[cfg(test)]
+mod request_source_tests;
 mod session_registry;
 mod terminals;
 mod transfers;
@@ -30,6 +32,7 @@ mod windows_file_input;
 mod workspace_services;
 use connection_resource::ConnectionResource;
 use session_registry::SessionRegistry;
+use workspace_services::ServiceRole;
 use workspace_services::WorkspaceServices as ActiveSession;
 #[derive(Default)]
 struct DesktopState {
@@ -293,37 +296,47 @@ async fn session_status(
 async fn filesystem(
     state: &DesktopState,
     session_id: u64,
+    binding: Option<&ConnectionIdentity>,
 ) -> Result<Arc<dyn FileSystemProvider>, String> {
+    session_service(state, session_id, binding, ServiceRole::Files, |s| {
+        s.files.clone()
+    })
+    .await
+}
+
+async fn session_service<T: ?Sized>(
+    state: &DesktopState,
+    session_id: u64,
+    binding: Option<&ConnectionIdentity>,
+    role: ServiceRole,
+    select: fn(&ActiveSession) -> Option<Arc<T>>,
+) -> Result<Arc<T>, String> {
     let guard = state.registry.lock().await;
     let active = guard
         .sessions
         .get(&session_id)
         .ok_or("This host session is no longer connected")?;
-    active
-        .files
-        .clone()
-        .ok_or("File browsing is not available in this workspace".into())
+    active.check_source(&role, binding)?;
+    select(active).ok_or_else(|| format!("{role:?} service is unavailable in this workspace"))
 }
 
 async fn host_settings(
     state: &DesktopState,
     session_id: u64,
+    binding: Option<&ConnectionIdentity>,
 ) -> Result<Arc<dyn HostSettingsService>, String> {
-    state
-        .registry
-        .lock()
-        .await
-        .sessions
-        .get(&session_id)
-        .and_then(|session| session.settings.clone())
-        .ok_or("Remote settings are unavailable for this host".into())
+    session_service(state, session_id, binding, ServiceRole::HostSettings, |s| {
+        s.settings.clone()
+    })
+    .await
 }
 #[tauri::command]
 async fn read_host_settings(
     session_id: u64,
+    binding: Option<ConnectionIdentity>,
     state: State<'_, DesktopState>,
 ) -> Result<Vec<HostSetting>, String> {
-    host_settings(&state, session_id)
+    host_settings(&state, session_id, binding.as_ref())
         .await?
         .read()
         .await
@@ -332,12 +345,13 @@ async fn read_host_settings(
 #[tauri::command]
 async fn apply_host_setting(
     session_id: u64,
+    binding: Option<ConnectionIdentity>,
     id: String,
     value: String,
     revision: String,
     state: State<'_, DesktopState>,
 ) -> Result<HostSetting, String> {
-    host_settings(&state, session_id)
+    host_settings(&state, session_id, binding.as_ref())
         .await?
         .apply(&id, &value, &revision)
         .await
@@ -346,10 +360,11 @@ async fn apply_host_setting(
 #[tauri::command]
 async fn list_directory(
     session_id: u64,
+    binding: Option<ConnectionIdentity>,
     path: Option<String>,
     state: State<'_, DesktopState>,
 ) -> Result<Directory, String> {
-    filesystem(&state, session_id)
+    filesystem(&state, session_id, binding.as_ref())
         .await?
         .list(path.as_deref())
         .await
@@ -358,10 +373,11 @@ async fn list_directory(
 #[tauri::command]
 async fn preview_file(
     session_id: u64,
+    binding: Option<ConnectionIdentity>,
     path: String,
     state: State<'_, DesktopState>,
 ) -> Result<String, String> {
-    filesystem(&state, session_id)
+    filesystem(&state, session_id, binding.as_ref())
         .await?
         .preview(&path)
         .await
@@ -371,20 +387,23 @@ async fn preview_file(
 #[tauri::command]
 async fn read_text(
     session_id: u64,
+    binding: Option<ConnectionIdentity>,
     path: String,
     state: State<'_, DesktopState>,
 ) -> Result<TextDocument, String> {
-    let text = state
-        .registry
-        .lock()
-        .await
-        .sessions
-        .get(&session_id)
-        .and_then(|s| s.text.clone());
+    let text = {
+        let registry = state.registry.lock().await;
+        let active = registry
+            .sessions
+            .get(&session_id)
+            .ok_or("This host session is no longer connected")?;
+        active.check_source(&ServiceRole::Files, binding.as_ref())?;
+        active.text.clone()
+    };
     if let Some(service) = text {
         return service.read_text(&path).await.map_err(|e| format!("{e:#}"));
     }
-    let files = filesystem(&state, session_id).await?;
+    let files = filesystem(&state, session_id, binding.as_ref()).await?;
     let location = files.locate(&path).await.map_err(error)?;
     let text = files.preview(&location.path).await.map_err(error)?;
     Ok(TextDocument {
@@ -399,19 +418,20 @@ async fn read_text(
 #[tauri::command]
 async fn save_text(
     session_id: u64,
+    binding: Option<ConnectionIdentity>,
     path: String,
     text: String,
     revision: String,
     state: State<'_, DesktopState>,
 ) -> Result<TextDocument, String> {
-    let service = state
-        .registry
-        .lock()
-        .await
-        .sessions
-        .get(&session_id)
-        .and_then(|s| s.text.clone())
-        .ok_or("Text saving is unavailable for this session")?;
+    let service = session_service(
+        &state,
+        session_id,
+        binding.as_ref(),
+        ServiceRole::Files,
+        |s| s.text.clone(),
+    )
+    .await?;
     service
         .save_text(&path, &text, &revision)
         .await
@@ -421,19 +441,20 @@ async fn save_text(
 #[tauri::command]
 async fn create_text(
     session_id: u64,
+    binding: Option<ConnectionIdentity>,
     parent: String,
     name: String,
     text: String,
     state: State<'_, DesktopState>,
 ) -> Result<TextDocument, String> {
-    let service = state
-        .registry
-        .lock()
-        .await
-        .sessions
-        .get(&session_id)
-        .and_then(|s| s.text.clone())
-        .ok_or("File creation is unavailable for this session")?;
+    let service = session_service(
+        &state,
+        session_id,
+        binding.as_ref(),
+        ServiceRole::Files,
+        |s| s.text.clone(),
+    )
+    .await?;
     service
         .create_text(&parent, &name, &text)
         .await
@@ -442,24 +463,22 @@ async fn create_text(
 async fn file_mutations(
     state: &DesktopState,
     session_id: u64,
+    binding: Option<&ConnectionIdentity>,
 ) -> Result<Arc<dyn FileMutationService>, String> {
-    state
-        .registry
-        .lock()
-        .await
-        .sessions
-        .get(&session_id)
-        .and_then(|s| s.mutations.clone())
-        .ok_or("File changes are unavailable for this session".into())
+    session_service(state, session_id, binding, ServiceRole::Files, |s| {
+        s.mutations.clone()
+    })
+    .await
 }
 #[tauri::command]
 async fn make_directory(
     session_id: u64,
+    binding: Option<ConnectionIdentity>,
     parent: String,
     name: String,
     state: State<'_, DesktopState>,
 ) -> Result<String, String> {
-    file_mutations(&state, session_id)
+    file_mutations(&state, session_id, binding.as_ref())
         .await?
         .make_directory(&parent, &name)
         .await
@@ -468,13 +487,14 @@ async fn make_directory(
 #[tauri::command]
 async fn rename_entry(
     session_id: u64,
+    binding: Option<ConnectionIdentity>,
     path: String,
     name: String,
     revision: String,
     tracked: Vec<String>,
     state: State<'_, DesktopState>,
 ) -> Result<FileRelocation, String> {
-    file_mutations(&state, session_id)
+    file_mutations(&state, session_id, binding.as_ref())
         .await?
         .rename_tracked(&path, &name, &revision, &tracked)
         .await
@@ -483,20 +503,21 @@ async fn rename_entry(
 #[tauri::command]
 async fn move_entry(
     session_id: u64,
+    binding: Option<ConnectionIdentity>,
     path: String,
     parent: String,
     revision: String,
     tracked: Vec<String>,
     state: State<'_, DesktopState>,
 ) -> Result<FileRelocation, String> {
-    let service = state
-        .registry
-        .lock()
-        .await
-        .sessions
-        .get(&session_id)
-        .and_then(|s| s.moves.clone())
-        .ok_or("Moving files is unavailable for this session")?;
+    let service = session_service(
+        &state,
+        session_id,
+        binding.as_ref(),
+        ServiceRole::Files,
+        |s| s.moves.clone(),
+    )
+    .await?;
     service
         .move_tracked(&path, &parent, &revision, &tracked)
         .await
@@ -505,11 +526,12 @@ async fn move_entry(
 #[tauri::command]
 async fn remove_entry(
     session_id: u64,
+    binding: Option<ConnectionIdentity>,
     path: String,
     revision: String,
     state: State<'_, DesktopState>,
 ) -> Result<(), String> {
-    file_mutations(&state, session_id)
+    file_mutations(&state, session_id, binding.as_ref())
         .await?
         .remove_entry(&path, &revision)
         .await
@@ -519,19 +541,20 @@ async fn remove_entry(
 #[tauri::command]
 async fn open_terminal(
     session_id: u64,
+    binding: Option<ConnectionIdentity>,
     cols: u32,
     rows: u32,
     on_event: Channel<TerminalEvent>,
     state: State<'_, DesktopState>,
 ) -> Result<u64, String> {
-    let terminal = state
-        .registry
-        .lock()
-        .await
-        .sessions
-        .get(&session_id)
-        .and_then(|s| s.terminal.clone())
-        .ok_or("Terminal service is unavailable for this host session")?;
+    let terminal = session_service(
+        &state,
+        session_id,
+        binding.as_ref(),
+        ServiceRole::Console,
+        |s| s.terminal.clone(),
+    )
+    .await?;
     let stream = tokio::time::timeout(OP_TIMEOUT, terminal.open(TerminalSize::new(cols, rows)))
         .await
         .map_err(error)?

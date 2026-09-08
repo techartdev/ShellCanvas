@@ -75,6 +75,20 @@ async fn source_replacement_preserves_live_console_and_other_workspace_lease() {
     // Preparing a replacement has no effect on current services.
     old_files.list(Some("opaque@files")).await.unwrap();
     let retired = workspace.replace_source(old.identity(), prepared).unwrap();
+    assert!(workspace
+        .check_source(&ServiceRole::Files, Some(old.identity()))
+        .is_err());
+    assert!(workspace.check_source(&ServiceRole::Files, None).is_err());
+    workspace
+        .check_source(&ServiceRole::Files, Some(fresh.identity()))
+        .unwrap();
+    workspace
+        .check_source(&ServiceRole::Console, Some(console_source.identity()))
+        .unwrap();
+    workspace.check_source(&ServiceRole::Console, None).unwrap();
+    assert!(workspace
+        .check_source(&ServiceRole::Files, Some(console_source.identity()))
+        .is_err());
     assert!(Arc::ptr_eq(&terminal, workspace.terminal.as_ref().unwrap()));
     assert!(old_files.list(Some("opaque@files")).await.is_err());
     files.release.notify_one();

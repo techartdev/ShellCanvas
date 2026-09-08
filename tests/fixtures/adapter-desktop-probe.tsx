@@ -143,23 +143,29 @@ const transport: HostServices = native
         close: async () => {},
       }),
     };
-const services: HostServices = {
-  ...transport,
-  profiles: async () => [],
-  terminal: async (id, cols, rows, onEvent) => {
-    const handle = await transport.terminal(id, cols, rows, (event) => {
-      if (event.type === "output")
-        output.set(
-          id,
-          (output.get(id) ?? "") +
-            new TextDecoder().decode(new Uint8Array(event.data)),
-        );
-      onEvent(event);
-    });
-    terminals.set(id, handle);
-    return handle;
-  },
-};
+function instrument(transport: HostServices): HostServices {
+  return {
+    ...transport,
+    bindSources: transport.bindSources
+      ? (session) => instrument(transport.bindSources!(session))
+      : undefined,
+    profiles: async () => [],
+    terminal: async (id, cols, rows, onEvent) => {
+      const handle = await transport.terminal(id, cols, rows, (event) => {
+        if (event.type === "output")
+          output.set(
+            id,
+            (output.get(id) ?? "") +
+              new TextDecoder().decode(new Uint8Array(event.data)),
+          );
+        onEvent(event);
+      });
+      terminals.set(id, handle);
+      return handle;
+    },
+  };
+}
+const services = instrument(transport);
 const runtime = new DesktopRuntime(
   new AppCatalog(indexedCatalogStorage("shellcanvas-adapter-probe-apps")),
   apps,
@@ -608,6 +614,23 @@ async function run() {
       !!fileSource &&
       !!consoleSource &&
       fileSource.instance !== consoleSource.instance;
+    checks.pinnedFileRequest =
+      (await nativeServices.bindSources!(sessions[2]).list(sessions[2].id))
+        .entries.length > 0;
+    checks.staleSourceRequestDenied = await invoke("list_directory", {
+      sessionId: sessions[2].id,
+      binding: { ...fileSource!, generation: fileSource!.generation + 1 },
+    }).then(
+      () => false,
+      (error) => String(error).includes("connection changed"),
+    );
+    checks.foreignSourceRequestDenied = await invoke("list_directory", {
+      sessionId: sessions[2].id,
+      binding: consoleSource,
+    }).then(
+      () => false,
+      (error) => String(error).includes("connection changed"),
+    );
   }
   await services.list(sessions[2].id);
   await named("Open Terminal");

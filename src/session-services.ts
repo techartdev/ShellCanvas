@@ -22,6 +22,7 @@ export function bindSession(
   session: Session | null,
   reportError: (message: string) => void = console.warn,
 ) {
+  if (session && backend.bindSources) backend = backend.bindSources(session);
   let closed = false;
   let generation = 0;
   let lifetimeEpoch = 0;

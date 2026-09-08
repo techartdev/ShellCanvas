@@ -141,6 +141,78 @@ fn copy_job() -> Job {
         name: "binary.bin".into(),
     }
 }
+
+#[tokio::test]
+async fn queued_transfer_keeps_its_provider_and_cannot_follow_source_replacement() {
+    use crate::{connection_resource::ConnectionResource, workspace_services::WorkspaceServices};
+    use shellcanvas_services::{ConnectionIdentity, ConnectionLifecycle};
+    struct Lifecycle;
+    #[async_trait]
+    impl ConnectionLifecycle for Lifecycle {
+        fn is_connected(&self) -> bool {
+            true
+        }
+        async fn disconnect(&self) -> Result<()> {
+            Ok(())
+        }
+    }
+    let resource = |instance| {
+        ConnectionResource::new(
+            ConnectionIdentity {
+                instance,
+                generation: 1,
+                adapter: "fixture.files".into(),
+            },
+            Arc::new(Lifecycle),
+        )
+    };
+    let old = resource(201);
+    let fresh = resource(202);
+    let old_memory = Memory::new(false);
+    let fresh_memory = Memory::new(false);
+    let mut workspace = WorkspaceServices::new(vec![old.clone()]).unwrap();
+    workspace.bind_transfers(&old, old_memory.clone()).unwrap();
+    let mut registry = TransferRegistry::default();
+    let ticket = registry
+        .add(
+            10,
+            workspace.transfers.clone().unwrap(),
+            vec![(copy_job(), "copy".into(), 0, "copy")],
+        )
+        .unwrap()
+        .remove(0);
+    let mut replacement = WorkspaceServices::new(vec![fresh.clone()]).unwrap();
+    replacement
+        .bind_transfers(&fresh, fresh_memory.clone())
+        .unwrap();
+    let retired = workspace
+        .replace_source(old.identity(), replacement)
+        .unwrap();
+    let claimed = registry.claim(10, ticket.id).unwrap();
+    assert!(
+        execute(claimed.job, claimed.service, &claimed.cancel, &mut |_| {})
+            .await
+            .is_err()
+    );
+    assert_eq!(old_memory.commits.load(Ordering::SeqCst), 0);
+    assert_eq!(fresh_memory.commits.load(Ordering::SeqCst), 0);
+    // A newly prepared ticket explicitly uses the replacement source.
+    let fresh_ticket = registry
+        .add(
+            10,
+            workspace.transfers.clone().unwrap(),
+            vec![(copy_job(), "copy".into(), 0, "copy")],
+        )
+        .unwrap()
+        .remove(0);
+    let claimed = registry.claim(10, fresh_ticket.id).unwrap();
+    execute(claimed.job, claimed.service, &claimed.cancel, &mut |_| {})
+        .await
+        .unwrap();
+    assert_eq!(fresh_memory.commits.load(Ordering::SeqCst), 1);
+    retired.close().await.unwrap();
+    workspace.disconnect().await.unwrap();
+}
 #[tokio::test]
 async fn remote_copy_streams_and_publishes_once_after_source_verification() {
     let memory = Memory::new(false);
@@ -284,6 +356,7 @@ fn registry_rejects_cross_host_controls_and_releases_only_the_closed_host() {
     let add = |r: &mut TransferRegistry, owner| {
         r.add(
             owner,
+            Memory::new(false),
             vec![(
                 download_job(Path::new("unused")),
                 "file".into(),
@@ -298,7 +371,7 @@ fn registry_rejects_cross_host_controls_and_releases_only_the_closed_host() {
     let b = add(&mut registry, 2);
     assert!(registry.claim(1, b).is_err());
     assert!(registry.cancel(1, b).is_err());
-    let (_, cancel, _) = registry.claim(1, a).unwrap();
+    let cancel = registry.claim(1, a).unwrap().cancel;
     assert!(registry.claim(1, a).is_err());
     registry.close_session(1);
     assert!(*cancel.borrow());

@@ -1,8 +1,10 @@
 // SPDX-License-Identifier: MPL-2.0
+use crate::workspace_services::ServiceRole;
 use crate::{error, DesktopState};
 use anyhow::{bail, Context, Result};
 use serde::{Deserialize, Serialize};
 use shellcanvas_core::{FileTransferService, TRANSFER_CHUNK};
+use shellcanvas_services::ConnectionIdentity;
 use std::{
     collections::HashMap,
     path::{Path, PathBuf},
@@ -79,8 +81,15 @@ enum Job {
 }
 struct Pending {
     owner: u64,
+    service: Arc<dyn FileTransferService>,
     job: Option<Job>,
     cancel: watch::Sender<bool>,
+}
+struct ClaimedTransfer {
+    job: Job,
+    service: Arc<dyn FileTransferService>,
+    cancel: watch::Receiver<bool>,
+    slots: Arc<Semaphore>,
 }
 pub struct TransferRegistry {
     next: u64,
@@ -102,6 +111,7 @@ impl TransferRegistry {
     fn add(
         &mut self,
         owner: u64,
+        service: Arc<dyn FileTransferService>,
         jobs: Vec<(Job, String, u64, &'static str)>,
     ) -> Result<Vec<Ticket>, String> {
         if self.jobs.len() + jobs.len() > 32 {
@@ -116,6 +126,7 @@ impl TransferRegistry {
                     id,
                     Pending {
                         owner,
+                        service: service.clone(),
                         job: Some(job),
                         cancel: watch::channel(false).0,
                     },
@@ -129,18 +140,19 @@ impl TransferRegistry {
             })
             .collect())
     }
-    fn claim(
-        &mut self,
-        owner: u64,
-        id: u64,
-    ) -> Result<(Job, watch::Receiver<bool>, Arc<Semaphore>), String> {
+    fn claim(&mut self, owner: u64, id: u64) -> Result<ClaimedTransfer, String> {
         let pending = self
             .jobs
             .get_mut(&id)
             .filter(|p| p.owner == owner)
             .ok_or("Transfer is closed or belongs to another host")?;
         let job = pending.job.take().ok_or("Transfer already started")?;
-        Ok((job, pending.cancel.subscribe(), self.slots.clone()))
+        Ok(ClaimedTransfer {
+            job,
+            service: pending.service.clone(),
+            cancel: pending.cancel.subscribe(),
+            slots: self.slots.clone(),
+        })
     }
     fn cancel(&mut self, owner: u64, id: u64) -> Result<(), String> {
         if let Some(pending) = self.jobs.get(&id) {
@@ -176,15 +188,12 @@ impl TransferRegistry {
 async fn provider(
     state: &DesktopState,
     session: u64,
+    binding: Option<&ConnectionIdentity>,
 ) -> Result<Arc<dyn FileTransferService>, String> {
-    state
-        .registry
-        .lock()
-        .await
-        .sessions
-        .get(&session)
-        .and_then(|s| s.transfers.clone())
-        .ok_or("File transfers are unavailable on this host".into())
+    crate::session_service(state, session, binding, ServiceRole::Files, |s| {
+        s.transfers.clone()
+    })
+    .await
 }
 fn source(path: &Path) -> Result<(std::fs::File, u64, Option<SystemTime>)> {
     if !std::fs::metadata(path)?.is_file() {
@@ -201,11 +210,12 @@ fn source(path: &Path) -> Result<(std::fs::File, u64, Option<SystemTime>)> {
 pub async fn choose_upload_files(
     app: tauri::AppHandle,
     session_id: u64,
+    binding: Option<ConnectionIdentity>,
     parent: String,
     folder: Option<bool>,
     state: State<'_, DesktopState>,
 ) -> Result<Vec<Ticket>, String> {
-    provider(&state, session_id).await?;
+    let service = provider(&state, session_id, binding.as_ref()).await?;
     let jobs = tauri::async_runtime::spawn_blocking(move || -> Result<Vec<_>, String> {
         if folder.unwrap_or(false) {
             let Some(selected) = app
@@ -255,21 +265,24 @@ pub async fn choose_upload_files(
     .await
     .map_err(error)??;
     let registry = state.registry.lock().await;
-    if !registry.sessions.contains_key(&session_id) {
-        return Err("The host disconnected while selecting files".into());
-    }
-    state.transfers.lock().await.add(session_id, jobs)
+    registry
+        .sessions
+        .get(&session_id)
+        .ok_or("The host disconnected during preparation")?
+        .check_source(&ServiceRole::Files, binding.as_ref())?;
+    state.transfers.lock().await.add(session_id, service, jobs)
 }
 #[tauri::command]
 pub async fn choose_download_file(
     app: tauri::AppHandle,
     session_id: u64,
+    binding: Option<ConnectionIdentity>,
     path: String,
     revision: String,
     state: State<'_, DesktopState>,
 ) -> Result<Option<Ticket>, String> {
-    provider(&state, session_id).await?;
-    let location = crate::filesystem(&state, session_id)
+    let service = provider(&state, session_id, binding.as_ref()).await?;
+    let location = crate::filesystem(&state, session_id, binding.as_ref())
         .await?
         .locate(&path)
         .await
@@ -310,11 +323,14 @@ pub async fn choose_download_file(
         );
     }
     let registry = state.registry.lock().await;
-    if !registry.sessions.contains_key(&session_id) {
-        return Err("The host disconnected while choosing a destination".into());
-    }
+    registry
+        .sessions
+        .get(&session_id)
+        .ok_or("The host disconnected during preparation")?
+        .check_source(&ServiceRole::Files, binding.as_ref())?;
     let mut tickets = state.transfers.lock().await.add(
         session_id,
+        service,
         vec![(
             Job::Download {
                 destination,
@@ -370,6 +386,7 @@ fn download_destinations(folder: &Path, names: &[String]) -> Result<Vec<PathBuf>
 pub async fn choose_download_files(
     app: tauri::AppHandle,
     session_id: u64,
+    binding: Option<ConnectionIdentity>,
     files: Vec<DownloadSource>,
     state: State<'_, DesktopState>,
 ) -> Result<Vec<Ticket>, String> {
@@ -381,11 +398,11 @@ pub async fn choose_download_files(
     {
         return Err("Choose between 1 and 16 versioned files at a time.".into());
     }
-    provider(&state, session_id).await?;
+    let service = provider(&state, session_id, binding.as_ref()).await?;
     let mut names = Vec::new();
     let mut trees = Vec::new();
     for file in &files {
-        let tree = remote_tree(&state, session_id, file).await?;
+        let tree = remote_tree(&service, file).await?;
         download_name(&tree.root.entry.name)?;
         names.push(tree.root.entry.name.clone());
         trees.push(tree);
@@ -426,24 +443,24 @@ pub async fn choose_download_files(
         })
         .collect();
     let registry = state.registry.lock().await;
-    if !registry.sessions.contains_key(&session_id) {
-        return Err("The host disconnected while choosing a destination".into());
-    }
-    state.transfers.lock().await.add(session_id, jobs)
+    registry
+        .sessions
+        .get(&session_id)
+        .ok_or("The host disconnected during preparation")?
+        .check_source(&ServiceRole::Files, binding.as_ref())?;
+    state.transfers.lock().await.add(session_id, service, jobs)
 }
 
 async fn remote_tree(
-    state: &DesktopState,
-    session: u64,
+    service: &Arc<dyn FileTransferService>,
     file: &DownloadSource,
 ) -> Result<tree::Tree, String> {
-    let service = provider(state, session).await?;
     let entry = service
         .clone()
         .transfer_entry(&file.path, &file.revision)
         .await
         .map_err(error)?;
-    tree::remote(&service, entry).await.map_err(error)
+    tree::remote(service, entry).await.map_err(error)
 }
 #[tauri::command]
 pub async fn cancel_clipboard_preparation(
@@ -466,6 +483,7 @@ pub async fn cancel_clipboard_preparation(
 async fn prepare_clipboard(
     state: &DesktopState,
     session: u64,
+    binding: Option<ConnectionIdentity>,
     files: Vec<DownloadSource>,
     operation: String,
     on_event: Channel<Progress>,
@@ -493,12 +511,12 @@ async fn prepare_clipboard(
     let work: Result<u32> = async {
         checkpoint(&cancel)?;
         let _permit = tokio::select! { permit = slots.acquire() => permit?, _ = wait_for_cancel(cancel.clone()) => bail!("Transfer canceled") };
-        let service = provider(state, session).await.map_err(anyhow::Error::msg)?;
+        let service = provider(state, session, binding.as_ref()).await.map_err(anyhow::Error::msg)?;
         let mut catalogs = Vec::new(); let mut names = std::collections::HashSet::new();
         let mut last = Instant::now();
         for file in files {
             checkpoint(&cancel)?;
-            let tree = remote_tree(state, session, &file).await.map_err(anyhow::Error::msg)?;
+            let tree = remote_tree(&service, &file).await.map_err(anyhow::Error::msg)?;
             if !names.insert(tree.root.entry.name.to_lowercase()) { bail!("Selected names conflict in Explorer"); }
             let catalog = tree::scan(tree, service.clone(), true, &cancel, &mut |event| {
                 if last.elapsed().as_millis() >= 100 { let _ = on_event.send(event); last = Instant::now(); }
@@ -512,7 +530,8 @@ async fn prepare_clipboard(
             catalogs.push(catalog);
         }
         checkpoint(&cancel)?;
-        if !state.registry.lock().await.sessions.contains_key(&session) { bail!("Host disconnected while preparing clipboard"); }
+        state.registry.lock().await.sessions.get(&session).ok_or_else(|| anyhow::anyhow!("Host disconnected while preparing clipboard"))?
+            .check_source(&ServiceRole::Files, binding.as_ref()).map_err(anyhow::Error::msg)?;
         let sources = crate::clipboard_stream::Sources::catalogs(catalogs, service, tokio::runtime::Handle::current());
         crate::windows_clipboard::publish(sources, sequence).await.map_err(anyhow::Error::msg)
     }.await;
@@ -522,6 +541,7 @@ async fn prepare_clipboard(
 #[tauri::command]
 pub async fn copy_system_files(
     session_id: u64,
+    binding: Option<ConnectionIdentity>,
     files: Vec<DownloadSource>,
     operation: Option<String>,
     on_event: Channel<Progress>,
@@ -532,13 +552,14 @@ pub async fn copy_system_files(
     }
     #[cfg(not(windows))]
     {
-        let _ = (session_id, files, operation, on_event, state);
+        let _ = (session_id, binding, files, operation, on_event, state);
         Err("File clipboard integration is currently available on Windows.".into())
     }
     #[cfg(windows)]
     prepare_clipboard(
         &state,
         session_id,
+        binding,
         files,
         operation.unwrap_or_else(|| uuid::Uuid::new_v4().to_string()),
         on_event,
@@ -601,12 +622,13 @@ fn clipboard_uploads(
 #[tauri::command]
 pub async fn paste_system_files(
     session_id: u64,
+    binding: Option<ConnectionIdentity>,
     parent: String,
     state: State<'_, DesktopState>,
 ) -> Result<Option<Vec<Ticket>>, String> {
     #[cfg(not(windows))]
     {
-        let _ = (session_id, parent, state);
+        let _ = (session_id, binding, parent, state);
         Err("File clipboard integration is currently available on Windows.".into())
     }
     #[cfg(windows)]
@@ -614,7 +636,7 @@ pub async fn paste_system_files(
         if parent.is_empty() {
             return Err("Choose a remote destination folder.".into());
         }
-        provider(&state, session_id).await?;
+        let service = provider(&state, session_id, binding.as_ref()).await?;
         let jobs = tauri::async_runtime::spawn_blocking(move || {
             crate::windows_file_input::files()?
                 .map(|paths| clipboard_uploads(paths, parent))
@@ -626,16 +648,24 @@ pub async fn paste_system_files(
             return Ok(None);
         };
         let registry = state.registry.lock().await;
-        if !registry.sessions.contains_key(&session_id) {
-            return Err("The host disconnected while preparing clipboard files.".into());
-        }
-        state.transfers.lock().await.add(session_id, jobs).map(Some)
+        registry
+            .sessions
+            .get(&session_id)
+            .ok_or("The host disconnected during preparation")?
+            .check_source(&ServiceRole::Files, binding.as_ref())?;
+        state
+            .transfers
+            .lock()
+            .await
+            .add(session_id, service, jobs)
+            .map(Some)
     }
 }
 
 #[tauri::command]
 pub async fn cut_system_file(
     session_id: u64,
+    binding: Option<ConnectionIdentity>,
     path: String,
     revision: String,
     operation: Option<String>,
@@ -644,12 +674,14 @@ pub async fn cut_system_file(
 ) -> Result<u32, String> {
     #[cfg(not(windows))]
     {
-        let _ = (session_id, path, revision, operation, on_event, state);
+        let _ = (
+            session_id, binding, path, revision, operation, on_event, state,
+        );
         Err("File clipboard integration is currently available on Windows".into())
     }
     #[cfg(windows)]
     {
-        if let Ok(service) = provider(&state, session_id).await {
+        if let Ok(service) = provider(&state, session_id, binding.as_ref()).await {
             let entry = service
                 .transfer_entry(&path, &revision)
                 .await
@@ -658,6 +690,7 @@ pub async fn cut_system_file(
                 return prepare_clipboard(
                     &state,
                     session_id,
+                    binding,
                     vec![DownloadSource { path, revision }],
                     operation.unwrap_or_else(|| uuid::Uuid::new_v4().to_string()),
                     on_event,
@@ -666,7 +699,7 @@ pub async fn cut_system_file(
             }
         }
         let sequence = crate::windows_file_input::sequence();
-        let fs = crate::filesystem(&state, session_id).await?;
+        let fs = crate::filesystem(&state, session_id, binding.as_ref()).await?;
         let location = fs.locate(&path).await.map_err(error)?;
         let parent = location.parent.ok_or("Cannot cut a filesystem root")?;
         if !fs
@@ -694,6 +727,7 @@ pub async fn cancel_transfer(
 #[tauri::command]
 pub async fn prepare_file_copy(
     session_id: u64,
+    binding: Option<ConnectionIdentity>,
     path: String,
     revision: String,
     parent: String,
@@ -702,8 +736,8 @@ pub async fn prepare_file_copy(
     if revision.is_empty() || parent.is_empty() {
         return Err("Refresh the file and choose a destination folder".into());
     }
-    provider(&state, session_id).await?;
-    let location = crate::filesystem(&state, session_id)
+    let service = provider(&state, session_id, binding.as_ref()).await?;
+    let location = crate::filesystem(&state, session_id, binding.as_ref())
         .await?
         .locate(&path)
         .await
@@ -712,15 +746,14 @@ pub async fn prepare_file_copy(
         return Err("Choose a different destination folder".into());
     }
     let tree = remote_tree(
-        &state,
-        session_id,
+        &service,
         &DownloadSource {
             path: path.clone(),
             revision: revision.clone(),
         },
     )
     .await?;
-    let destination = crate::filesystem(&state, session_id)
+    let destination = crate::filesystem(&state, session_id, binding.as_ref())
         .await?
         .locate(&parent)
         .await
@@ -741,15 +774,18 @@ pub async fn prepare_file_copy(
         }
     };
     let registry = state.registry.lock().await;
-    if !registry.sessions.contains_key(&session_id) {
-        return Err("The host disconnected while preparing the copy".into());
-    }
+    registry
+        .sessions
+        .get(&session_id)
+        .ok_or("The host disconnected during preparation")?
+        .check_source(&ServiceRole::Files, binding.as_ref())?;
     let name = location.name;
-    let mut tickets = state
-        .transfers
-        .lock()
-        .await
-        .add(session_id, vec![(job, name, size, "copy")])?;
+    let mut tickets =
+        state
+            .transfers
+            .lock()
+            .await
+            .add(session_id, service, vec![(job, name, size, "copy")])?;
     tickets.pop().ok_or("Copy preparation failed".into())
 }
 async fn wait_for_cancel(mut cancel: watch::Receiver<bool>) {
@@ -941,8 +977,12 @@ pub async fn run_transfer(
     on_event: Channel<Progress>,
     state: State<'_, DesktopState>,
 ) -> Result<Outcome, String> {
-    let service = provider(&state, session_id).await?;
-    let (job, mut cancel, slots) = state
+    let ClaimedTransfer {
+        job,
+        service,
+        mut cancel,
+        slots,
+    } = state
         .transfers
         .lock()
         .await

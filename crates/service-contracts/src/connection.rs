@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: MPL-2.0
 use anyhow::Result;
 use async_trait::async_trait;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 /// A process-local connection instance, distinct from a logical workspace.
 /// A reconnect must use a fresh instance or increment generation. This carries
 /// no endpoint, credential or trust claim; those remain adapter-owned.
-#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ConnectionIdentity {
     pub instance: u64,

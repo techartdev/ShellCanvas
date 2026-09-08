@@ -10,6 +10,8 @@ Each Files window has a sequential queue with progress, cancellation, clearable 
 
 ## Service boundaries
 
+Native requests capture the original file-source identity. Returning from a picker revalidates it under the workspace lock before tickets are registered. Tickets retain that provider when queued, so starting a transfer cannot follow a later source replacement. A retired provider rejects I/O; the user must prepare a new transfer against the newly accepted source. Directory scans and Explorer's deferred streams likewise keep their captured provider. This does not yet expose independent source switching in the desktop UI.
+
 ### Copy to folder
 
 The selected regular file's context menu offers **Copy to folder…** when `files.copy` is available. The destination browser keeps the original filename, requires a different folder, and queues the copy alongside uploads/downloads. The source remains in place and existing destinations are refused. Completion refreshes Files windows in that workspace. Clipboard Copy/Paste now also queues multiple regular-file copies; Cut/Paste moves one item within the workspace.

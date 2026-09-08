@@ -107,6 +107,7 @@ pub struct WorkspaceServices {
     alive: Arc<AtomicBool>,
     connections: Vec<OwnedSource>,
     generations: HashMap<u64, u64>,
+    replaced: HashSet<ServiceRole>,
     selected: HashMap<ServiceRole, Arc<ConnectionResource>>,
     sources: HashMap<&'static str, Arc<ConnectionResource>>,
     advertised: Option<HashSet<String>>,
@@ -171,6 +172,7 @@ impl WorkspaceServices {
                 })
                 .collect(),
             connections,
+            replaced: HashSet::new(),
             selected: HashMap::new(),
             sources: HashMap::new(),
             advertised: None,
@@ -196,6 +198,32 @@ impl WorkspaceServices {
             .find(|owned| Arc::ptr_eq(owned.resource(), source))
             .map(|owned| owned.alive.clone())
             .ok_or_else(|| "The selected service source is not owned by this workspace".into())
+    }
+    /// Validate the caller's captured identity while holding the session registry
+    /// lock, before cloning a service. Legacy unpinned calls cannot follow a swap.
+    pub fn check_source(
+        &self,
+        role: &ServiceRole,
+        expected: Option<&ConnectionIdentity>,
+    ) -> Result<(), String> {
+        let source = self
+            .selected
+            .get(role)
+            .ok_or("No source is selected for this service")?;
+        if expected.is_some_and(|identity| identity != source.identity())
+            || (expected.is_none() && self.replaced.contains(role))
+        {
+            return Err(
+                "The selected service connection changed; use a newly accepted binding".into(),
+            );
+        }
+        Binding {
+            alive: self.source_lifetime(source)?,
+            source: source.clone(),
+            role: "Service",
+        }
+        .check()
+        .map_err(|error| error.to_string())
     }
     pub fn select_service(
         &mut self,
@@ -226,7 +254,7 @@ impl WorkspaceServices {
         not(test),
         expect(
             dead_code,
-            reason = "Source replacement IPC must first capture service generations"
+            reason = "Desktop replacement must first coordinate app acceptance"
         )
     )]
     pub fn replace_source(
@@ -336,6 +364,7 @@ impl WorkspaceServices {
             .retain(|_, resource| !Arc::ptr_eq(resource, &old));
         self.sources.extend(replacement.sources.drain());
         for role in roles {
+            self.replaced.insert(role.clone());
             self.selected.insert(role, fresh.clone());
         }
         self.advertised = Some(capabilities);

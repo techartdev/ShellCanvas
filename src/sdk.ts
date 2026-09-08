@@ -113,15 +113,16 @@ export interface HostInfo {
   capabilities: Capability[];
   notices: string[];
 }
+export interface ConnectionIdentity {
+  instance: number;
+  generation: number;
+  adapter: string;
+}
 export interface Session {
   id: number;
   info: HostInfo;
   /** Established connector identities; absent in older/synthetic backends. Not a trust claim. */
-  connections?: readonly {
-    instance: number;
-    generation: number;
-    adapter: string;
-  }[];
+  connections?: readonly ConnectionIdentity[];
   /** Complete capability snapshot when supplied by the backend. */
   services?: readonly ServiceStatus[];
 }
@@ -129,7 +130,7 @@ export interface ServiceStatus {
   capability: Capability;
   state: "available" | "unsupported" | "checking" | "disconnected" | "denied";
   reason?: string | null;
-  source?: { instance: number; generation: number; adapter: string } | null;
+  source?: ConnectionIdentity | null;
 }
 export interface WorkspaceStatus {
   connected: boolean;
@@ -186,6 +187,8 @@ export interface ClipboardPreparation {
   onProgress?: (progress: TransferProgress) => void;
 }
 export interface HostServices {
+  /** Capture native source identities once; never follow a later source replacement. */
+  bindSources?(session: Session): HostServices;
   custom?: import("./custom-services").CustomBackend;
   cancelClipboardPreparation(
     sessionId: number,
