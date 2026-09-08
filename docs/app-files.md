@@ -32,7 +32,35 @@ The returned `RemoteTextDocument` contains the provider's text, name, path, pare
 
 Calls accept an optional `AbortSignal`. Cancellation before dispatch prevents work; cancellation or source replacement after dispatch suppresses late results but cannot undo a provider write already issued. The existing native text methods do not have interruptible byte streaming. Do not retry mutations automatically after cancellation, failure or uncertain completion. Provider error messages are returned as `failed`; structured conflict categories remain part of the error-contract consolidation work.
 
-Text operations use the existing bounded text-document service. They do not replace the streaming binary/folder transfer engine or impose a file-tree count limit. File mutations, terminal streams and transfers remain separate SDK deliverables. Installed process adapters still need their text/mutation bridges before they can advertise these capabilities.
+Text operations use the existing bounded text-document service. They do not replace the streaming binary/folder transfer engine or impose a file-tree count limit. Terminal streams and transfers remain separate SDK deliverables. Installed process adapters still need their text/mutation bridges before they can advertise these capabilities.
+
+## File actions
+
+| Operation       | Arguments                                                                   | Grant          |
+| --------------- | --------------------------------------------------------------------------- | -------------- |
+| `makeDirectory` | `{binding, parent, name}`, optional signal                                  | `files.manage` |
+| `renameEntry`   | `{binding, path, revision}`, new name, optional signal                      | `files.manage` |
+| `moveEntry`     | `{binding, path, revision}`, destination `{binding, path}`, optional signal | `files.move`   |
+| `removeEntry`   | `{binding, path, revision}`, optional signal                                | `files.manage` |
+
+Use the **directory entry revision**, not a text-document revision. When the provider does not supply an entry revision, keep these actions unavailable. Creation, rename and move return a `RemoteFileLocation` with the provider's resulting path and the original binding. Refresh the affected directory to get a current entry revision before another mutation; do not reuse the old revision or construct destination paths yourself.
+
+Moves remain within one accepted binding. The broker rejects a destination from another binding before dispatch. The provider preserves the item's name, validates the destination and refuses replacement. These methods do not implement cross-host moves, recursive deletion or overwrite. The SSH implementation deletes files, links and empty folders; it does not follow links when deleting. Provider validation and source ownership apply to every call.
+
+These are low-level operations and do not open dialogs themselves. An app should present the intended action and use `system.dialogs.messageBox` for its delete/discard confirmation. Selecting a destination does not grant permission or waive conflict checks. No failed mutation is retried automatically. A cancellation after dispatch may have effects, so preserve the UI state and inspect before attempting another operation.
+
+```ts
+// entry is from a directory page; keep that page's binding with it.
+if (!entry.revision)
+  throw new Error("This provider cannot validate file changes.");
+const renamed = await desktop.files.renameEntry(
+  { binding: page.binding, path: entry.path, revision: entry.revision },
+  "renamed.txt",
+);
+// renamed.path is provider-owned. Refresh the parent before further actions.
+```
+
+The existing session service handles relocation notifications for bundled Files/Editor windows. The public API returns the new location to the calling app; other installed app documents are not automatically rewritten or reloaded after a relocation. Their old snapshots remain subject to revision checks.
 
 ## Directory browsing
 

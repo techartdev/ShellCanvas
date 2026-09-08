@@ -17,6 +17,7 @@ export type { FileEntry, TextDocument } from "./files.js";
 export type {
   AppFilesAPI,
   RemoteFileLocation,
+  RemoteEntryLocation,
   RemoteTextDocument,
   RemoteDirectoryPage,
 } from "./file-client.js";

@@ -14,6 +14,10 @@ const document = {
 };
 function setup(grants = ["files.read", "files.edit", "files.create"]) {
   const services = {
+    makeDirectory: vi.fn(async () => "opaque:created"),
+    renameEntry: vi.fn(async () => "opaque:renamed"),
+    moveEntry: vi.fn(async () => "opaque:moved"),
+    removeEntry: vi.fn(async () => {}),
     list: vi.fn(),
     readText: vi.fn(async () => ({ ...document })),
     saveText: vi.fn(async (_path: string, text: string, _revision: string) => ({
@@ -82,6 +86,133 @@ it("round trips opaque locations, Unicode and exact reviewed revisions through t
       "new.txt",
       "新",
     );
+  } finally {
+    test.close();
+  }
+});
+it("routes file actions with exact entry revisions and returns provider-owned destinations", async () => {
+  const test = setup(["files.manage", "files.move"]);
+  try {
+    const entry = {
+      binding: "first",
+      path: "opaque:item",
+      revision: "entry-r1",
+    };
+    await expect(
+      test.api.makeDirectory({
+        binding: "first",
+        parent: "opaque:parent",
+        name: "新しい",
+      }),
+    ).resolves.toEqual({ binding: "first", path: "opaque:created" });
+    expect(test.services.makeDirectory).toHaveBeenCalledExactlyOnceWith(
+      "opaque:parent",
+      "新しい",
+    );
+    await expect(test.api.renameEntry(entry, "new.txt")).resolves.toEqual({
+      binding: "first",
+      path: "opaque:renamed",
+    });
+    expect(test.services.renameEntry).toHaveBeenCalledExactlyOnceWith(
+      entry.path,
+      "new.txt",
+      "entry-r1",
+    );
+    await expect(
+      test.api.moveEntry(entry, {
+        binding: "first",
+        path: "opaque:destination",
+      }),
+    ).resolves.toEqual({ binding: "first", path: "opaque:moved" });
+    expect(test.services.moveEntry).toHaveBeenCalledExactlyOnceWith(
+      entry.path,
+      "opaque:destination",
+      "entry-r1",
+    );
+    await expect(test.api.removeEntry(entry)).resolves.toBeUndefined();
+    expect(test.services.removeEntry).toHaveBeenCalledExactlyOnceWith(
+      entry.path,
+      "entry-r1",
+    );
+    expect(entry.revision).toBe("entry-r1");
+  } finally {
+    test.close();
+  }
+});
+it("separates mutation permissions and refuses mixed-source destinations and stale entries", async () => {
+  const denied = setup(["files.read", "files.edit", "files.create"]);
+  const entry = { binding: "first", path: "opaque:item", revision: "entry-r1" };
+  try {
+    await expect(
+      denied.api.makeDirectory({ binding: "first", parent: "p", name: "n" }),
+    ).rejects.toMatchObject({ code: "denied" });
+    await expect(denied.api.renameEntry(entry, "n")).rejects.toMatchObject({
+      code: "denied",
+    });
+    await expect(
+      denied.api.moveEntry(entry, { binding: "first", path: "p" }),
+    ).rejects.toMatchObject({ code: "denied" });
+    await expect(denied.api.removeEntry(entry)).rejects.toMatchObject({
+      code: "denied",
+    });
+    expect(denied.services.removeEntry).not.toHaveBeenCalled();
+  } finally {
+    denied.close();
+  }
+  const test = setup(["files.manage", "files.move"]);
+  try {
+    await expect(
+      test.api.moveEntry(entry, { binding: "another", path: "p" }),
+    ).rejects.toMatchObject({ code: "invalid" });
+    test.setSource({ binding: "second", services: test.services });
+    await expect(test.api.renameEntry(entry, "n")).rejects.toMatchObject({
+      code: "closed",
+    });
+    await expect(test.api.removeEntry(entry)).rejects.toMatchObject({
+      code: "closed",
+    });
+    await expect(
+      test.api.makeDirectory({ binding: "first", parent: "p", name: "n" }),
+    ).rejects.toMatchObject({ code: "closed" });
+    expect(test.services.moveEntry).not.toHaveBeenCalled();
+    expect(test.services.renameEntry).not.toHaveBeenCalled();
+    expect(test.services.removeEntry).not.toHaveBeenCalled();
+    expect(test.services.makeDirectory).not.toHaveBeenCalled();
+  } finally {
+    test.close();
+  }
+});
+it("does not retry failed mutations or publish a late destination after source replacement", async () => {
+  const test = setup(["files.manage", "files.move"]);
+  const entry = { binding: "first", path: "opaque:item", revision: "entry-r1" };
+  try {
+    test.services.renameEntry.mockRejectedValueOnce(
+      new Error("Destination already exists"),
+    );
+    await expect(test.api.renameEntry(entry, "existing")).rejects.toThrow(
+      "Destination already exists",
+    );
+    expect(test.services.renameEntry).toHaveBeenCalledTimes(1);
+    test.services.removeEntry.mockRejectedValueOnce(
+      new Error("Entry revision changed"),
+    );
+    await expect(test.api.removeEntry(entry)).rejects.toThrow(
+      "Entry revision changed",
+    );
+    expect(test.services.removeEntry).toHaveBeenCalledTimes(1);
+    let finish!: (path: string) => void;
+    test.services.moveEntry.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        }),
+    );
+    const pending = test.api.moveEntry(entry, { binding: "first", path: "p" });
+    await vi.waitFor(() => expect(finish).toBeTypeOf("function"));
+    test.setSource({ binding: "second", services: test.services });
+    finish("opaque:old-result");
+    await expect(pending).rejects.toMatchObject({ code: "closed" });
+    expect(test.services.moveEntry).toHaveBeenCalledTimes(1);
   } finally {
     test.close();
   }

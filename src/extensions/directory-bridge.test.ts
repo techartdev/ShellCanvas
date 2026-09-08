@@ -26,6 +26,10 @@ function directory(count: number): Directory {
 function setup(count = 257, grants = ["files.read"]) {
   const data = directory(count);
   const services = {
+    makeDirectory: vi.fn(),
+    renameEntry: vi.fn(),
+    moveEntry: vi.fn(),
+    removeEntry: vi.fn(),
     list: vi.fn(async () => data),
     readText: vi.fn(),
     saveText: vi.fn(),

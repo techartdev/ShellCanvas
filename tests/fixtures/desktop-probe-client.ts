@@ -14,6 +14,8 @@ let capturedDocument:
 let capturedListing:
   AsyncIterator<import("@shellcanvas/app-sdk").RemoteDirectoryPage> | undefined;
 let watching = false;
+let capturedEntry:
+  import("@shellcanvas/app-sdk").RemoteEntryLocation | undefined;
 window.addEventListener("message", async (event) => {
   if (event.source !== parent || event.data?.type !== "desktop-probe") return;
   const note = document.querySelector<HTMLTextAreaElement>("textarea")!;
@@ -52,6 +54,43 @@ window.addEventListener("message", async (event) => {
       name: "new.txt",
       text: "Created 🌿",
     });
+    const entryIn = async (path: string, name: string) => {
+      for await (const page of client.files.list({ binding, path })) {
+        const entry = page.entries.find((item) => item.name === name);
+        if (entry?.revision)
+          return {
+            binding: page.binding,
+            path: entry.path,
+            revision: entry.revision,
+          };
+      }
+      throw new Error(`Missing action entry: ${name}`);
+    };
+    capturedEntry = await entryIn("fixture:actions", "original.txt");
+    const folder = await client.files.makeDirectory({
+      binding,
+      parent: "fixture:actions",
+      name: "Folder",
+    });
+    let collision = false;
+    try {
+      await client.files.makeDirectory({
+        binding,
+        parent: "fixture:actions",
+        name: "Folder",
+      });
+    } catch {
+      collision = true;
+    }
+    const renamed = await client.files.renameEntry(
+      capturedEntry,
+      "renamed.txt",
+    );
+    const refreshed = await entryIn("fixture:actions", "renamed.txt");
+    const moved = await client.files.moveEntry(refreshed, folder);
+    const movedEntry = await entryIn(folder.path, "renamed.txt");
+    await client.files.removeEntry(movedEntry);
+    await client.files.removeEntry(await entryIn("fixture:actions", "Folder"));
     const paths: string[] = [];
     let pages = 0;
     for await (const page of client.files.list({
@@ -72,6 +111,10 @@ window.addEventListener("message", async (event) => {
         saved.revision !== capturedDocument.revision,
       conflict,
       created: created.text === "Created 🌿",
+      actions:
+        collision &&
+        renamed.path === "fixture:renamed" &&
+        moved.path === "fixture:moved",
       listed:
         pages === 3 &&
         paths.length === 257 &&
@@ -110,6 +153,20 @@ window.addEventListener("message", async (event) => {
       files.listingRejected = false;
     } catch (error) {
       files.listingRejected =
+        (error as { code: string }).code ===
+        (event.data.action === "files-stale" ? "closed" : "denied");
+    }
+    try {
+      await client.files.removeEntry(
+        capturedEntry ?? {
+          binding: (await client.environment.get()).binding!,
+          path: "fixture:entry",
+          revision: "entry-1",
+        },
+      );
+      files.actionRejected = false;
+    } catch (error) {
+      files.actionRejected =
         (error as { code: string }).code ===
         (event.data.action === "files-stale" ? "closed" : "denied");
     }

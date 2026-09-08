@@ -18,7 +18,7 @@ import type {
   ServiceMethodInfo,
 } from "../../src/extensions/environment-api";
 import { previewServices, previewSession } from "../../src/preview";
-import type { Session } from "../../src/sdk";
+import type { Session, FileEntry } from "../../src/sdk";
 import source from "../../.local/native-extension-probe/desktop-client.js?raw";
 import style from "../../examples/dialog-app/style.css?raw";
 import "../../src/styles.css";
@@ -46,31 +46,140 @@ const fixtureSession: Session = {
       ...previewSession.info.capabilities,
       "files.edit",
       "files.create",
+      "files.manage",
+      "files.move",
     ],
   },
 };
 let fileWrites = 0;
 let remoteText = "Original note";
 let remoteRevision = 1;
+let fileActions = 0;
+const actionEntries = new Map<string, FileEntry & { parent: string }>([
+  [
+    "fixture:entry",
+    {
+      path: "fixture:entry",
+      parent: "fixture:actions",
+      name: "original.txt",
+      kind: "file",
+      revision: "entry-1",
+      size: 4,
+      modified: null,
+    },
+  ],
+]);
+const actionEntry = (path: string, revision: string) => {
+  const entry = actionEntries.get(path);
+  if (!entry || entry.revision !== revision)
+    throw new Error("Entry revision changed");
+  return entry;
+};
+const relocateAction = (
+  path: string,
+  parent: string,
+  name: string,
+  revision: string,
+  nextPath: string,
+  nextRevision: string,
+) => {
+  const entry = actionEntry(path, revision);
+  actionEntries.delete(path);
+  actionEntries.set(nextPath, {
+    ...entry,
+    parent,
+    path: nextPath,
+    name,
+    revision: nextRevision,
+  });
+  fileActions++;
+  return {
+    path: nextPath,
+    locations: [{ previous: path, location: { path: nextPath, parent, name } }],
+  };
+};
 const services = {
   ...previewServices,
+  makeDirectory: async (_id: number, parent: string, name: string) => {
+    if (actionEntries.has("fixture:folder"))
+      throw new Error("Destination already exists");
+    actionEntries.set("fixture:folder", {
+      path: "fixture:folder",
+      parent,
+      name,
+      revision: "folder-1",
+      kind: "directory",
+      size: 0,
+      modified: null,
+    });
+    fileActions++;
+    return "fixture:folder";
+  },
+  renameEntry: async (
+    _id: number,
+    path: string,
+    name: string,
+    revision: string,
+  ) =>
+    relocateAction(
+      path,
+      actionEntry(path, revision).parent,
+      name,
+      revision,
+      "fixture:renamed",
+      "entry-2",
+    ),
+  moveEntry: async (
+    _id: number,
+    path: string,
+    parent: string,
+    revision: string,
+  ) => {
+    if (parent !== "fixture:folder") throw new Error("Wrong destination");
+    return relocateAction(
+      path,
+      parent,
+      actionEntry(path, revision).name,
+      revision,
+      "fixture:moved",
+      "entry-3",
+    );
+  },
+  removeEntry: async (_id: number, path: string, revision: string) => {
+    actionEntry(path, revision);
+    if ([...actionEntries.values()].some((entry) => entry.parent === path))
+      throw new Error("Directory is not empty");
+    actionEntries.delete(path);
+    fileActions++;
+  },
   list: async (id: number, path?: string) =>
-    path === "fixture:many"
+    path === "fixture:actions" || path === "fixture:folder"
       ? {
           path,
-          name: "Many entries",
-          parent: "fixture:root",
+          name: "File actions",
+          parent: null,
           home: null,
-          roots: [{ path: "fixture:root", name: "Root" }],
-          entries: Array.from({ length: 257 }, (_, index) => ({
-            path: `fixture:item:${index}`,
-            name: `item-${index}`,
-            kind: "file" as const,
-            size: index,
-            modified: null,
-          })),
+          roots: [{ path: "fixture:actions", name: "Actions" }],
+          entries: [...actionEntries.values()].filter(
+            (entry) => entry.parent === path,
+          ),
         }
-      : previewServices.list(id, path),
+      : path === "fixture:many"
+        ? {
+            path,
+            name: "Many entries",
+            parent: "fixture:root",
+            home: null,
+            roots: [{ path: "fixture:root", name: "Root" }],
+            entries: Array.from({ length: 257 }, (_, index) => ({
+              path: `fixture:item:${index}`,
+              name: `item-${index}`,
+              kind: "file" as const,
+              size: index,
+              modified: null,
+            })),
+          }
+        : previewServices.list(id, path),
   connect: async () => ({ ...fixtureSession, id: ++sessionSerial }),
   readText: async (_id: number, path: string) => ({
     path,
@@ -206,6 +315,7 @@ async function install(version: string) {
             "files.read",
             "files.edit",
             "files.create",
+            ...(version === "1.0.0" ? ["files.manage", "files.move"] : []),
             "system.storage",
             "system.clipboard.read",
             "system.clipboard.write",
@@ -368,6 +478,10 @@ async function run() {
     !!fileResult &&
     Object.values(fileResult).every(Boolean) &&
     fileWrites === 1;
+  checks.sdkFileActions =
+    fileResult?.actions === true &&
+    fileActions === 5 &&
+    actionEntries.size === 0;
   const clipboard = (await ask(first, "clipboard")).clipboard;
   checks.sdkClipboard = !!clipboard && Object.values(clipboard).every(Boolean);
   const appStorage = (await ask(first, "storage")).storage;
@@ -458,6 +572,8 @@ async function run() {
   checks.sdkOldDocumentRejected =
     staleFiles?.rejected === true && fileWrites === 1;
   checks.sdkOldListingRejected = staleFiles?.listingRejected === true;
+  checks.sdkOldActionRejected =
+    staleFiles?.actionRejected === true && fileActions === 5;
   await frameState(first, (state) => state.ready);
   document
     .querySelector<HTMLButtonElement>('button[aria-label="Open Apps"]')!
@@ -478,6 +594,8 @@ async function run() {
   const deniedFiles = (await ask(second, "files-denied")).files;
   checks.sdkFileGrantDenied = deniedFiles?.rejected === true;
   checks.sdkListingGrantDenied = deniedFiles?.listingRejected === true;
+  checks.sdkActionGrantDenied =
+    deniedFiles?.actionRejected === true && fileActions === 5;
   const beforeDeniedRead = clipboardReads;
   checks.clipboardGrantDenied =
     (await ask(second, "clipboard-denied")).clipboard?.denied === true &&

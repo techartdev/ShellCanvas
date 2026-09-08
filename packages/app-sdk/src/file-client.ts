@@ -7,6 +7,10 @@ export interface RemoteFileLocation {
   binding: string;
   path: string;
 }
+/** Revision from a directory entry; it is not a text-document revision. */
+export interface RemoteEntryLocation extends RemoteFileLocation {
+  revision: string;
+}
 /** Keep this snapshot with the draft. Never substitute a new binding or revision. */
 export interface RemoteTextDocument extends TextDocument {
   binding: string;
@@ -21,6 +25,21 @@ export interface RemoteDirectoryPage {
   entries: FileEntry[];
 }
 export interface AppFilesAPI {
+  makeDirectory(
+    destination: { binding: string; parent: string; name: string },
+    signal?: AbortSignal,
+  ): Promise<RemoteFileLocation>;
+  renameEntry(
+    entry: RemoteEntryLocation,
+    name: string,
+    signal?: AbortSignal,
+  ): Promise<RemoteFileLocation>;
+  moveEntry(
+    entry: RemoteEntryLocation,
+    parent: RemoteFileLocation,
+    signal?: AbortSignal,
+  ): Promise<RemoteFileLocation>;
+  removeEntry(entry: RemoteEntryLocation, signal?: AbortSignal): Promise<void>;
   /** One captured listing. Breaking the loop releases it; omit path for the provider default. */
   list(
     location: { binding: string; path?: string },
@@ -47,6 +66,37 @@ export interface AppFilesAPI {
 }
 export function appFileClient(peer: RpcPeer): AppFilesAPI {
   return Object.freeze({
+    makeDirectory: async ({ binding, parent, name }, signal) =>
+      (await peer.call(
+        "system.files.makeDirectory",
+        { binding, parent, name },
+        signal,
+      )) as unknown as RemoteFileLocation,
+    renameEntry: async ({ binding, path, revision }, name, signal) =>
+      (await peer.call(
+        "system.files.renameEntry",
+        { binding, path, revision, name },
+        signal,
+      )) as unknown as RemoteFileLocation,
+    moveEntry: async ({ binding, path, revision }, parent, signal) =>
+      (await peer.call(
+        "system.files.moveEntry",
+        {
+          binding,
+          path,
+          revision,
+          parent: parent.path,
+          parentBinding: parent.binding,
+        },
+        signal,
+      )) as unknown as RemoteFileLocation,
+    removeEntry: async ({ binding, path, revision }, signal) => {
+      await peer.call(
+        "system.files.removeEntry",
+        { binding, path, revision },
+        signal,
+      );
+    },
     async *list({ binding, path }, signal) {
       const id = crypto.randomUUID();
       let closing: Promise<unknown> | undefined;
