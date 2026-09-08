@@ -44,7 +44,11 @@ export function HostDetails({
                 ? "Terminal"
                 : capability === "files.edit"
                   ? "Text editing"
-                  : capability}
+                  : capability === "files.create"
+                    ? "New text files"
+                    : capability === "files.manage"
+                      ? "File changes"
+                      : capability}
           </span>
         ))}
       </div>

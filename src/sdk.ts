@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 import type { ComponentType } from "react";
-export type Capability = "terminal" | "files.read" | "files.edit";
+export type Capability =
+  "terminal" | "files.read" | "files.edit" | "files.create" | "files.manage";
 export interface TextDocument {
   path: string;
   text: string;
@@ -32,6 +33,7 @@ export interface Session {
   info: HostInfo;
 }
 export interface FileEntry {
+  revision?: string;
   name: string;
   path: string;
   kind: "directory" | "file" | "symlink";
@@ -52,6 +54,24 @@ export interface TerminalSession {
   close(): Promise<void>;
 }
 export interface HostServices {
+  createText(
+    sessionId: number,
+    parent: string,
+    name: string,
+    text: string,
+  ): Promise<TextDocument>;
+  makeDirectory(
+    sessionId: number,
+    parent: string,
+    name: string,
+  ): Promise<string>;
+  renameEntry(
+    sessionId: number,
+    path: string,
+    name: string,
+    revision: string,
+  ): Promise<string>;
+  removeEntry(sessionId: number, path: string, revision: string): Promise<void>;
   profiles(): Promise<HostProfile[]>;
   saveProfile(profile: HostProfile): Promise<HostProfile>;
   removeProfile(id: string): Promise<void>;
@@ -76,6 +96,10 @@ export interface HostServices {
 }
 /** Apps receive a fixed session handle, never connection administration. */
 export interface SessionServices {
+  createText(parent: string, name: string, text: string): Promise<TextDocument>;
+  makeDirectory(parent: string, name: string): Promise<string>;
+  renameEntry(path: string, name: string, revision: string): Promise<string>;
+  removeEntry(path: string, revision: string): Promise<void>;
   list(path: string): Promise<Directory>;
   preview(path: string): Promise<string>;
   readText(path: string): Promise<TextDocument>;
@@ -93,8 +117,8 @@ export interface AppContext {
     busy: boolean;
     title?: string;
   }): void;
-  launch?: { path?: string };
-  openApp?(appId: string, launch?: { path?: string }): void;
+  launch?: { path?: string; directory?: string };
+  openApp?(appId: string, launch?: { path?: string; directory?: string }): void;
   session: Session | null;
   services: SessionServices;
   active?: boolean;
@@ -134,7 +158,14 @@ export function defineApps(definitions: DesktopApp[]): readonly DesktopApp[] {
         throw new Error(`Invalid app scope: ${app.id}`);
       if (
         app.requires.some(
-          (cap) => !["terminal", "files.read", "files.edit"].includes(cap),
+          (cap) =>
+            ![
+              "terminal",
+              "files.read",
+              "files.edit",
+              "files.create",
+              "files.manage",
+            ].includes(cap),
         )
       )
         throw new Error(`Unknown app capability: ${app.id}`);
@@ -161,6 +192,6 @@ export function unavailableReason(
     (cap) => !session?.info.capabilities.includes(cap),
   );
   return missing.length
-    ? `Unavailable on this device: ${missing.map((cap) => (cap === "files.read" ? "file browsing" : cap === "files.edit" ? "text saving" : "terminal")).join(", ")}`
+    ? `Unavailable on this device: ${missing.map((cap) => ({ "files.read": "file browsing", "files.edit": "text saving", "files.create": "file creation", "files.manage": "file changes", terminal: "terminal" })[cap]).join(", ")}`
     : null;
 }

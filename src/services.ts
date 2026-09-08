@@ -3,6 +3,14 @@ import { Channel, invoke, isTauri } from "@tauri-apps/api/core";
 import type { HostServices, TerminalEvent } from "./sdk";
 export const native = isTauri();
 export const nativeServices: HostServices = {
+  createText: (sessionId, parent, name, text) =>
+    invoke("create_text", { sessionId, parent, name, text }),
+  makeDirectory: (sessionId, parent, name) =>
+    invoke("make_directory", { sessionId, parent, name }),
+  renameEntry: (sessionId, path, name, revision) =>
+    invoke("rename_entry", { sessionId, path, name, revision }),
+  removeEntry: (sessionId, path, revision) =>
+    invoke("remove_entry", { sessionId, path, revision }),
   profiles: () => invoke("profiles"),
   saveProfile: (profile) => invoke("save_profile", { profile }),
   removeProfile: (id) => invoke("remove_profile", { id }),

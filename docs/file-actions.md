@@ -1,0 +1,36 @@
+# Remote file changes
+
+The Files app now offers **New folder**, **Rename** (F2) and **Delete** (Delete key) through its context menu. A toolbar button opens New folder; Folder actions also opens a new text-editor draft in the current folder. Deletion requires a dialog that displays the exact remote path and explains permanence. Cancel does not call the provider. Files and editor operations update all Files windows in the same session while retaining their folder paths and filters.
+
+The Editor supports **Save as new file** (Ctrl+Shift+S). Saving an unnamed draft (Ctrl+S) opens this form too. Choose an existing remote folder and one name. Name collisions retain the draft and report an error; this first Save As workflow does not replace existing destinations. After creation, the editor tracks the returned canonical path and revision, so subsequent Save uses existing-file conflict detection. Empty files are supported. UTF-8 size and binary bounds are the same as existing text editing.
+
+## Provider behavior
+
+- `FileMutationService` is an optional contract; apps call session-bound methods. `files.manage` exposes folder creation/rename/deletion, and `files.create` exposes new text files independently of atomic replacement support. Servers/permissions can still refuse individual operations.
+- The current implementation uses SFTP packets, not shell command construction. Names are validated as single path components. Parent paths are resolved by the server; callers cannot rename/delete a filesystem root through these APIs.
+- New text is written in bounded chunks to an exclusive temporary sibling, optionally fsynced, then committed through standard SFTP v3 rename, which refuses an existing destination. The OpenSSH atomic-replacement extension remains reserved for explicitly saving an already-open file with a revision. New files request mode 0600; new directories request 0755, subject to server policy/umask.
+- Rename/delete use a token derived from listed size, mtime, mode, UID and GID. The item is checked with lstat immediately before the operation. Rename does not overwrite another name. Deleting a symlink removes the link itself, and deleting a directory only attempts rmdir on that one directory.
+- Mutations and editor saves share a lock within one workspace's SFTP service. This does not lock other processes, other workspaces or other connections. Listing tokens are **metadata checks**, not content hashes or atomic compare-and-swap: same-size edits within timestamp granularity, a replacement with identical metadata, or an external change after the check can be missed. SFTP does not provide a general atomic conditional delete/rename.
+- Errors retain the form/draft. A lost operation acknowledgement or session disposal after a successful backend result reports that the remote outcome may be uncertain. Refresh/inspect the destination before retrying. Temporary-file cleanup is attempted after failures when a handle was acquired; unsuccessful cleanup reports its path. A lost temporary-open acknowledgement reports the candidate path for inspection.
+
+## Current limits
+
+Only files, symlinks and **empty** directories can be deleted. There is no recursive delete, remote trash, undo, arbitrary move, copy/paste of remote file objects, or Save As overwrite confirmation yet. Upload/download and their cancellation queue remain separate unfinished work. Paths still use the existing SFTP conventions; drive/virtual-root navigation and generic composite adapters remain backlog items. Native file-dialog and clipboard integration walkthroughs are separate from these browser fixture checks.
+
+## Evidence
+
+The live `file_actions_probe` passed on the authorized Linux/OpenSSH host using a newly created `/tmp/shellcanvas-files-UUID` directory only:
+
+- UTF-8/CRLF creation/readback and mode 0600.
+- Duplicate create and rename refusal with original/sibling preservation.
+- Concurrent new-file creation through two independently initialized SFTP channels: exactly one writer succeeds.
+- New folder, nonempty-folder refusal, child deletion and empty-folder deletion.
+- Rename including Unicode/quoted names, stale metadata refusal, symlink deletion with target preservation, invalid-name rejection and temporary-file cleanup.
+
+The probe removes its exact test files and then removes its empty test directory; it does not accept a production path or recursively clean unexpected contents. Permission-denied and forced transport-loss write outcomes remain integration gates; the root test account does not prove unprivileged permission behavior.
+
+```sh
+cargo run -p shellcanvas-core --example file_actions_probe -- HOST USER KEY_PATH
+```
+
+The browser workspace fixture passed new-folder/duplicate-name feedback, F2 rename, cancel/confirm deletion, Save As collision with draft retention, successful new-file save, refresh in two Files windows, and a subsequent ordinary editor save. Session tests verify capability rejection, host-scoped change notifications and uncertain completion after disposal.

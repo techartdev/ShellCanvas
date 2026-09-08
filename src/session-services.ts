@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 import type { Capability, HostServices, Session, SessionServices } from "./sdk";
+import { notifyFileChanges } from "./file-events";
 
 /** Lifetime and capability checks complement native ownership checks; not a sandbox. */
 export function bindSession(backend: HostServices, session: Session | null) {
@@ -12,7 +13,54 @@ export function bindSession(backend: HostServices, session: Session | null) {
       throw new Error(`Unavailable on this device: ${capability}`);
     return session.id;
   }
+  function mutationCompleted(capability: Capability, expected: number) {
+    try {
+      check(capability, expected);
+    } catch {
+      throw new Error(
+        "Connection changed before the operation was confirmed. The remote change may have completed; verify the destination before retrying.",
+      );
+    }
+    notifyFileChanges(session!.id);
+  }
   const services: SessionServices = {
+    createText: async (parent, name, text) => {
+      const expected = generation;
+      const result = await backend.createText(
+        check("files.create"),
+        parent,
+        name,
+        text,
+      );
+      mutationCompleted("files.create", expected);
+      return result;
+    },
+    makeDirectory: async (parent, name) => {
+      const expected = generation;
+      const result = await backend.makeDirectory(
+        check("files.manage"),
+        parent,
+        name,
+      );
+      mutationCompleted("files.manage", expected);
+      return result;
+    },
+    renameEntry: async (path, name, revision) => {
+      const expected = generation;
+      const result = await backend.renameEntry(
+        check("files.manage"),
+        path,
+        name,
+        revision,
+      );
+      mutationCompleted("files.manage", expected);
+      return result;
+    },
+    removeEntry: async (path, revision) => {
+      const expected = generation;
+      await backend.removeEntry(check("files.manage"), path, revision);
+      mutationCompleted("files.manage", expected);
+    },
     readText: async (path) => {
       const expected = generation;
       const result = await backend.readText(check("files.read"), path);
@@ -27,7 +75,7 @@ export function bindSession(backend: HostServices, session: Session | null) {
         text,
         revision,
       );
-      check("files.edit", expected);
+      mutationCompleted("files.edit", expected);
       return result;
     },
     list: async (path) => {

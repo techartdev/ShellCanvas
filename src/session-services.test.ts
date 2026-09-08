@@ -3,6 +3,68 @@ import { expect, it, vi } from "vitest";
 import { bindSession } from "./session-services";
 import { previewServices, previewSession } from "./preview";
 import type { Directory, TerminalSession } from "./sdk";
+import { watchFileChanges } from "./file-events";
+it("reports uncertain outcomes when a mutation finishes after session disposal", async () => {
+  let resolve!: (value: string) => void;
+  const binding = bindSession(
+    {
+      ...previewServices,
+      makeDirectory: () =>
+        new Promise<string>((done) => {
+          resolve = done;
+        }),
+    },
+    {
+      ...previewSession,
+      id: 20,
+      info: { ...previewSession.info, capabilities: ["files.manage"] },
+    },
+  );
+  const changed = vi.fn(),
+    stop = watchFileChanges(20, changed);
+  const pending = binding.services.makeDirectory("/", "new");
+  binding.dispose();
+  resolve("/new");
+  await expect(pending).rejects.toThrow("may have completed");
+  expect(changed).not.toHaveBeenCalled();
+  stop();
+});
+it("scopes file changes and notifications to the owning host and rejects unsupported writes", async () => {
+  const makeDirectory = vi.fn(async () => "/created");
+  const a = bindSession(
+    { ...previewServices, makeDirectory },
+    {
+      ...previewSession,
+      id: 11,
+      info: {
+        ...previewSession.info,
+        capabilities: ["files.read", "files.manage"],
+      },
+    },
+  );
+  const changedA = vi.fn(),
+    changedB = vi.fn();
+  const stopA = watchFileChanges(11, changedA),
+    stopB = watchFileChanges(12, changedB);
+  expect(await a.services.makeDirectory("/", "created")).toBe("/created");
+  expect(makeDirectory).toHaveBeenCalledWith(11, "/", "created");
+  expect(changedA).toHaveBeenCalledOnce();
+  expect(changedB).not.toHaveBeenCalled();
+  const readonly = bindSession(
+    { ...previewServices, makeDirectory },
+    previewSession,
+  );
+  await expect(readonly.services.makeDirectory("/", "denied")).rejects.toThrow(
+    "Unavailable",
+  );
+  a.dispose();
+  await expect(a.services.makeDirectory("/", "stale")).rejects.toThrow(
+    "no longer connected",
+  );
+  expect(makeDirectory).toHaveBeenCalledOnce();
+  stopA();
+  stopB();
+});
 it("routes to the bound session and rejects late results after disposal", async () => {
   let resolve!: (value: Directory) => void;
   const list = vi.fn(

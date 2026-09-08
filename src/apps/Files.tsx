@@ -11,6 +11,7 @@ import {
   Home,
   LoaderCircle,
   MoreHorizontal,
+  FolderPlus,
   RefreshCw,
   Search,
   Server,
@@ -21,6 +22,8 @@ import { ContextMenu, type MenuAction } from "../components/ContextMenu";
 import { clipboard } from "../clipboard";
 import { usePreferences } from "../preferences";
 import { visibleFiles } from "../file-view";
+import { FileActionDialog } from "../components/FileActionDialog";
+import { watchFileChanges } from "../file-events";
 export function parentPath(path: string) {
   return path.replace(/\/+$/, "").split("/").slice(0, -1).join("/") || "/";
 }
@@ -38,6 +41,8 @@ export function Files({
   active = true,
   launch,
   openApp,
+  connected = true,
+  setDocumentState,
 }: AppContext) {
   const { values: preferences, set: setPreference } = usePreferences();
   const [directory, setDirectory] = useState<Directory>({
@@ -48,6 +53,25 @@ export function Files({
   const [pathInput, setPathInput] = useState("");
   const [selected, setSelected] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [operation, setOperation] = useState<{
+    kind: "mkdir" | "rename" | "delete";
+    parent: string;
+    entry?: FileEntry;
+  } | null>(null);
+  const canManage =
+    connected &&
+    !loading &&
+    !busy &&
+    !!session?.info.capabilities.includes("files.manage");
+  const canCreate =
+    connected &&
+    !loading &&
+    !busy &&
+    !!session?.info.capabilities.includes("files.create");
+  useEffect(() => {
+    setDocumentState?.({ dirty: false, busy });
+  }, [busy]);
   const [error, setError] = useState("");
   const [document, setDocument] = useState<{
     name: string;
@@ -65,6 +89,17 @@ export function Files({
     entry?: FileEntry;
   } | null>(null);
   const closeMenu = useCallback(() => setMenu(null), []);
+  const refresh = useRef(() => {});
+  refresh.current = () => {
+    void navigate(directory.path, false);
+  };
+  useEffect(
+    () =>
+      session
+        ? watchFileChanges(session.id, () => refresh.current())
+        : undefined,
+    [session?.id],
+  );
   useEffect(() => {
     if (!active) closeMenu();
   }, [active, closeMenu]);
@@ -162,6 +197,18 @@ export function Files({
   }, [selected, directory, query, preferences.filesShowHidden]);
   function menuActions(entry?: FileEntry): MenuAction[] {
     return [
+      {
+        id: "mkdir",
+        label: "New folder",
+        disabled: !canManage,
+        run: () => setOperation({ kind: "mkdir", parent: directory.path }),
+      },
+      {
+        id: "new-file",
+        label: "New text file",
+        disabled: !canCreate || !openApp,
+        run: () => openApp?.("editor", { directory: directory.path }),
+      },
       ...(entry && entry.kind !== "directory" && openApp
         ? [
             {
@@ -199,6 +246,23 @@ export function Files({
               label: "Copy path",
               shortcut: "Ctrl+C",
               run: () => void copyText(entry.path),
+            },
+            {
+              id: "rename",
+              label: "Rename",
+              shortcut: "F2",
+              disabled: !canManage || !entry.revision,
+              run: () =>
+                setOperation({ kind: "rename", parent: directory.path, entry }),
+            },
+            {
+              id: "delete",
+              label:
+                entry.kind === "directory" ? "Delete empty folder…" : "Delete…",
+              shortcut: "Delete",
+              disabled: !canManage || !entry.revision,
+              run: () =>
+                setOperation({ kind: "delete", parent: directory.path, entry }),
             },
           ]
         : [
@@ -255,7 +319,7 @@ export function Files({
       ref={root}
       onKeyDown={(event) => {
         const target = event.target as HTMLElement;
-        if (target.closest('[role="menu"]')) return;
+        if (target.closest('[role="menu"],dialog')) return;
         const command = event.ctrlKey || event.metaKey;
         if (command && event.key.toLowerCase() === "l") {
           event.preventDefault();
@@ -271,6 +335,20 @@ export function Files({
               selected ||
               directory.path,
           );
+        } else if (
+          (event.key === "F2" || event.key === "Delete") &&
+          canManage &&
+          !document
+        ) {
+          const entry = entries.find((entry) => entry.path === selected);
+          if (entry?.revision) {
+            event.preventDefault();
+            setOperation({
+              kind: event.key === "F2" ? "rename" : "delete",
+              parent: directory.path,
+              entry,
+            });
+          }
         } else if (event.key === "F5") {
           event.preventDefault();
           if (!loading) void navigate(directory.path, false);
@@ -315,7 +393,13 @@ export function Files({
           </span>
           <div>
             <strong>{session?.info.hostname}</strong>
-            <small>{preview ? "Sample filesystem" : "SFTP · read only"}</small>
+            <small>
+              {preview
+                ? "Sample filesystem"
+                : session?.info.capabilities.includes("files.manage")
+                  ? "SFTP"
+                  : "SFTP · read only"}
+            </small>
           </div>
         </div>
       </aside>
@@ -373,6 +457,17 @@ export function Files({
             }}
           >
             <MoreHorizontal size={17} />
+          </button>
+          <button
+            className="icon-button"
+            aria-label="New folder"
+            title="New folder"
+            disabled={!canManage}
+            onClick={() =>
+              setOperation({ kind: "mkdir", parent: directory.path })
+            }
+          >
+            <FolderPlus size={17} />
           </button>
         </div>
         <div className="folder-heading">
@@ -548,7 +643,13 @@ export function Files({
               Open selected <ChevronRight size={12} />
             </button>
           )}
-          <span>Read-only explorer</span>
+          <span>
+            {busy
+              ? "Working…"
+              : session?.info.capabilities.includes("files.manage")
+                ? "Remote filesystem"
+                : "Read-only explorer"}
+          </span>
         </footer>
       </div>
       {menu && (
@@ -583,6 +684,55 @@ export function Files({
                 ]
               : menuActions(menu.entry)
           }
+        />
+      )}
+      {operation && (
+        <FileActionDialog
+          title={
+            operation.kind === "mkdir"
+              ? "New folder"
+              : operation.kind === "rename"
+                ? "Rename item"
+                : "Delete remote item?"
+          }
+          description={
+            operation.kind === "delete"
+              ? `Delete this ${operation.entry?.kind === "directory" ? "empty folder" : operation.entry?.kind === "symlink" ? "link (its target is kept)" : "file"} permanently? There is no remote trash or undo.`
+              : `In ${operation.parent}. Existing items are never replaced.`
+          }
+          initialName={
+            operation.kind === "delete"
+              ? operation.entry!.path
+              : (operation.entry?.name ?? "New folder")
+          }
+          readOnlyName={operation.kind === "delete"}
+          destructive={operation.kind === "delete"}
+          confirmLabel={
+            operation.kind === "mkdir"
+              ? "Create folder"
+              : operation.kind === "rename"
+                ? "Rename"
+                : "Delete permanently"
+          }
+          close={() => setOperation(null)}
+          setBusy={setBusy}
+          disabled={!connected}
+          execute={async (name) => {
+            if (operation.kind === "mkdir")
+              await services.makeDirectory(operation.parent, name);
+            else if (operation.kind === "rename")
+              await services.renameEntry(
+                operation.entry!.path,
+                name,
+                operation.entry!.revision!,
+              );
+            else
+              await services.removeEntry(
+                operation.entry!.path,
+                operation.entry!.revision!,
+              );
+            setError("");
+          }}
         />
       )}
     </div>

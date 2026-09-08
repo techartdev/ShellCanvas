@@ -1,0 +1,99 @@
+/* SPDX-License-Identifier: MPL-2.0 */
+.file-action-dialog {
+  width: min(470px, calc(100vw - 32px));
+  max-height: calc(100dvh - 50px);
+  overflow: auto;
+  padding: 28px;
+  margin: auto;
+  border: 1px solid #9ec0c23d;
+  border-radius: 16px;
+  box-shadow: 0 30px 100px #03131baa;
+  color: #d4e4e8;
+  background: #1b2d38;
+}
+.file-action-dialog::backdrop {
+  background: #06111bc4;
+  backdrop-filter: blur(4px);
+}
+.file-action-emblem {
+  display: grid;
+  place-items: center;
+  width: 46px;
+  height: 46px;
+  border-radius: 12px;
+  background: #91baa820;
+  border: 1px solid #9ec5b526;
+  color: #b3d6c5;
+  margin-bottom: 23px;
+}
+.file-action-emblem.destructive {
+  background: #98636122;
+  color: #dfb0ac;
+}
+.file-action-dialog .eyebrow {
+  font-size: 8px;
+}
+.file-action-dialog h2 {
+  margin: 12px 0;
+  font-size: 23px;
+  font-weight: 500;
+}
+.file-action-description {
+  color: #9ab4c1;
+  font-size: 12px;
+  line-height: 1.7;
+  overflow-wrap: anywhere;
+}
+.file-action-dialog label {
+  display: block;
+  font-size: 10px;
+  color: #a9c1cd;
+  margin-top: 18px;
+}
+.file-action-dialog input {
+  display: block;
+  width: 100%;
+  margin-top: 8px;
+  border: 1px solid #a3c0c230;
+  border-radius: 6px;
+  background: #12242f;
+  color: #d0e1e7;
+  padding: 11px;
+  font-size: 12px;
+}
+.file-action-target {
+  margin: 19px 0;
+  padding: 12px;
+  border: 1px solid #9ec0c222;
+  background: #112631;
+  border-radius: 7px;
+  font:
+    11px/1.7 Consolas,
+    monospace;
+  overflow-wrap: anywhere;
+}
+.file-action-buttons {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 25px;
+}
+.file-action-buttons button {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  border: 1px solid #92b6be30;
+  border-radius: 6px;
+  padding: 10px 14px;
+  font-size: 11px;
+}
+.file-action-submit {
+  color: #bee0d0;
+  background: #83b49e21;
+}
+.file-action-dialog .inline-error {
+  margin: 16px 0 0;
+  max-height: 160px;
+  overflow: auto;
+  overflow-wrap: anywhere;
+}

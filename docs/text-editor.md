@@ -1,8 +1,8 @@
 # Remote text editor
 
-The bundled Editor opens from the dock or a file's context menu. Each window has an independent document, bounded undo/redo history, find, wrapping, clipboard menu and unsaved indicator. It reads regular UTF-8 files up to 256 KiB. Uniform CRLF line endings round-trip on save. Saving currently updates an existing file; creating files and Save As are part of the upcoming file-operations work.
+The bundled Editor opens from the dock or a file's context menu. Each window has an independent document, bounded undo/redo history, find, wrapping, clipboard menu and unsaved indicator. It reads regular UTF-8 files up to 256 KiB. Uniform CRLF line endings round-trip on save. Save updates an existing file; **Save as new file** creates a new name without overwriting another destination. See [file actions](file-actions.md) for new-file behavior and limits.
 
-`TextFileService` is a separate optional service contract. The SSH implementation uses a dedicated SFTP channel, with no shell commands or remote agent. Servers without atomic replacement support keep read/preview access; the editor can retain and copy a draft, but Save is unavailable. Per-file permission errors are reported when the operation is attempted.
+`TextFileService` is a separate optional service contract. The SSH implementation uses a dedicated SFTP channel, with no shell commands or remote agent. Servers without atomic replacement support keep read/preview and new-file creation access; replacing an existing file with Save is unavailable. Per-file permission errors are reported when the operation is attempted.
 
 ## Save behavior
 

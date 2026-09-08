@@ -18,6 +18,14 @@ function Fixture() {
   };
   clipboard.readText = async () => "fixture paste";
   const [services] = useState<SessionServices>(() => ({
+    createText: (parent, name, text) =>
+      previewServices.createText(previewSession.id, parent, name, text),
+    makeDirectory: (parent, name) =>
+      previewServices.makeDirectory(previewSession.id, parent, name),
+    renameEntry: (path, name, revision) =>
+      previewServices.renameEntry(previewSession.id, path, name, revision),
+    removeEntry: (path, revision) =>
+      previewServices.removeEntry(previewSession.id, path, revision),
     readText: (path) => previewServices.readText(previewSession.id, path),
     saveText: (path, text, revision) =>
       previewServices.saveText(previewSession.id, path, text, revision),

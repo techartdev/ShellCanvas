@@ -33,8 +33,10 @@ import {
 } from "../editor-state";
 import "./Editor.css";
 import { usePreferences } from "../preferences";
+import { FileActionDialog } from "../components/FileActionDialog";
 
 export function Editor({
+  session,
   launch,
   services,
   active = true,
@@ -50,6 +52,9 @@ export function Editor({
   });
   const [path, setPath] = useState(launch?.path ?? "");
   const [busy, setBusy] = useState(false);
+  const [saveAs, setSaveAs] = useState(false);
+  const canCreate =
+    connected && !busy && !!session?.info.capabilities.includes("files.create");
   const [error, setError] = useState("");
   const [status, setStatus] = useState("Open a remote text file to begin");
   const wrap = preferences.editorWrap;
@@ -140,6 +145,10 @@ export function Editor({
     else void load(nextPath);
   }
   async function save() {
+    if (!document && canCreate) {
+      setSaveAs(true);
+      return;
+    }
     if (!document || !canSave) return;
     const current = request.current;
     const text = serialiseText(buffer.text, lineEnding(document.text));
@@ -222,11 +231,13 @@ export function Editor({
     <div
       className="editor-app"
       onKeyDown={(event) => {
-        if ((event.target as HTMLElement).closest('[role="menu"]')) return;
+        if ((event.target as HTMLElement).closest('[role="menu"],dialog'))
+          return;
         const command = event.ctrlKey || event.metaKey;
         if (command && event.key.toLowerCase() === "s") {
           event.preventDefault();
-          void save();
+          if (event.shiftKey && canCreate) setSaveAs(true);
+          else void save();
         } else if (command && event.key.toLowerCase() === "f") {
           event.preventDefault();
           setSearchOpen(true);
@@ -257,7 +268,7 @@ export function Editor({
         <button
           className="editor-save"
           aria-label="Save file"
-          disabled={!canSave}
+          disabled={document ? !canSave : !canCreate}
           onClick={() => void save()}
         >
           {busy ? (
@@ -315,6 +326,13 @@ export function Editor({
           onClick={() => document && open(document.path)}
         >
           <RefreshCw size={14} /> Reload
+        </button>
+        <button
+          aria-label="Save file as"
+          disabled={!canCreate}
+          onClick={() => setSaveAs(true)}
+        >
+          <Save size={14} /> Save as
         </button>
         <button aria-label="Copy document" onClick={() => void copy(true)}>
           <Copy size={14} /> Copy all
@@ -452,8 +470,15 @@ export function Editor({
               id: "save",
               label: "Save file",
               shortcut: "Ctrl+S",
-              disabled: !canSave,
+              disabled: document ? !canSave : !canCreate,
               run: () => void save(),
+            },
+            {
+              id: "save-as",
+              label: "Save as new file",
+              shortcut: "Ctrl+Shift+S",
+              disabled: !canCreate,
+              run: () => setSaveAs(true),
             },
             {
               id: "copy",
@@ -508,6 +533,33 @@ export function Editor({
               run: () => edit({ type: "redo" }),
             },
           ]}
+        />
+      )}
+      {saveAs && (
+        <FileActionDialog
+          title="Save as new file"
+          description="Save a copy of this draft in an existing remote folder. Existing files are never replaced; choose a new name."
+          initialName={document?.path.split("/").pop() ?? "untitled.txt"}
+          initialParent={
+            document
+              ? document.path.slice(0, document.path.lastIndexOf("/")) || "/"
+              : (launch?.directory ?? session?.info.home ?? ".")
+          }
+          confirmLabel="Save new file"
+          close={() => setSaveAs(false)}
+          setBusy={setBusy}
+          disabled={!connected}
+          execute={async (name, parent) => {
+            const text = serialiseText(
+              buffer.text,
+              document ? lineEnding(document.text) : "LF",
+            );
+            const saved = await services.createText(parent, name, text);
+            setDocument(saved);
+            setPath(saved.path);
+            setError("");
+            setStatus("Saved as a new remote file");
+          }}
         />
       )}
       {pendingPath !== null && (

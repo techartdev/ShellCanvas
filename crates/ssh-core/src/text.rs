@@ -30,7 +30,7 @@ fn document_revision(text: &str, metadata: &FileAttributes) -> String {
     ));
     format!("{:x}", hash.finalize())
 }
-fn validate_text(text: &str) -> Result<()> {
+pub(crate) fn validate_text(text: &str) -> Result<()> {
     if text.len() > TEXT_LIMIT {
         bail!("Text editing is limited to 256 KiB.");
     }
@@ -39,7 +39,7 @@ fn validate_text(text: &str) -> Result<()> {
     }
     Ok(())
 }
-fn validate_path(path: &str) -> Result<()> {
+pub(crate) fn validate_path(path: &str) -> Result<()> {
     if path.is_empty() || path.len() > 4096 || path.contains(['\0', '\r', '\n']) {
         bail!("Invalid file path.");
     }
@@ -54,6 +54,7 @@ fn check_revision(actual: &str, expected: &str) -> Result<()> {
 #[async_trait]
 pub trait TextFileService: Send + Sync {
     async fn read_text(&self, path: &str) -> Result<TextDocument>;
+    async fn create_text(&self, parent: &str, name: &str, text: &str) -> Result<TextDocument>;
     async fn save_text(
         &self,
         path: &str,
@@ -64,10 +65,10 @@ pub trait TextFileService: Send + Sync {
 
 /// Dedicated SFTP channel; saves in this workspace serialize across editor windows.
 pub struct SftpTextFiles {
-    raw: RawSftpSession,
+    pub(crate) raw: RawSftpSession,
     atomic_replace: bool,
     fsync: bool,
-    save_lock: Mutex<()>,
+    pub(crate) save_lock: Mutex<()>,
 }
 impl SftpTextFiles {
     pub async fn new(raw: RawSftpSession) -> Result<Self> {
@@ -164,6 +165,76 @@ impl SftpTextFiles {
 }
 #[async_trait]
 impl TextFileService for SftpTextFiles {
+    async fn create_text(&self, parent: &str, name: &str, text: &str) -> Result<TextDocument> {
+        validate_text(text)?;
+        let _lock = self.save_lock.lock().await;
+        let path = self.child_path(parent, name).await?;
+        self.require_absent(&path).await?;
+        let parent = path.rsplit_once('/').context("Unsupported remote path")?.0;
+        let temporary = self
+            .child_path(
+                if parent.is_empty() { "/" } else { parent },
+                &format!(".shellcanvas-save-{}", uuid::Uuid::new_v4()),
+            )
+            .await?;
+        let handle = self
+            .raw
+            .open(
+                &temporary,
+                OpenFlags::WRITE | OpenFlags::CREATE | OpenFlags::EXCLUDE,
+                FileAttributes {
+                    permissions: Some(0o600),
+                    ..FileAttributes::empty()
+                },
+            )
+            .await
+            .with_context(|| {
+                format!(
+                    "Temporary file creation was not confirmed. Check {temporary} before retrying"
+                )
+            })?
+            .handle;
+        let write: Result<()> = async {
+            for (index, chunk) in text.as_bytes().chunks(32768).enumerate() {
+                self.raw
+                    .write(&handle, (index * 32768) as u64, chunk.to_vec())
+                    .await?;
+            }
+            if self.fsync {
+                self.extension("fsync@openssh.com", &[&handle]).await?;
+            }
+            Ok(())
+        }
+        .await;
+        let closed = self.raw.close(handle).await;
+        let commit: Result<()> = async {
+            write?; closed?;
+            self.require_absent(&path).await?;
+            // SFTP v3 RENAME refuses an existing target, unlike posix-rename.
+            self.raw.rename(&temporary, &path).await.context("Create confirmation failed; the remote outcome may be uncertain. Keep your draft and check the destination before retrying")?;
+            Ok(())
+        }.await;
+        if let Err(error) = commit {
+            if let Err(cleanup) = self.raw.remove(&temporary).await {
+                if !matches!(&cleanup, SftpError::Status(s) if s.status_code == StatusCode::NoSuchFile)
+                {
+                    return Err(error.context(format!(
+                        "Temporary save cleanup failed: {temporary}. {cleanup}"
+                    )));
+                }
+            }
+            return Err(error);
+        }
+        let saved = self
+            .snapshot(&path)
+            .await
+            .context("File created but readback failed. Keep your draft and check the destination")?
+            .0;
+        if saved.text != text {
+            bail!("CONFLICT: The new file changed after creation. Keep your draft.");
+        }
+        Ok(saved)
+    }
     async fn read_text(&self, path: &str) -> Result<TextDocument> {
         Ok(self.snapshot(path).await?.0)
     }

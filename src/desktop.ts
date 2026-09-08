@@ -10,7 +10,7 @@ export interface DesktopState {
     {
       appId: string;
       ordinal: number;
-      launch?: { path?: string };
+      launch?: { path?: string; directory?: string };
       dirty?: boolean;
       busy?: boolean;
       title?: string;
@@ -20,7 +20,7 @@ export interface DesktopState {
 }
 export type DesktopAction =
   | { type: "open" | "focus" | "minimize" | "close"; id: string }
-  | { type: "new"; id: string; launch?: { path?: string } }
+  | { type: "new"; id: string; launch?: { path?: string; directory?: string } }
   | { type: "show-desktop" }
   | {
       type: "document-state";

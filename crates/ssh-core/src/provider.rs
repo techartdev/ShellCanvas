@@ -212,6 +212,7 @@ pub struct FileEntry {
     pub kind: String,
     pub size: u64,
     pub modified: Option<u32>,
+    pub revision: String,
 }
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -253,6 +254,7 @@ impl FileSystemProvider for SftpFileSystem {
                     kind: kind.into(),
                     size: metadata.size.unwrap_or(0),
                     modified: metadata.mtime,
+                    revision: crate::entry_revision(&metadata),
                 });
             }
             entries.sort_by(|a, b| {

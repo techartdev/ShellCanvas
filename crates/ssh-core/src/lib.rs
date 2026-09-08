@@ -1,10 +1,12 @@
 // SPDX-License-Identifier: MPL-2.0
 pub mod connection;
+pub mod file_actions;
 pub mod probe;
 pub mod profiles;
 pub mod provider;
 pub mod text;
 pub use connection::*;
+pub use file_actions::*;
 pub use probe::*;
 pub use profiles::*;
 pub use provider::*;

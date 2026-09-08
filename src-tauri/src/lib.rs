@@ -15,6 +15,7 @@ struct ActiveSession {
     connection: Arc<Connection>,
     files: Option<Arc<dyn FileSystemProvider>>,
     text: Option<Arc<dyn TextFileService>>,
+    mutations: Option<Arc<dyn FileMutationService>>,
 }
 #[derive(Default)]
 struct DesktopState {
@@ -83,13 +84,18 @@ async fn connect(
         }
     };
     let id = state.next_id.fetch_add(1, Ordering::Relaxed) + 1;
+    let mut mutations: Option<Arc<dyn FileMutationService>> = None;
     let text: Option<Arc<dyn TextFileService>> = if files.is_some() {
         match connection.text_files().await {
             Ok(service) => {
                 if service.can_save() {
                     info.capabilities.push("files.edit".into());
                 }
-                Some(Arc::new(service))
+                let service = Arc::new(service);
+                mutations = Some(service.clone());
+                info.capabilities
+                    .extend(["files.manage".into(), "files.create".into()]);
+                Some(service)
             }
             Err(_) => {
                 info.notices
@@ -106,6 +112,7 @@ async fn connect(
             connection,
             files,
             text,
+            mutations,
         },
     );
     Ok(SessionInfo { id, info })
@@ -222,6 +229,81 @@ async fn save_text(
 }
 
 #[tauri::command]
+async fn create_text(
+    session_id: u64,
+    parent: String,
+    name: String,
+    text: String,
+    state: State<'_, DesktopState>,
+) -> Result<TextDocument, String> {
+    let service = state
+        .registry
+        .lock()
+        .await
+        .sessions
+        .get(&session_id)
+        .and_then(|s| s.text.clone())
+        .ok_or("File creation is unavailable for this session")?;
+    service
+        .create_text(&parent, &name, &text)
+        .await
+        .map_err(|e| format!("{e:#}"))
+}
+async fn file_mutations(
+    state: &DesktopState,
+    session_id: u64,
+) -> Result<Arc<dyn FileMutationService>, String> {
+    state
+        .registry
+        .lock()
+        .await
+        .sessions
+        .get(&session_id)
+        .and_then(|s| s.mutations.clone())
+        .ok_or("File changes are unavailable for this session".into())
+}
+#[tauri::command]
+async fn make_directory(
+    session_id: u64,
+    parent: String,
+    name: String,
+    state: State<'_, DesktopState>,
+) -> Result<String, String> {
+    file_mutations(&state, session_id)
+        .await?
+        .make_directory(&parent, &name)
+        .await
+        .map_err(|e| format!("{e:#}"))
+}
+#[tauri::command]
+async fn rename_entry(
+    session_id: u64,
+    path: String,
+    name: String,
+    revision: String,
+    state: State<'_, DesktopState>,
+) -> Result<String, String> {
+    file_mutations(&state, session_id)
+        .await?
+        .rename_entry(&path, &name, &revision)
+        .await
+        .map_err(|e| format!("{e:#}"))
+}
+#[tauri::command]
+async fn remove_entry(
+    session_id: u64,
+    path: String,
+    revision: String,
+    state: State<'_, DesktopState>,
+) -> Result<(), String> {
+    file_mutations(&state, session_id)
+        .await?
+        .remove_entry(&path, &revision)
+        .await
+        .map_err(|e| format!("{e:#}"))
+}
+
+#[tauri::command]
 async fn open_terminal(
     session_id: u64,
     cols: u32,
@@ -320,6 +402,10 @@ pub fn run() {
             preview_file,
             read_text,
             save_text,
+            create_text,
+            make_directory,
+            rename_entry,
+            remove_entry,
             open_terminal,
             terminal_input,
             terminal_resize,

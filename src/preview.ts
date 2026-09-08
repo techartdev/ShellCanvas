@@ -36,6 +36,26 @@ function directory(path: string): Directory {
   };
 }
 export const previewServices: HostServices = {
+  createText: async () => {
+    throw new Error(
+      "Remote file creation is unavailable in the design preview.",
+    );
+  },
+  makeDirectory: async () => {
+    throw new Error(
+      "Remote file changes are unavailable in the design preview.",
+    );
+  },
+  renameEntry: async () => {
+    throw new Error(
+      "Remote file changes are unavailable in the design preview.",
+    );
+  },
+  removeEntry: async () => {
+    throw new Error(
+      "Remote file changes are unavailable in the design preview.",
+    );
+  },
   profiles: async () => [],
   saveProfile: async () => {
     throw new Error("Save hosts in the native app.");
