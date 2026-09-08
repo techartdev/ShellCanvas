@@ -17,6 +17,13 @@ const sessionHosts = new Map<number, string>([[101, "alpha.example"]]);
 const fileKey = (id: number, path: string) =>
   `${sessionHosts.get(id) ?? id}:${path}`;
 let nextWithoutFiles = false;
+let denyNextFileChange = false;
+function checkFilePermission() {
+  if (!denyNextFileChange) return;
+  denyNextFileChange = false;
+  log("file operation denied");
+  throw new Error("Permission denied: fixture folder is read-only.");
+}
 const documents = new Map<string, TextDocument>();
 const folders = new Map<string, Directory>();
 async function folder(id: number, path = "/home/demo") {
@@ -63,6 +70,7 @@ clipboard.readText = async () => "/from-clipboard";
 const backend: HostServices = {
   ...previewServices,
   createText: async (id, parent, name, text) => {
+    checkFilePermission();
     const directory = await folder(id, parent);
     if (directory.entries.some((entry) => entry.name === name))
       throw new Error("An item already exists. Choose a different name.");
@@ -81,6 +89,7 @@ const backend: HostServices = {
     return { ...doc };
   },
   makeDirectory: async (id, parent, name) => {
+    checkFilePermission();
     const directory = await folder(id, parent);
     if (directory.entries.some((entry) => entry.name === name))
       throw new Error("An item already exists. Choose a different name.");
@@ -104,6 +113,7 @@ const backend: HostServices = {
     return path;
   },
   renameEntry: async (id, path, name, revision) => {
+    checkFilePermission();
     const { parent, entry } = await findEntry(id, path, revision);
     if (parent.entries.some((entry) => entry.name === name))
       throw new Error("An item already exists. Choose a different name.");
@@ -124,6 +134,7 @@ const backend: HostServices = {
     return destination;
   },
   removeEntry: async (id, path, revision) => {
+    checkFilePermission();
     const { parent, entry } = await findEntry(id, path, revision);
     if (entry.kind === "directory" && (await folder(id, path)).entries.length)
       throw new Error("Only empty folders can be deleted.");
@@ -146,6 +157,7 @@ const backend: HostServices = {
     return { ...documents.get(key)! };
   },
   saveText: async (id, path, text, revision) => {
+    checkFilePermission();
     if (!sessions.has(id)) throw new Error("Fixture session closed");
     const key = fileKey(id, path),
       current = documents.get(key)!;
@@ -257,6 +269,13 @@ function Fixture() {
         }}
       >
         <summary>Fixture events</summary>
+        <button
+          onClick={() => {
+            denyNextFileChange = true;
+          }}
+        >
+          Deny next file change
+        </button>
         <button
           onClick={() => {
             documents.forEach((doc, key) =>

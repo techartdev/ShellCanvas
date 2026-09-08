@@ -1,5 +1,7 @@
 # File transfers
 
+Real unprivileged SFTP checks now cover denied uploads/private downloads and successful transfer recovery on the same services. See [permission validation](permission-validation.md). Physical-network interruption and broader Windows GUI error-path checks remain separate.
+
 Files now supports native **Upload files** and **Download selected file** actions in its toolbar and context menus. Upload chooses up to 16 regular local files and captures the current remote folder. Download chooses a new local filename for one selected regular remote file. Canceling either picker creates no transfer. Existing destinations are refused; the first version never replaces them, even if the system save dialog offered replacement.
 
 Each Files window has a sequential queue with progress, cancellation, clearable results and a collapsible panel. Active work stays above finished history. Navigation and other windows remain usable, and completed uploads refresh Files windows in the same session. Closing the owning window, disconnecting its workspace or quitting the app is guarded while a picker or transfer is active. Cancel first and wait for its result. A failed cancellation stays tracked and can be retried; it does not release the close guard or silently start an unwanted queued upload.

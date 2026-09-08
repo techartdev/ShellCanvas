@@ -27,7 +27,7 @@ The live `file_actions_probe` passed on the authorized Linux/OpenSSH host using 
 - New folder, nonempty-folder refusal, child deletion and empty-folder deletion.
 - Rename including Unicode/quoted names, stale metadata refusal, symlink deletion with target preservation, invalid-name rejection and temporary-file cleanup.
 
-The probe removes its exact test files and then removes its empty test directory; it does not accept a production path or recursively clean unexpected contents. Permission-denied and forced transport-loss write outcomes remain integration gates; the root test account does not prove unprivileged permission behavior.
+The probe removes its exact test files and then removes its empty test directory; it does not accept a production path or recursively clean unexpected contents. A separate [unprivileged permission probe](permission-validation.md) now verifies denied operations, data preservation and subsequent allowed operations using the existing nobody account. Browser folder/editor denial recovery also passed. Forced transport-loss write outcomes remain an integration gate.
 
 ```sh
 cargo run -p shellcanvas-core --example file_actions_probe -- HOST USER KEY_PATH
