@@ -203,3 +203,42 @@
   color: #cee1db;
   font-weight: 500;
 }
+.batch-delete-list {
+  list-style: none;
+  padding: 0;
+  max-height: 240px;
+  overflow: auto;
+  border: 1px solid #9ec0c222;
+  border-radius: 8px;
+  background: #112631;
+}
+.batch-delete-list li {
+  display: flex;
+  gap: 16px;
+  padding: 10px 12px;
+  border-bottom: 1px solid #9ec0c215;
+}
+.batch-delete-list li > span {
+  min-width: 0;
+  flex: 1;
+}
+.batch-delete-list strong,
+.batch-delete-list small {
+  display: block;
+  overflow-wrap: anywhere;
+}
+.batch-delete-list strong {
+  font-size: 12px;
+  font-weight: 500;
+}
+.batch-delete-list small {
+  font-size: 10px;
+  color: #8faab8;
+  margin-top: 4px;
+}
+.batch-delete-list em {
+  font-size: 10px;
+  font-style: normal;
+  color: #adcbbf;
+  flex-shrink: 0;
+}

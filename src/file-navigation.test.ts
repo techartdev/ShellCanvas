@@ -85,3 +85,10 @@ it("preserves typed addresses and ignores prefix-like paths without a mapping", 
       .document,
   ).toBeNull();
 });
+it("maps multiple selections only through exact provider locations", () => {
+  const next = relocateNavigation(
+    { ...view, selection: ["item@1", "item@1/similar"] },
+    mappings,
+  );
+  expect(next.selection).toEqual(["changed?item", "item@1/similar"]);
+});

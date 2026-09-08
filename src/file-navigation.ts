@@ -5,6 +5,7 @@ export interface FileNavigation {
   history: string[];
   pathInput: string;
   selected: string | null;
+  selection?: string[];
   document: { name: string; path: string; text: string } | null;
 }
 export function trackedNavigation(view: FileNavigation): string[] {
@@ -58,6 +59,7 @@ export function relocateNavigation(
         ? path(view.pathInput)
         : view.pathInput,
     selected: view.selected === null ? null : path(view.selected),
+    ...(view.selection ? { selection: view.selection.map(path) } : {}),
     document: view.document
       ? { ...view.document, ...mapping.get(view.document.path) }
       : null,

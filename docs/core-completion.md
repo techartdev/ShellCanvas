@@ -15,6 +15,8 @@ Additional protocols are optional until these core workflows work well. Connecti
 
 ## Evidence and outstanding work
 
+Post-goal development resumed at the user's request with Files multi-selection and reviewed batch deletion. This does not restart the overnight goal. See [batch actions](file-actions.md#multiple-selection-and-reviewed-batch-deletion) and CORE-05a in the backlog for behavior, validation and remaining native checks.
+
 - Editor Cut/Paste now rejects stale asynchronous edits after document replacement, intervening edits/undo, Save, or a newer clipboard action. Stale failures are suppressed and caret restoration does not steal focus. The controlled browser fixture passed normal Cut/Paste/undo, CRLF normalization, identical-document replacement, edit/undo, Save, refusal and late failure after replacement/unmount. All 72 frontend tests and the standard Windows debug build passed. See [editor validation](text-editor.md#validation). Native delayed-clipboard failure injection remains unverified.
 
 - Files now exposes sort headers and a checked **Sort and view…** context menu using existing persistent preferences. Browser checks passed keyboard/pointer sorting, selection retention, unknown-date placement, two-window synchronization without extra provider reads, compact rows/right tiling and fresh-page persistence. Small floating windows now adapt independently, keeping the location field and name/size columns usable; the menu still sorts by the hidden Modified column. Shared menus support labeled radio groups and checkbox states. See [settings](settings.md). These are local view controls; no remote data is changed.

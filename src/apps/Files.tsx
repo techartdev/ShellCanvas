@@ -41,6 +41,8 @@ import { watchFileChanges, watchFileLocations } from "../file-events";
 import { relocateNavigation, trackedNavigation } from "../file-navigation";
 import { TransferQueue, pendingTransfer } from "../transfer-queue";
 import { TransferPanel } from "../components/TransferPanel";
+import { selectFiles } from "../file-selection";
+import { DeleteFilesDialog } from "../components/DeleteFilesDialog";
 function size(bytes: number) {
   return bytes >= 1024 * 1024
     ? `${(bytes / 1048576).toFixed(1)} MB`
@@ -83,6 +85,13 @@ export function Files({
   const [query, setQuery] = useState("");
   const [pathInput, setPathInput] = useState("");
   const [selected, setSelected] = useState<string | null>(null);
+  const [selection, setSelection] = useState<string[]>([]);
+  const selectionAnchor = useRef<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<{
+    entries: Readonly<FileEntry>[];
+    services: AppContext["services"];
+    sessionId: number;
+  } | null>(null);
   const [reading, setLoading] = useState(true);
   const [relocating, setRelocating] = useState(false);
   const relocatingRef = useRef(false);
@@ -199,8 +208,22 @@ export function Files({
     sort?: boolean;
   } | null>(null);
   const closeMenu = useCallback(() => setMenu(null), []);
-  const view = useRef({ directory, pathInput, selected, document, history });
-  view.current = { directory, pathInput, selected, document, history };
+  const view = useRef({
+    directory,
+    pathInput,
+    selected,
+    selection,
+    document,
+    history,
+  });
+  view.current = {
+    directory,
+    pathInput,
+    selected,
+    selection,
+    document,
+    history,
+  };
   const transferState = useRef(transferBusy);
   transferState.current = transferBusy;
   const keepPreview = useRef(true);
@@ -242,11 +265,13 @@ export function Files({
       },
       relocated: (mappings) => {
         const next = relocateNavigation(view.current, mappings);
-        view.current = next;
+        view.current = { ...next, selection: next.selection ?? [] };
         setDirectory(next.directory);
         setHistory(next.history);
         setPathInput(next.pathInput);
         setSelected(next.selected);
+        setSelection(next.selection ?? []);
+        selectionAnchor.current = next.selected;
         setDocument(next.document);
       },
     });
@@ -293,7 +318,13 @@ export function Files({
     return text || document?.text || "";
   }
   function copySelection() {
-    void copyText(document ? previewText() : selected || directory.path);
+    void copyText(
+      document
+        ? previewText()
+        : selectedEntries.length
+          ? selectedEntries.map((entry) => entry.path).join("\n")
+          : directory.path,
+    );
   }
   function cut(entry: FileEntry) {
     if (!canMove || cutState.working || !entry.revision) return;
@@ -370,22 +401,33 @@ export function Files({
         options.background && previous.pathInput !== previous.directory.path
           ? previous.pathInput
           : result.path;
+      const preserveSelection =
+        previous.directory.path === result.path &&
+        (options.background || !remember);
       const nextSelected =
-        options.background &&
+        preserveSelection &&
         result.entries.some((entry) => entry.path === previous.selected)
           ? previous.selected
           : null;
+      const nextSelection = preserveSelection
+        ? previous.selection.filter((path) =>
+            result.entries.some((entry) => entry.path === path),
+          )
+        : [];
       view.current = {
         ...previous,
         directory: result,
         history: nextHistory,
         pathInput: nextInput,
         selected: nextSelected,
+        selection: nextSelection,
       };
       setHistory(nextHistory);
       setDirectory(result);
       setPathInput(nextInput);
       setSelected(nextSelected);
+      setSelection(nextSelection);
+      if (!options.background) selectionAnchor.current = null;
     } catch (e) {
       if (current === request.current) setError(String(e));
     } finally {
@@ -446,7 +488,49 @@ export function Files({
       preferences.filesFoldersFirst,
     ],
   );
+  const selectedEntries = entries.filter((entry) =>
+    selection.includes(entry.path),
+  );
+  const singleEntry =
+    selectedEntries.length === 1 ? selectedEntries[0] : undefined;
+  function choose(entry: FileEntry, toggle = false, range = false) {
+    const anchor = selectionAnchor.current;
+    setSelection((current) =>
+      selectFiles(
+        current,
+        entries.map((item) => item.path),
+        entry.path,
+        anchor,
+        toggle,
+        range,
+      ),
+    );
+    setSelected(entry.path);
+    if (!range || !selectionAnchor.current)
+      selectionAnchor.current = entry.path;
+  }
+  function reviewDelete(items: FileEntry[]) {
+    if (!canManage || !session || !items.length) return;
+    if (items.length > 100 || items.some((entry) => !entry.revision)) {
+      setError(
+        "Select up to 100 items with current revisions. Refresh the folder if needed.",
+      );
+      return;
+    }
+    setDeleteTarget({
+      entries: items.map((entry) => Object.freeze({ ...entry })),
+      services,
+      sessionId: session.id,
+    });
+  }
   useEffect(() => {
+    if (!loading)
+      setSelection((current) => {
+        const next = current.filter((path) =>
+          entries.some((entry) => entry.path === path),
+        );
+        return next.length === current.length ? current : next;
+      });
     if (
       !loading &&
       selected &&
@@ -455,6 +539,52 @@ export function Files({
       setSelected(null);
   }, [selected, directory, query, preferences.filesShowHidden, loading]);
   function menuActions(entry?: FileEntry): MenuAction[] {
+    if (selectedEntries.length > 1)
+      return [
+        {
+          id: "copy-names",
+          label: `Copy ${selectedEntries.length} names`,
+          run: () =>
+            void copyText(selectedEntries.map((item) => item.name).join("\n")),
+        },
+        {
+          id: "copy-paths",
+          label: `Copy ${selectedEntries.length} paths`,
+          shortcut: "Ctrl+C",
+          run: copySelection,
+        },
+        {
+          id: "delete-selection",
+          label: `Delete ${selectedEntries.length} items…`,
+          shortcut: "Delete",
+          disabled:
+            !canManage ||
+            selectedEntries.length > 100 ||
+            selectedEntries.some((item) => !item.revision),
+          run: () => reviewDelete(selectedEntries),
+        },
+        {
+          id: "select-all",
+          label: "Select all",
+          shortcut: "Ctrl+A",
+          separatorBefore: true,
+          run: () => setSelection(entries.map((item) => item.path)),
+        },
+        {
+          id: "clear-selection",
+          label: "Clear selection",
+          shortcut: "Esc",
+          run: () => setSelection([]),
+        },
+        {
+          id: "sort-view",
+          label: "Sort and view…",
+          separatorBefore: true,
+          run: () => {
+            if (menu) setMenu({ x: menu.x, y: menu.y, sort: true });
+          },
+        },
+      ];
     return [
       {
         id: "upload",
@@ -641,6 +771,14 @@ export function Files({
         },
       },
       {
+        id: "select-all",
+        label: "Select all",
+        shortcut: "Ctrl+A",
+        disabled: loading || !entries.length,
+        separatorBefore: true,
+        run: () => setSelection(entries.map((item) => item.path)),
+      },
+      {
         id: "hidden-files",
         label: preferences.filesShowHidden
           ? "Hide hidden files"
@@ -719,7 +857,7 @@ export function Files({
           return;
         event.preventDefault();
         event.stopPropagation();
-        const entry = entries.find((entry) => entry.path === selected);
+        const entry = singleEntry;
         if (entry) cut(entry);
       }}
       onPaste={(event) => {
@@ -755,11 +893,18 @@ export function Files({
           copySelection();
         } else if (command && event.key.toLowerCase() === "x" && !document) {
           event.preventDefault();
-          const entry = entries.find((entry) => entry.path === selected);
+          const entry = singleEntry;
           if (entry) cut(entry);
         } else if (command && event.key.toLowerCase() === "v" && !document) {
           event.preventDefault();
           void pasteInto(directory.path);
+        } else if (command && event.key.toLowerCase() === "a" && !document) {
+          event.preventDefault();
+          if (!loading) setSelection(entries.map((entry) => entry.path));
+        } else if (event.key === "Escape" && !document && selection.length) {
+          event.preventDefault();
+          setSelection([]);
+          if (cutState.item && !cutState.working) cutClipboard.clear();
         } else if (
           event.key === "Escape" &&
           !document &&
@@ -773,7 +918,12 @@ export function Files({
           canManage &&
           !document
         ) {
-          const entry = entries.find((entry) => entry.path === selected);
+          if (event.key === "Delete" && selectedEntries.length > 1) {
+            event.preventDefault();
+            reviewDelete(selectedEntries);
+            return;
+          }
+          const entry = singleEntry;
           if (entry?.revision) {
             event.preventDefault();
             setOperation({
@@ -800,7 +950,7 @@ export function Files({
           setMenu({
             x: bounds.left + 12,
             y: bounds.bottom,
-            entry: entries.find((e) => e.path === selected),
+            entry: singleEntry,
           });
         }
       }}
@@ -864,15 +1014,11 @@ export function Files({
             title="Download selected file"
             disabled={
               !canDownload ||
-              !entries.some(
-                (entry) =>
-                  entry.path === selected &&
-                  entry.kind === "file" &&
-                  entry.revision,
-              )
+              singleEntry?.kind !== "file" ||
+              !singleEntry.revision
             }
             onClick={() => {
-              const entry = entries.find((entry) => entry.path === selected);
+              const entry = singleEntry;
               if (entry) void download(entry);
             }}
           >
@@ -923,11 +1069,15 @@ export function Files({
           </button>
           <button
             className="icon-button"
-            aria-label="Folder actions"
-            title="Folder actions"
+            aria-label={
+              selectedEntries.length ? "Selection actions" : "Folder actions"
+            }
+            title={
+              selectedEntries.length ? "Selection actions" : "Folder actions"
+            }
             onClick={(event) => {
               const bounds = event.currentTarget.getBoundingClientRect();
-              setMenu({ x: bounds.left, y: bounds.bottom });
+              setMenu({ x: bounds.left, y: bounds.bottom, entry: singleEntry });
             }}
           >
             <MoreHorizontal size={17} />
@@ -1049,10 +1199,15 @@ export function Files({
           <div
             className="file-table"
             aria-busy={loading}
+            onClick={(event) => {
+              if (!(event.target as HTMLElement).closest("button"))
+                setSelection([]);
+            }}
             onContextMenu={(event) => {
               if ((event.target as HTMLElement).closest(".file-row")) return;
               event.preventDefault();
               setSelected(null);
+              setSelection([]);
               setMenu({ x: event.clientX, y: event.clientY });
             }}
           >
@@ -1112,15 +1267,22 @@ export function Files({
                       : FileText;
                 return (
                   <button
-                    className={`file-row ${selected === entry.path ? "active" : ""} ${cutState.item?.entry.path === entry.path ? "cut-entry" : ""}`}
+                    className={`file-row ${selection.includes(entry.path) ? "active" : ""} ${cutState.item?.entry.path === entry.path ? "cut-entry" : ""}`}
                     key={entry.path}
-                    onClick={() => setSelected(entry.path)}
+                    onClick={(event) =>
+                      choose(
+                        entry,
+                        event.ctrlKey || event.metaKey,
+                        event.shiftKey,
+                      )
+                    }
                     onFocus={() => setSelected(entry.path)}
-                    aria-pressed={selected === entry.path}
+                    aria-pressed={selection.includes(entry.path)}
                     onContextMenu={(event) => {
                       event.preventDefault();
                       event.stopPropagation();
                       setSelected(entry.path);
+                      if (!selection.includes(entry.path)) choose(entry);
                       event.currentTarget.focus();
                       setMenu({ x: event.clientX, y: event.clientY, entry });
                     }}
@@ -1129,6 +1291,10 @@ export function Files({
                       if (e.key === "Enter") {
                         e.preventDefault();
                         void open(entry);
+                      }
+                      if (e.key === " ") {
+                        e.preventDefault();
+                        choose(entry, e.ctrlKey || e.metaKey, e.shiftKey);
                       }
                       const index = entries.indexOf(entry);
                       const next =
@@ -1143,6 +1309,12 @@ export function Files({
                                 : -1;
                       if (next >= 0) {
                         e.preventDefault();
+                        if (!(e.ctrlKey || e.metaKey) || e.shiftKey)
+                          choose(
+                            entries[next],
+                            e.ctrlKey || e.metaKey,
+                            e.shiftKey,
+                          );
                         root.current
                           ?.querySelectorAll<HTMLButtonElement>(".file-row")
                           [next]?.focus();
@@ -1185,12 +1357,17 @@ export function Files({
           <TransferPanel rows={transfers} queue={queue} />
         )}
         <footer className="files-footer">
-          <span>{entries.length} items</span>
-          {selected && (
+          <span aria-live="polite">
+            {entries.length} items
+            {selectedEntries.length
+              ? ` · ${selectedEntries.length} selected`
+              : ""}
+          </span>
+          {singleEntry && (
             <button
               disabled={!connected}
               onClick={() => {
-                const entry = entries.find((e) => e.path === selected);
+                const entry = singleEntry;
                 if (entry) void open(entry);
               }}
             >
@@ -1314,6 +1491,23 @@ export function Files({
               );
             setError("");
           }}
+        />
+      )}
+      {deleteTarget && (
+        <DeleteFilesDialog
+          entries={deleteTarget.entries}
+          services={deleteTarget.services}
+          available={
+            connected &&
+            services === deleteTarget.services &&
+            session?.id === deleteTarget.sessionId &&
+            !!session.info.capabilities.includes("files.manage")
+          }
+          close={() => {
+            setDeleteTarget(null);
+            refresh.current();
+          }}
+          setBusy={setBusy}
         />
       )}
     </div>
