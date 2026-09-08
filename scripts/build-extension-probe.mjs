@@ -42,6 +42,32 @@ await writeFile(
   ".local/native-extension-probe/desktop-client.js",
   desktop.outputFiles[0].text,
 );
+const custom =
+  process.env.SHELLCANVAS_SDK_PROBE === "1"
+    ? {
+        outputFiles: [
+          {
+            text: JSON.parse(
+              await readFile(
+                ".local/sdk-verification/custom-probe.shellcanvas.json",
+                "utf8",
+              ),
+            ).script,
+          },
+        ],
+      }
+    : await bundle({
+        entryPoints: ["tests/fixtures/custom-service-client.ts"],
+        bundle: true,
+        format: "iife",
+        platform: "browser",
+        target: "es2022",
+        write: false,
+      });
+await writeFile(
+  ".local/native-extension-probe/custom-client.js",
+  custom.outputFiles[0].text,
+);
 await build({
   build: {
     outDir: ".local/native-extension-probe/dist",

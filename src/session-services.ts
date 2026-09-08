@@ -14,6 +14,7 @@ import {
 } from "./sdk";
 import { notifyFileChanges, beginFileRelocation } from "./file-events";
 import { fileClipboard } from "./file-clipboard";
+import { RpcError } from "./extensions/rpc";
 
 /** Lifetime and capability checks complement native ownership checks; not a sandbox. */
 export function bindSession(
@@ -27,6 +28,7 @@ export function bindSession(
   let currentSession = session;
   const changedAt = new Map<Capability, number>();
   const tickets = new Map<number, TransferTicket>();
+  const customCalls = new Set<AbortController>();
   async function adopt(
     result: TransferTicket[],
     expected: number,
@@ -84,6 +86,56 @@ export function bindSession(
     notifyFileChanges(session!.id, relocate ? "relocation" : "content");
   }
   const services: SessionServices = {
+    custom:
+      backend.custom && session
+        ? {
+            async list(signal) {
+              const epoch = lifetimeEpoch;
+              if (closed) throw new RpcError("closed", "Workspace is closed");
+              const result = await backend.custom!.list(session.id, signal);
+              if (closed || epoch !== lifetimeEpoch)
+                throw new RpcError("closed", "Workspace changed");
+              return result;
+            },
+            async call(binding, method, params, signal) {
+              const epoch = lifetimeEpoch;
+              if (closed) throw new RpcError("closed", "Workspace is closed");
+              const controller = new AbortController();
+              const cancel = () => controller.abort();
+              customCalls.add(controller);
+              signal?.addEventListener("abort", cancel, { once: true });
+              if (signal?.aborted) cancel();
+              try {
+                if (controller.signal.aborted)
+                  throw new RpcError(
+                    "aborted",
+                    "Service call canceled before dispatch",
+                  );
+                const result = await backend.custom!.call(
+                  session.id,
+                  binding,
+                  method,
+                  params,
+                  controller.signal,
+                );
+                if (closed || epoch !== lifetimeEpoch)
+                  throw new RpcError(
+                    "closed",
+                    "Workspace changed; the remote outcome may be uncertain. Inspect before retrying.",
+                  );
+                if (controller.signal.aborted)
+                  throw new RpcError(
+                    "aborted",
+                    "Service call canceled; dispatched effects may have occurred.",
+                  );
+                return result;
+              } finally {
+                signal?.removeEventListener("abort", cancel);
+                customCalls.delete(controller);
+              }
+            },
+          }
+        : undefined,
     cancelClipboardPreparation: (operation) =>
       backend.cancelClipboardPreparation(check("files.read"), operation),
     systemClipboardSequence: async () => {
@@ -396,6 +448,8 @@ export function bindSession(
     },
     dispose: () => {
       closed = true;
+      for (const controller of customCalls) controller.abort();
+      customCalls.clear();
       ++generation;
       lifetimeEpoch = generation;
       fileClipboard(services).dispose();

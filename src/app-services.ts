@@ -7,6 +7,7 @@ import type {
 } from "./sdk";
 import { shareFileClipboard } from "./file-clipboard";
 import { transferCapability } from "./sdk";
+import { RpcError } from "./extensions/rpc";
 
 const scopes = new WeakMap<
   SessionServices,
@@ -50,6 +51,25 @@ export function scopeAppServices(
     return { ...ticket };
   }
   const services: SessionServices = {
+    custom: base.custom
+      ? {
+          list: (signal) => base.custom!.list(signal),
+          async call(binding, method, params, signal) {
+            const item = (await base.custom!.list(signal)).find(
+              (item) => item.name === method && item.binding === binding,
+            );
+            if (
+              !item ||
+              !app.customPermissions?.includes(`services.${item.service}`)
+            )
+              throw new RpcError(
+                "denied",
+                "This app did not declare the required custom service grant",
+              );
+            return base.custom!.call(binding, method, params, signal);
+          },
+        }
+      : undefined,
     cancelClipboardPreparation: async (operation) => {
       if (!preparations.has(operation))
         throw new Error("Clipboard preparation does not belong to this app");

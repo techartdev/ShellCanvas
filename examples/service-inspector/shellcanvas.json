@@ -1,0 +1,8 @@
+{
+  "format": 1,
+  "kind": "app",
+  "id": "org.shellcanvas.service-inspector",
+  "version": "0.1.0",
+  "title": "Device Services",
+  "permissions": ["services.acme"]
+}

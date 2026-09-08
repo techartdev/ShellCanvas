@@ -18,6 +18,9 @@ import {
   indexedCatalogStorage,
 } from "../../src/extensions/catalog";
 import type { HostServices, Session, TerminalSession } from "../../src/sdk";
+import type { ServiceMethodInfo } from "@shellcanvas/app-sdk";
+import customScript from "../../.local/native-extension-probe/custom-client.js?raw";
+import customStyle from "../../examples/service-inspector/style.css?raw";
 import "../../src/styles.css";
 const native = isTauri(),
   checks: Record<string, boolean> = {},
@@ -277,6 +280,111 @@ async function cleanup() {
   for (const item of await adapterServices.list())
     if (item.id === packageId)
       await adapterServices.remove(item.id, item.revision);
+  await runtime.catalog.load();
+  for (const item of runtime.catalog.snapshot())
+    if (
+      ["org.example.custom-denied", "org.example.custom-granted"].includes(
+        item.package.id,
+      )
+    )
+      await runtime.catalog.remove(item.package.id, item.generation);
+}
+type CustomReply = { value?: unknown; code?: string; error?: string };
+async function askCustom(
+  frame: HTMLIFrameElement,
+  action: string,
+  method?: string,
+): Promise<CustomReply> {
+  const id = crypto.randomUUID();
+  return new Promise((resolve, reject) => {
+    const receive = (event: MessageEvent) => {
+      if (
+        event.source !== frame.contentWindow ||
+        event.data?.type !== "custom-service-result" ||
+        event.data.id !== id
+      )
+        return;
+      clearTimeout(timer);
+      window.removeEventListener("message", receive);
+      resolve(event.data);
+    };
+    const timer = setTimeout(() => {
+      window.removeEventListener("message", receive);
+      reject(new Error("Custom-service frame did not answer"));
+    }, 5000);
+    window.addEventListener("message", receive);
+    frame.contentWindow?.postMessage(
+      { type: "custom-service-probe", id, action, method },
+      "*",
+    );
+  });
+}
+async function installCustom(granted: boolean) {
+  const title = granted ? "Device Services granted" : "Device Services denied";
+  const picker = await until(
+    () =>
+      document.querySelector<HTMLInputElement>(
+        'input[aria-label="Select app package"]',
+      ),
+    "app picker",
+  );
+  const data = new DataTransfer();
+  data.items.add(
+    new File(
+      [
+        JSON.stringify({
+          format: 1,
+          kind: "app",
+          id: granted
+            ? "org.example.custom-granted"
+            : "org.example.custom-denied",
+          version: "1.0.0",
+          title,
+          permissions: ["services.acme"],
+          script: customScript,
+          style: customStyle,
+        }),
+      ],
+      "device-services.shellcanvas.json",
+      { type: "application/json" },
+    ),
+  );
+  picker.files = data.files;
+  picker.dispatchEvent(new Event("change", { bubbles: true }));
+  const review = await until(
+    () => document.querySelector(".extension-review"),
+    "app permission review",
+  );
+  const permission = await label(
+    "Use acme services on the selected connection",
+    review,
+  );
+  if (!granted) permission.click();
+  await click("Install app", review);
+  const card = await until(
+    () =>
+      Array.from(document.querySelectorAll(".extension-list article")).find(
+        (item) =>
+          item.querySelector("h3")?.textContent?.trim().startsWith(title),
+      ),
+    "custom app card",
+  );
+  await click("Open app", card);
+  const frame = await until(
+    () => document.querySelector<HTMLIFrameElement>(`iframe[title="${title}"]`),
+    "custom frame",
+  );
+  await until(() => frame.getAttribute("src"), "native app document");
+  // Read-only readiness retries; a native frame URL can precede script startup.
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      await askCustom(frame, "list");
+      return frame;
+    } catch {
+      if (attempt === 2) throw new Error("Custom app failed to initialize");
+    }
+  }
+  throw new Error("Custom app failed to initialize");
 }
 async function run() {
   await cleanup();
@@ -302,6 +410,7 @@ async function run() {
   let form = await openConnections();
   input(await label("Workspace name", form), "Adapter playground");
   input(await label("Example private token", form), "synthetic-token");
+  input(await label("Additional services", form), "acme");
   await click("Open workspace", form);
   await until(() => sessions.length === 1, "adapter session");
   await until(
@@ -325,6 +434,57 @@ async function run() {
     "console echo",
   );
   checks.installedConsole = true;
+  let customFrame: HTMLIFrameElement | undefined;
+  let originalBinding: string | undefined;
+  if (native) {
+    await named("Open Apps");
+    await click("Desktop apps");
+    const denied = await installCustom(false);
+    const discovery = (await askCustom(denied, "list"))
+      .value as ServiceMethodInfo[];
+    checks.customPermissionDiscovery = discovery.some(
+      (item) =>
+        item.name === "acme.echo" &&
+        item.available &&
+        !item.granted &&
+        !!item.source,
+    );
+    checks.customPermissionDenied =
+      (await askCustom(denied, "call")).code === "denied";
+    (
+      await until(
+        () =>
+          document.querySelector<HTMLButtonElement>(
+            'button[aria-label^="Close Device Services denied"]',
+          ),
+        "close denied app",
+      )
+    ).click();
+    customFrame = await installCustom(true);
+    const catalog = (await askCustom(customFrame, "list"))
+      .value as ServiceMethodInfo[];
+    originalBinding = catalog.find((item) => item.name === "acme.echo")?.source;
+    checks.customSdkEcho =
+      JSON.stringify((await askCustom(customFrame, "call")).value) ===
+      JSON.stringify({ message: "fixture", nested: [1, true, null] });
+    checks.customAdapterError =
+      (await askCustom(customFrame, "call", "acme.fail")).code === "denied";
+    checks.customCancellation =
+      (await askCustom(customFrame, "cancel")).code === "aborted";
+    const methods = await services.custom!.list(sessions[0].id);
+    const count = methods.find((item) => item.name === "acme.cancelCount")!;
+    checks.customCancellationReachedProcess =
+      Number(
+        await services.custom!.call(
+          sessions[0].id,
+          count.binding,
+          count.name,
+          null,
+        ),
+      ) > 0;
+    await closeApps();
+    await stage("custom-services");
+  }
   await named("Open Apps");
   await click("Connection adapters");
   version = 2;
@@ -357,6 +517,13 @@ async function run() {
   );
   await closeApps();
   await click("Disconnect");
+  if (customFrame) {
+    const unavailable = (await askCustom(customFrame, "list"))
+      .value as ServiceMethodInfo[];
+    checks.customDisconnectDiscovery = unavailable.some(
+      (item) => item.name === "acme.echo" && !item.available,
+    );
+  }
   await click("Reconnect host");
   form = await until(
     () => document.querySelector<HTMLDialogElement>(".adapter-connect"),
@@ -378,6 +545,28 @@ async function run() {
   );
   checks.reconnectPreservesWindows =
     sessions[1].id !== sessions[0].id && !!document.querySelector(".file-main");
+  if (customFrame) {
+    checks.customReconnectNeedsReview =
+      (await askCustom(customFrame, "call")).code === "unavailable";
+    await click("Use reconnected host");
+    const updated = (await askCustom(customFrame, "list"))
+      .value as ServiceMethodInfo[];
+    const method = updated.find((item) => item.name === "acme.echo");
+    checks.customReconnectFreshBinding =
+      !!method?.source &&
+      method.source !== originalBinding &&
+      method.available &&
+      !(await askCustom(customFrame, "call")).error;
+    (
+      await until(
+        () =>
+          document.querySelector<HTMLButtonElement>(
+            'button[aria-label^="Close Device Services granted"]',
+          ),
+        "close granted app",
+      )
+    ).click();
+  }
   if (native) {
     checks.oldConsoleRetired = await terminal.write("retired\r\n").then(
       () => false,

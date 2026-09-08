@@ -186,6 +186,7 @@ export interface ClipboardPreparation {
   onProgress?: (progress: TransferProgress) => void;
 }
 export interface HostServices {
+  custom?: import("./custom-services").CustomBackend;
   cancelClipboardPreparation(
     sessionId: number,
     operation: string,
@@ -295,6 +296,7 @@ export interface HostServices {
 }
 /** Apps receive a fixed session handle, never connection administration. */
 export interface SessionServices {
+  custom?: import("./custom-services").CustomAccess;
   cancelClipboardPreparation(operation: string): Promise<void>;
   systemClipboardSequence(): Promise<number>;
   pasteSystemFiles(parent: string): Promise<TransferTicket[] | null>;
@@ -369,6 +371,8 @@ export interface AppContext {
   reportError(message: string): void;
 }
 export interface DesktopApp {
+  /** Custom service grants used by trusted bundled apps and installed app descriptors. */
+  customPermissions?: readonly string[];
   /** Bundled SDK version, not a runtime permission or compatibility guarantee. */
   apiVersion: 1;
   id: string;

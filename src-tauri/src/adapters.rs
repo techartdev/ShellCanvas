@@ -47,13 +47,15 @@ impl AdapterConnectionOptions {
             return Err("Connection source identities must be unique".into());
         }
         if self.bindings.iter().any(|(role, key)| {
-            !["files", "console"].contains(&role.as_str()) || !keys.contains(key)
+            (!["files", "console"].contains(&role.as_str())
+                && !shellcanvas_services::custom_service_id(role))
+                || !keys.contains(key)
         }) || self
             .sources
             .iter()
             .any(|source| !self.bindings.values().any(|key| *key == source.key))
         {
-            return Err("Choose explicit file or console sources for this workspace".into());
+            return Err("Choose explicit service sources for this workspace".into());
         }
         Ok(())
     }
@@ -105,22 +107,22 @@ async fn connect_workspace(
             .map_err(|error| error.to_string())?;
         let files = process.files();
         let terminal = process.terminal();
-        let lifecycle = Arc::new(process);
+        let lifecycle = Arc::new(process.clone());
         let resource = crate::connection_resource::ConnectionResource::new(identity, lifecycle);
-        connections.push((key, resource, files, terminal));
+        connections.push((key, resource, files, terminal, process));
     }
     let mut active = crate::workspace_services::WorkspaceServices::new(
         connections
             .iter()
-            .map(|(_, resource, _, _)| resource.clone())
+            .map(|(_, resource, _, _, _)| resource.clone())
             .collect(),
     )?;
     let mut capabilities = Vec::new();
     let mut notices = Vec::new();
     for (role, key) in &options.bindings {
-        let (_, resource, files, terminal) = connections
+        let (_, resource, files, terminal, process) = connections
             .iter()
-            .find(|(id, _, _, _)| id == key)
+            .find(|(id, _, _, _, _)| id == key)
             .ok_or("Missing connection source")?;
         match role.as_str() {
             "files" => {
@@ -142,7 +144,12 @@ async fn connect_workspace(
                         .push("A terminal is unavailable through the selected connection.".into());
                 }
             }
-            _ => return Err("Unsupported binding role".into()),
+            custom => {
+                let service = process.custom(custom).ok_or_else(|| {
+                    format!("The selected adapter does not advertise service {custom}")
+                })?;
+                active.bind_custom(resource, service)?;
+            }
         }
     }
     active.advertise_capabilities(&capabilities);

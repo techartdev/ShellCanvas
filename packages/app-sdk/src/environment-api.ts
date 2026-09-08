@@ -11,7 +11,9 @@ export interface AppEnvironment {
 }
 export interface ServiceMethodInfo {
   readonly name: string;
-  readonly version: 1;
+  readonly version: number;
+  /** Opaque custom service binding; absent for built-in system methods. */
+  readonly source?: string;
   readonly permissions: readonly string[];
   readonly granted: boolean;
   readonly available: boolean;

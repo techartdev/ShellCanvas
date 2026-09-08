@@ -4,6 +4,8 @@
 use anyhow::Result;
 use async_trait::async_trait;
 pub mod connection;
+pub mod custom;
+pub use custom::*;
 pub mod copy;
 pub use connection::*;
 pub use copy::*;

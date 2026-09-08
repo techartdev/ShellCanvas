@@ -18,6 +18,8 @@ import { indexedAppStorage } from "./app-storage";
 import type { AppStorageBackend } from "./storage-api";
 import { RuntimeEnvironment } from "./environment";
 import type { AppEnvironment } from "./environment-api";
+import type { CustomAccess } from "../custom-services";
+import { RpcError } from "./rpc";
 import {
   clipboard as systemClipboard,
   type ClipboardService,
@@ -38,6 +40,9 @@ function descriptor(
     scope: capabilities.length ? "host" : "local",
     requires: [],
     optional: capabilities,
+    customPermissions: entry.grants.filter((grant) =>
+      grant.startsWith("services."),
+    ),
     icon: PanelsTopLeft,
     component,
     window: { multiple: true },
@@ -59,6 +64,31 @@ function RuntimeDocument({
   clipboard: ClipboardService;
 }) {
   const [accepted, accept] = useState(context.system);
+  const [acceptedCustom, acceptCustom] = useState(context.services.custom);
+  const customTarget = useRef(acceptedCustom);
+  customTarget.current = acceptedCustom;
+  const custom = useMemo<CustomAccess>(
+    () => ({
+      list: async (signal) =>
+        customTarget.current ? customTarget.current.list(signal) : [],
+      async call(binding, method, params, signal) {
+        const original = customTarget.current;
+        if (!original)
+          throw new RpcError(
+            "unavailable",
+            "No custom services in this workspace",
+          );
+        const result = await original.call(binding, method, params, signal);
+        if (original !== customTarget.current)
+          throw new RpcError(
+            "closed",
+            "Service connection changed; the remote outcome may be uncertain. Inspect before retrying.",
+          );
+        return result;
+      },
+    }),
+    [],
+  );
   const target = useRef(accepted);
   target.current = accepted;
   const identities = useRef(new WeakMap<SystemAPI, string>());
@@ -112,7 +142,10 @@ function RuntimeDocument({
           <span>Your draft is preserved. This host has a new connection.</span>
           <button
             disabled={!context.connected}
-            onClick={() => accept(context.system)}
+            onClick={() => {
+              accept(context.system);
+              acceptCustom(context.services.custom);
+            }}
           >
             Use reconnected host
           </button>
@@ -128,6 +161,7 @@ function RuntimeDocument({
           storage={storage}
           clipboard={clipboard}
           environment={environment}
+          custom={custom}
         />
       </div>
     </div>

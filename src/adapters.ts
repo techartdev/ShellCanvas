@@ -37,7 +37,7 @@ export interface AdapterSource {
 export interface AdapterConnectionOptions {
   name: string;
   sources: AdapterSource[];
-  bindings: Partial<Record<"files" | "console", string>>;
+  bindings: Record<string, string>;
 }
 export interface AdapterProfile extends AdapterConnectionOptions {
   kind: "adapters";

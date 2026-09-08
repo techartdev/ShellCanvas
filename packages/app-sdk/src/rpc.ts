@@ -28,7 +28,7 @@ export interface RpcTransport {
   close(): void;
 }
 export interface RpcMethod {
-  /** All grants must be held. Empty grants are reserved for harmless lifecycle queries. */
+  /** All static grants must be held. Dynamic dispatchers must check their target's grants in invoke. */
   grants: readonly string[];
   /** Live availability may change; the operation handler and its owner remain pinned. */
   available?(): boolean;

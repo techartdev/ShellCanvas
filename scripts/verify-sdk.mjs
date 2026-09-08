@@ -121,6 +121,32 @@ try {
     join(output, "desktop-probe.shellcanvas.json"),
   );
   report.checks.independentLifecycleFixture = true;
+  // The custom-device example is also built using only the installed SDK.
+  copyFileSync(
+    join(repo, "examples/service-inspector/main.ts"),
+    join(project, "app.ts"),
+  );
+  copyFileSync(
+    join(repo, "examples/service-inspector/style.css"),
+    join(project, "style.css"),
+  );
+  copyFileSync(
+    join(repo, "examples/service-inspector/shellcanvas.json"),
+    join(project, "shellcanvas.json"),
+  );
+  writeFileSync(
+    join(project, "main.ts"),
+    readFileSync(
+      join(repo, "tests/fixtures/custom-service-client.ts"),
+      "utf8",
+    ).replace('"../../examples/service-inspector/main"', '"./app"'),
+  );
+  run(project, [npm, "run", "build"]);
+  copyFileSync(
+    join(project, "dist/app.shellcanvas.json"),
+    join(output, "custom-probe.shellcanvas.json"),
+  );
+  report.checks.independentCustomServiceFixture = true;
   report.success = true;
 } catch (error) {
   report.error = String(error);

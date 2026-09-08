@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 import { Channel, invoke, isTauri } from "@tauri-apps/api/core";
+import { nativeCustomServices } from "./custom-services";
 import type {
   HostServices,
   HostKeyChallenge,
@@ -9,6 +10,7 @@ import type {
 } from "./sdk";
 export const native = isTauri();
 export const nativeServices: HostServices = {
+  custom: nativeCustomServices,
   cancelClipboardPreparation: (sessionId, operation) =>
     invoke("cancel_clipboard_preparation", { sessionId, operation }),
   systemClipboardSequence: () => invoke("system_clipboard_sequence"),

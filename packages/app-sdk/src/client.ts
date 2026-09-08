@@ -21,10 +21,11 @@ export interface ExtensionClient {
   readonly environment: { get(signal?: AbortSignal): Promise<AppEnvironment> };
   readonly services: {
     list(signal?: AbortSignal): Promise<readonly ServiceMethodInfo[]>;
+    call(method: string, params?: Json, signal?: AbortSignal): Promise<Json>;
   };
   readonly events: AppEventsAPI;
   readonly clipboard: AppClipboardAPI;
-  /** Namespaced services use the same broker; method availability never implies permission. */
+  /** Low-level broker call. Use services.call for adapter methods; availability is not permission. */
   call(method: string, params?: Json, signal?: AbortSignal): Promise<Json>;
   dispose(): void;
 }
@@ -176,6 +177,8 @@ export function connectToShellCanvas(
             )) as unknown as AppEnvironment,
         }),
         services: Object.freeze({
+          call: (method: string, params: Json = null, signal?: AbortSignal) =>
+            peer.call("system.services.call", { method, params }, signal),
           list: async (signal?: AbortSignal) =>
             (await peer.call(
               "system.services.list",

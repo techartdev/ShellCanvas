@@ -14,7 +14,8 @@ interface SourceForm {
   key: string;
   id: string;
   configuration: Configuration;
-  roles: ("files" | "console")[];
+  roles: string[];
+  customInput?: string;
 }
 export function ConnectAdapterDialog({
   services,
@@ -302,6 +303,35 @@ export function ConnectAdapterDialog({
                       </label>
                     ))}
                   </div>
+                  <label className="form-field">
+                    Additional services
+                    <input
+                      disabled={!!initial}
+                      placeholder="Service IDs, separated by commas"
+                      value={
+                        source.customInput ??
+                        source.roles
+                          .filter(
+                            (role) => role !== "files" && role !== "console",
+                          )
+                          .join(", ")
+                      }
+                      onChange={(event) =>
+                        change(source.key, {
+                          customInput: event.target.value,
+                          roles: [
+                            ...source.roles.filter(
+                              (role) => role === "files" || role === "console",
+                            ),
+                            ...event.target.value
+                              .split(",")
+                              .map((role) => role.trim())
+                              .filter(Boolean),
+                          ],
+                        })
+                      }
+                    />
+                  </label>
                   {item?.configuration.map((field) => (
                     <label className="form-field" key={field.id}>
                       {field.label}

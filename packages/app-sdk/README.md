@@ -51,10 +51,11 @@ try {
 | Environment/discovery  | `environment.get(signal?)`, `services.list(signal?)`                          | Intrinsic; individual methods still enforce their grants                                    |
 | State events           | `events.subscribe(listener, onError?)` returns an unsubscribe function        | Intrinsic; event contents are filtered by the host                                          |
 | Text clipboard         | `clipboard.readText(signal?)`, `writeText(text, signal?)`                     | `system.clipboard.read` or `system.clipboard.write`                                         |
+| Custom device services | `services.call(method, params?, signal?)`                                     | `services.<service-id>` for the selected adapter service                                    |
 
 All methods are asynchronous except subscription disposal. `connectToShellCanvas(timeoutMs?)` must run inside a desktop-owned app frame. `dispose()` closes the instance channel; page teardown does this automatically. Named types, `Json`, `RpcCode` and `RpcError` are exported from the package root. Manifest parsers/types are available from `@shellcanvas/app-sdk/package`.
 
-`call(method, params?, signal?)` uses the same explicit broker method map and permission checks. It is not a native-command escape hatch. Discover methods first; `granted` and `available` are separate. Unregistered custom adapter methods are not yet exposed to UI apps.
+`call(method, params?, signal?)` uses the explicit broker method map and permission checks. It is not a native-command escape hatch. Use `services.call` for custom adapter methods. Discover methods first; `granted` and `available` are separate. Custom entries include the advertised service version and an opaque `source` identity. Declare `services.acme.sensor` to request access to a selected `acme.sensor` service; all its advertised methods share that grant. The app never supplies a native session or source ID. Custom JSON result validation belongs to the app and adapter contract.
 
 ## Ownership, cancellation and errors
 
@@ -82,4 +83,4 @@ Edit `main.ts`, `style.css` and `shellcanvas.json`. The bundled schemas describe
 
 All JavaScript must be bundled. External assets, runtime imports, networking, native Tauri IPC and Node APIs are unavailable in UI app frames. Use provider-owned desktop services for remote access. Native adapters are separate, explicitly trusted executable packages.
 
-The client uses app channel v1 and format-1 packages. Discover optional methods instead of assuming every host has them. Version 0.x APIs remain subject to change; pin the SDK and test against the target desktop. This package does not claim a stable future ABI, a marketplace, non-Windows native isolation, arbitrary adapter-service routing or complete virtual-OS coverage.
+The client uses app channel v1 and format-1 packages. Discover optional methods instead of assuming every host has them. Version 0.x APIs remain subject to change; pin the SDK and test against the target desktop. This package does not claim a stable future ABI, a marketplace, non-Windows native isolation or complete virtual-OS coverage.

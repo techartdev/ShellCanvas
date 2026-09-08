@@ -31,4 +31,6 @@ The fixture installs the independently built starter through the real Apps manag
 
 For the existing lifecycle/permissions/clipboard walkthrough using the same independently installed SDK, set `SHELLCANVAS_SDK_PROBE=1` for the build and use `src-tauri/tauri.desktop-probe.conf.json`. Restore the normal executable afterward with `npm run verify -- --native`. Browser inspection is also available at `tests/fixtures/sdk-starter-probe.html?inspect=1` after generating the artifacts.
 
-This establishes the app SDK packaging path. The standalone adapter SDK/schema/starter, repository AI skills, custom-service routing, further lifecycle actions and the other [kernel delivery gates](kernel-roadmap.md) remain open. No package has been published to a registry by this workflow.
+The SDK also supports [custom adapter services](custom-services.md) through explicit per-service grants. `verify:sdk` independently builds the Device Services example, which uses `services.list` and `services.call`. Set `SHELLCANVAS_SDK_PROBE=1` and build `src-tauri/tauri.adapter-probe.conf.json` to exercise that artifact alongside the separate adapter process in the Windows fixture.
+
+This establishes the app SDK packaging path. The standalone adapter SDK/schema/starter, repository AI skills, further lifecycle actions and the other [kernel delivery gates](kernel-roadmap.md) remain open. No package has been published to a registry by this workflow.

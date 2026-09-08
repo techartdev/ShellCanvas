@@ -4,6 +4,39 @@ use shellcanvas_adapter_runtime::{AdapterProcess, Launch};
 use shellcanvas_services::{TerminalSize, TERMINAL_CHUNK};
 use std::{path::PathBuf, time::Duration};
 const DEADLINE: Duration = Duration::from_secs(4);
+#[tokio::test]
+async fn custom_service_bridge_preserves_catalog_errors_and_process_lifetime() {
+    let process = fixture(json!({})).await;
+    let service = process.custom("acme").unwrap();
+    assert_eq!(service.descriptor().id, "acme");
+    assert!(process.custom("system").is_none());
+    assert!(process.custom("files").is_none());
+    assert_eq!(
+        service
+            .call("acme.echo", json!({"nested":[1,true,null]}))
+            .await
+            .unwrap(),
+        json!({"nested":[1,true,null]})
+    );
+    assert_eq!(
+        service
+            .call("system.adapter.initialize", Value::Null)
+            .await
+            .unwrap_err()
+            .code,
+        "unavailable"
+    );
+    assert_eq!(
+        service
+            .call("acme.fail", Value::Null)
+            .await
+            .unwrap_err()
+            .code,
+        "denied"
+    );
+    process.close().await.unwrap();
+    assert!(service.call("acme.echo", Value::Null).await.is_err());
+}
 async fn fixture(config: Value) -> AdapterProcess {
     AdapterProcess::launch(
         Launch {

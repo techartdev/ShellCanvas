@@ -18,6 +18,8 @@ import {
 import { capabilityLabels } from "../sdk";
 import type { ClipboardService } from "../clipboard";
 import { AppClipboard } from "./clipboard-api";
+import { customMethods } from "./custom-bridge";
+import type { CustomAccess } from "../custom-services";
 
 /** Isolated app document shared by the desktop and development workbenches.
  * One effect owns one document, port and system handle. A prop change retires that instance.
@@ -31,6 +33,7 @@ export function ExtensionFrame({
   storage,
   clipboard,
   environment: suppliedEnvironment,
+  custom,
 }: {
   app: AppPackage;
   system: SystemAPI;
@@ -40,6 +43,7 @@ export function ExtensionFrame({
   storage?: AppStorageBackend;
   clipboard?: ClipboardService;
   environment?: RuntimeEnvironment;
+  custom?: CustomAccess;
 }) {
   const ref = useRef<HTMLIFrameElement>(null);
   const [error, setError] = useState("");
@@ -78,6 +82,12 @@ export function ExtensionFrame({
         app.permissions.includes(grant),
       );
       const methods = new Map(systemMethods(system, approved));
+      const customService = customMethods(
+        custom,
+        approved,
+        () => environment.snapshot().connection === "connected",
+      );
+      methods.set("system.services.call", customService.call);
       if (storage)
         for (const [name, method] of appStorageMethods(app.id, storage))
           methods.set(name, method);
@@ -115,9 +125,12 @@ export function ExtensionFrame({
       });
       methods.set("system.services.list", {
         grants: [],
-        invoke: (params) => {
+        invoke: async (params, signal) => {
           emptyOptions(params);
-          return discoverMethods(methods, approved) as unknown as Json;
+          return [
+            ...discoverMethods(methods, approved),
+            ...(await customService.list(signal)),
+          ] as unknown as Json;
         },
       });
       methods.set("system.events.next", {
@@ -185,6 +198,7 @@ export function ExtensionFrame({
     clipboard,
     environment,
     suppliedEnvironment,
+    custom,
   ]);
   return (
     <>

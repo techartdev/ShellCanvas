@@ -43,9 +43,9 @@ The Field Notes sample renders connection-state events without overwriting its e
 
 ## Discovery and invocation
 
-`services.list(signal?)` returns the actual registered method names, their contract version (currently 1), required `permissions`, `granted` state, and `available` state. Discovery includes only the app broker's method map, never the native command dispatcher. Permission denial and temporary unavailability are distinct. The broker checks permissions before availability and checks availability before invoking a handler.
+`services.list(signal?)` returns registered broker methods and selected custom service methods, their contract version (1 for built-in methods), required `permissions`, `granted` state, and `available` state. It never exposes the native command dispatcher. Permission denial and temporary unavailability are distinct. Custom entries carry an opaque `source` binding identity and the adapter's advertised service version.
 
-The method map supports namespaced custom methods, such as `acme.sensor.read`. A host-supplied `RpcMethod.available()` predicate can report changing availability without replacing the method's handler or owner. Discovery reads the same predicate as invocation. This is a building block for adapter/service registration; a runtime adapter installer and custom-service routing from provider processes remain separate roadmap work.
+The method map supports namespaced methods, such as `acme.sensor.read`. A host-supplied `RpcMethod.available()` predicate can report changing availability without replacing the method's handler or owner. Installed adapters route selected [custom services](custom-services.md) through `services.call` with per-service grants; discovery and dispatch check the same native binding. Apps must still handle connection changes after a discovery snapshot.
 
 The older standalone workbenches do not supply a full desktop environment. Their default environment is local; methods without an availability predicate report registered availability and still enforce their underlying system-scope checks. The normal desktop supplies connection/capability-aware predicates for its remote operations.
 

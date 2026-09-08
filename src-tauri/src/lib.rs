@@ -12,6 +12,7 @@ mod adapters;
 mod clipboard_stream;
 mod connection_attempts;
 mod connection_resource;
+mod custom_services;
 mod extension_frames;
 #[cfg(debug_assertions)]
 mod extension_probe;
@@ -617,6 +618,7 @@ pub fn run() {
         })
         .manage(DesktopState::default())
         .manage(adapters::AdapterJobs::default())
+        .manage(custom_services::CustomRequests::default())
         .invoke_handler(|invoke| {
             #[cfg(debug_assertions)]
             if invoke.message.command() == "review_fixture_adapter" {
@@ -632,6 +634,10 @@ pub fn run() {
             }
             let handler: fn(tauri::ipc::Invoke<tauri::Wry>) -> bool = tauri::generate_handler![
                 adapters::list_adapters,
+                custom_services::list_custom_services,
+                custom_services::begin_custom_call,
+                custom_services::cancel_custom_call,
+                custom_services::call_custom_service,
                 adapters::connect_adapters,
                 adapters::review_adapter,
                 adapters::cancel_adapter_review,
