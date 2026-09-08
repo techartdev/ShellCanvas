@@ -41,6 +41,7 @@ import type {
   Session,
 } from "./sdk";
 import { unavailableReason } from "./sdk";
+import { SystemDialogHost } from "./components/SystemDialogHost";
 const defaultServices = native ? nativeServices : previewServices;
 export default function App({
   services = defaultServices,
@@ -1020,6 +1021,7 @@ export default function App({
           }}
         />
       )}
+      <SystemDialogHost />
     </main>
   );
 }

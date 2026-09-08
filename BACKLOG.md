@@ -8,6 +8,8 @@ Prioritize a dependable working desktop over adding protocols or more bundled ap
 
 ## M1 — Extensible base (current)
 
+- [ ] **BASE-11 — System API and runtime extension core (active).** Full scope and evidence gates live in [the kernel roadmap](docs/kernel-roadmap.md). First implemented slice: window-owned message boxes, reusable remote Open/Save dialogs, text Save As workflow, cancellation and bundled Editor adoption. Runtime package loading, adapter hot switching, public SDK/starters and AI development skills remain required work; see [the system API](docs/system-api.md).
+
 - [x] **BASE-01 — Versioned bundled app registration.** Validate unique IDs, API version, scope, capabilities and layout. Derive initial apps from manifests. Gate: an app with a new ID can open without shell edits; invalid manifests fail clearly. Unit coverage and Host details provide the proof.
 - [x] **BASE-02 — Window lifecycle.** Keep minimized apps mounted; close unmounts them; dock reopens closed apps; maintain full focus order. Preserve toolbar/dock work area. Gate: three-app focus/minimize/close tests, browser walkthrough, frontend build. Files/Terminal now support multiple instances with unique identities and independent lifecycle.
 - [x] **BASE-03 — App render failure containment.** Catch rendering/lifecycle failures per app and offer reopen; host replacement resets host app boundaries. Gate: a deliberately failing development fixture leaves sibling windows usable. Async/event failures remain the app's responsibility; this is not a sandbox.

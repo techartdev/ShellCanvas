@@ -22,6 +22,8 @@ The UI never builds shell commands. Linux detection executes a small fixed set o
 
 ## Desktop apps
 
+Desktop windows now also supply a lifetime-bound `context.system` for shared message boxes, remote Open/Save pickers and revision-checked text Save As. UI requests are queued centrally and canceled with their owner; file locations remain provider-owned. The bundled Editor uses this first [system API](system-api.md). The broader [kernel and runtime-extension roadmap](kernel-roadmap.md) tracks runtime loading, process/service contracts, hot replacement, developer tools and AI skills; these are not yet delivered by the static app registry.
+
 `src/sdk.ts` defines `DesktopApp`, `AppContext`, and `HostServices`. `src/apps/registry.ts` registers the bundled apps. The shell renders windows and dock entries from that registry. Local apps can declare no SSH requirements; a calendar or calculator would not need a host session.
 
 `defineApps` checks the bundled API version, unique IDs, scope, requirements and layout. Manifests control startup, window layout and multiple-instance support; unconfigured apps use a standard frame. `src/desktop.ts` separates app IDs from unique window instance IDs and manages open/minimized state and full stacking order. Instances retain stable DOM order while CSS z-index changes focus, avoiding pointer-click loss during reordering. Close unmounts one instance and releases its resources; minimize preserves it. A per-app React error boundary contains render/lifecycle failures. This does not catch async/event errors or isolate malicious code. See [the app guide](apps.md).

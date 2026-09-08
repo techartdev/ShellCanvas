@@ -1,5 +1,15 @@
 // SPDX-License-Identifier: MPL-2.0
 import type { ComponentType } from "react";
+import type { SystemAPI } from "./system-api";
+export type {
+  SystemAPI,
+  SystemDialogs,
+  MessageBoxOptions,
+  OpenFileOptions,
+  SaveFileOptions,
+  FileSaveSelection,
+  DialogControl,
+} from "./system-api";
 export type Capability =
   | "terminal"
   | "files.read"
@@ -351,6 +361,8 @@ export interface SessionServices {
   ): Promise<TerminalSession>;
 }
 export interface AppContext {
+  /** Supplied by the desktop window. Optional only for legacy standalone embeds. */
+  system?: SystemAPI;
   unavailableReason?: string;
   connected?: boolean;
   setDocumentState?(state: {

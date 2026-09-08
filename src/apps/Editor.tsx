@@ -41,6 +41,7 @@ export function Editor({
   session,
   launch,
   services,
+  system,
   active = true,
   connected = true,
   unavailableReason,
@@ -92,6 +93,12 @@ export function Editor({
       gutter.current.scrollTop = textarea.current.scrollTop;
   }, [wrap, preferences.editorLineNumbers, preferences.editorFontSize]);
   const request = useRef(0);
+  useEffect(() => {
+    ++request.current;
+    setBusy(false);
+    setSaveAs(null);
+    setPendingPath(null);
+  }, [services, setBusy]);
   const locationState = useRef({ document, path, saveAs, pendingPath });
   locationState.current = { document, path, saveAs, pendingPath };
   useEffect(() => {
@@ -206,8 +213,68 @@ export function Editor({
   }
   function open(nextPath: string) {
     if (busy) return;
-    if (dirty) setPendingPath(nextPath);
+    if (dirty && system) {
+      const current = request.current;
+      setBusy(true);
+      void system.dialogs
+        .messageBox({
+          title: "Discard draft and open?",
+          kind: "warning",
+          message:
+            "Opening another file replaces this draft. Save or copy your changes first if you want to keep them.",
+          buttons: [
+            { id: "cancel", label: "Keep editing" },
+            { id: "discard", label: "Discard and open", destructive: true },
+          ],
+          defaultId: "cancel",
+          cancelId: "cancel",
+        })
+        .then((answer) => {
+          if (current === request.current && answer === "discard")
+            return load(nextPath);
+        })
+        .catch((error) => {
+          if (current === request.current) setError(String(error));
+        })
+        .finally(() => {
+          if (current === request.current) setBusy(false);
+        });
+    } else if (dirty) setPendingPath(nextPath);
     else void load(nextPath);
+  }
+  async function browseOpen() {
+    if (!system || busy || !connected) return;
+    const current = request.current;
+    setBusy(true);
+    setError("");
+    try {
+      const selected = await system.dialogs.openFile({
+        title: "Open a text file",
+        directory: document?.parent ?? launch?.directory,
+      });
+      if (current !== request.current || !selected?.[0]) return;
+      setBusy(false);
+      if (dirty) {
+        setBusy(true);
+        const answer = await system.dialogs.messageBox({
+          title: "Discard draft and open?",
+          kind: "warning",
+          message: "Opening this file replaces your unsaved draft.",
+          buttons: [
+            { id: "cancel", label: "Keep editing" },
+            { id: "discard", label: "Discard and open", destructive: true },
+          ],
+          defaultId: "cancel",
+          cancelId: "cancel",
+        });
+        if (current !== request.current || answer !== "discard") return;
+      }
+      await load(selected[0].path);
+    } catch (error) {
+      if (current === request.current) setError(String(error));
+    } finally {
+      if (current === request.current) setBusy(false);
+    }
   }
   async function save() {
     if (relocatingRef.current) return;
@@ -238,6 +305,36 @@ export function Editor({
   }
   async function openSaveAs() {
     if (!canCreate || relocatingRef.current) return;
+    if (system) {
+      const current = request.current;
+      setBusy(true);
+      setError("");
+      try {
+        const saved = await system.files.saveTextAs({
+          title: "Save text file",
+          directory: document?.parent ?? launch?.directory,
+          name: document?.name ?? "untitled.txt",
+          text: serialiseText(
+            buffer.text,
+            document ? lineEnding(document.text) : "LF",
+          ),
+        });
+        if (!saved || current !== request.current) return;
+        locationState.current = {
+          ...locationState.current,
+          document: saved,
+          path: saved.path,
+        };
+        setDocument(saved);
+        setPath(saved.path);
+        setStatus("Saved to remote host");
+      } catch (error) {
+        if (current === request.current) setError(String(error));
+      } finally {
+        if (current === request.current) setBusy(false);
+      }
+      return;
+    }
     const parent = document?.parent ?? launch?.directory;
     if (parent !== undefined && parent !== null) {
       setSaveAs(parent);
@@ -379,6 +476,16 @@ export function Editor({
           />
           <button disabled={busy || !connected || !path.trim()}>Open</button>
         </form>
+        {system && (
+          <button
+            aria-label="Browse remote files"
+            title="Browse remote files"
+            disabled={busy || !connected}
+            onClick={() => void browseOpen()}
+          >
+            <FolderOpen size={16} />
+          </button>
+        )}
         <button
           className="editor-save"
           aria-label="Save file"

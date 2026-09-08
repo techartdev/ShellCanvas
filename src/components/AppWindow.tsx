@@ -17,7 +17,8 @@ import {
   X,
 } from "lucide-react";
 import type { AppContext, DesktopApp } from "../sdk";
-import { unavailableReason } from "../sdk";
+import { unavailableReason, capabilityReason } from "../sdk";
+import { SystemScope } from "../system-dialogs";
 import { scopeAppServices } from "../app-services";
 import { AppBoundary } from "./AppBoundary";
 import { ContextMenu } from "./ContextMenu";
@@ -53,6 +54,35 @@ export function AppWindow({
     () => scopeAppServices(context.services, app),
     [context.services, app],
   );
+  const systemState = useRef({ context, focus });
+  systemState.current = { context, focus };
+  const systemScope = useMemo(
+    () =>
+      new SystemScope(
+        app.title,
+        appServices,
+        (capability) => {
+          const current = systemState.current.context;
+          return (
+            app.scope === "host" &&
+            [...app.requires, ...(app.optional ?? [])].includes(capability) &&
+            current.connected !== false &&
+            !!current.session &&
+            !capabilityReason(current.session, capability)
+          );
+        },
+        () => systemState.current.focus(),
+      ),
+    [app, appServices],
+  );
+  useLayoutEffect(() => {
+    systemScope.activate();
+    return () => systemScope.dispose();
+  }, [systemScope]);
+  useLayoutEffect(() => {
+    systemScope.setVisible(visible);
+    if (context.connected === false) systemScope.suspend();
+  }, [systemScope, visible, context.connected]);
   const [position, setPosition] = useState<{
     left: number;
     top: number;
@@ -456,6 +486,7 @@ export function AppWindow({
             <Component
               {...context}
               services={appServices}
+              system={systemScope.api}
               connected={context.connected !== false && !reason}
               unavailableReason={reason ?? undefined}
             />
