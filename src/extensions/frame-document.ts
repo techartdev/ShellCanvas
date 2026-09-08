@@ -11,6 +11,8 @@ export function mountAppDocument(
 ): () => void {
   let retired = false;
   let id: string | undefined;
+  let browserDocument = false;
+  let publication: ReturnType<typeof setTimeout> | undefined;
   const release = (identity: string) => {
     void invoke("release_app_frame", { id: identity }).catch((error) => {
       // The owner has already closed, so avoid updating its React state. Keep failures
@@ -37,13 +39,23 @@ export function mountAppDocument(
         if (!retired) failed(String(error));
       });
   } else {
-    frame.srcdoc = appDocument(app, token);
+    // Coalesce synthetic StrictMode setup/cleanup before starting a browser navigation.
+    publication = setTimeout(() => {
+      if (retired) return;
+      browserDocument = true;
+      frame.srcdoc = appDocument(app, token);
+    }, 0);
   }
   return () => {
     if (retired) return;
     retired = true;
-    frame.srcdoc = "";
-    frame.removeAttribute("src");
+    clearTimeout(publication);
+    // Do not enqueue a srcdoc navigation during cleanup: it can complete after
+    // the next setup's URL navigation. Unpublished StrictMode setups need no navigation.
+    if (id || browserDocument) {
+      frame.removeAttribute("srcdoc");
+      frame.src = "about:blank";
+    }
     if (id) release(id);
   };
 }

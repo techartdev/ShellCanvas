@@ -1,0 +1,52 @@
+.runtime-document {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+.runtime-document-content {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+.runtime-document-content iframe {
+  display: block;
+}
+.runtime-connection-review {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 18px;
+  background: #243c43;
+  color: #c6dfdc;
+  border-bottom: 1px solid #416163;
+  font-size: 12px;
+}
+.runtime-connection-review button {
+  flex-shrink: 0;
+  border: 1px solid #739c93;
+  border-radius: 7px;
+  padding: 8px 12px;
+  color: #e0f3eb;
+  background: #36564f;
+  cursor: pointer;
+}
+.runtime-connection-review button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.dock-app-icon.apps {
+  background: linear-gradient(145deg, #91b8ad, #507d79);
+  color: #193b3b;
+}
+.launcher {
+  max-height: calc(100vh - 150px);
+  overflow-y: auto;
+}
+@media (max-width: 700px) {
+  .runtime-connection-review {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}

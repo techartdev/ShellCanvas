@@ -1,5 +1,12 @@
 // SPDX-License-Identifier: MPL-2.0
-import { useCallback, useEffect, useReducer, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useReducer,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
 import {
   ArrowUpRight,
   Check,
@@ -16,7 +23,10 @@ import {
   Wifi,
   X,
 } from "lucide-react";
-import { apps } from "./apps/registry";
+import { apps as bundledApps } from "./apps/registry";
+import { AppCatalog, indexedCatalogStorage } from "./extensions/catalog";
+import { DesktopRuntime } from "./extensions/desktop-runtime";
+import "./extensions/desktop-runtime.css";
 import { instanceTitle, type DesktopAction } from "./desktop";
 import {
   connectionProfile,
@@ -48,17 +58,32 @@ export default function App({
   initialSession = native ? null : previewSession,
   isNative = native,
   initialConnection,
+  appRuntime,
 }: {
   services?: HostServices;
   initialSession?: Session | null;
   isNative?: boolean;
   initialConnection?: HostProfile;
+  appRuntime?: DesktopRuntime;
 } = {}) {
+  const [runtime] = useState(
+    () =>
+      appRuntime ??
+      new DesktopRuntime(
+        new AppCatalog(
+          indexedCatalogStorage(
+            isNative ? "shellcanvas-runtime-apps" : "shellcanvas-preview-apps",
+          ),
+        ),
+        bundledApps,
+      ),
+  );
+  const apps = useSyncExternalStore(runtime.subscribe, runtime.snapshot);
   const [workspaces, update] = useReducer(
     (
       state: ReturnType<typeof initialWorkspaces>,
       action: Parameters<typeof updateWorkspaces>[1],
-    ) => updateWorkspaces(state, action, apps),
+    ) => updateWorkspaces(state, action, runtime.snapshot()),
     initialSession,
     (session) => initialWorkspaces(apps, session, initialConnection),
   );
@@ -130,8 +155,24 @@ export default function App({
       window.removeEventListener("beforeunload", beforeUnload);
     };
   }, []);
+  const dispatchToWorkspace = (key: string, action: DesktopAction) => {
+    const target = workspaceState.current.items.find(
+      (item) => item.key === key,
+    );
+    if (!target) return;
+    try {
+      const prepared = runtime.prepare(action, target.desktop);
+      if (action.type === "close") {
+        const lease = target.desktop.instances[action.id]?.extension;
+        if (lease) runtime.close(lease);
+      }
+      update({ type: "desktop", key, action: prepared });
+    } catch (error) {
+      setToast(String(error));
+    }
+  };
   const dispatch = (action: DesktopAction) =>
-    update({ type: "desktop", key: workspace.key, action });
+    dispatchToWorkspace(workspace.key, action);
   const [switcherOpen, setSwitcherOpen] = useState(false);
   const [menu, setMenu] = useState<{
     x: number;
@@ -163,6 +204,25 @@ export default function App({
   const [launcherOpen, setLauncherOpen] = useState(false);
   const [error, setError] = useState("");
   const [toast, setToast] = useState("");
+  useEffect(() => {
+    void runtime.catalog.load().catch((error) => setToast(String(error)));
+    return () => runtime.closeAll();
+  }, [runtime]);
+  const launcherApps = apps.filter(
+    (app) =>
+      !runtime.disabledReason(app.id) ||
+      Object.values(desktop.instances).some(
+        (instance) => instance.appId === app.id,
+      ),
+  );
+  const dockApps = launcherApps.filter(
+    (app) =>
+      bundledApps.some((bundled) => bundled.id === app.id) ||
+      app.id === "apps" ||
+      Object.values(desktop.instances).some(
+        (instance) => instance.appId === app.id,
+      ),
+  );
   const [clock, setClock] = useState(new Date());
   const { values: preferences } = usePreferences();
   useEffect(() => {
@@ -452,7 +512,9 @@ export default function App({
           label: app.window?.multiple
             ? `New ${app.title} window`
             : `Open ${app.title}`,
-          disabled: !!unavailableReason(app, session),
+          disabled:
+            !!unavailableReason(app, session) ||
+            !!runtime.disabledReason(app.id),
           run: () => dispatch({ type: "new", id: app.id }),
         },
         ...ids.map((id) => ({
@@ -722,12 +784,11 @@ export default function App({
             <WorkspaceWindows
               key={w.key}
               workspace={w}
+              runtime={runtime}
               backend={services}
               active={w.key === workspace.key}
               preview={!isNative}
-              dispatch={(action) =>
-                update({ type: "desktop", key: w.key, action })
-              }
+              dispatch={(action) => dispatchToWorkspace(w.key, action)}
               connect={showConnect}
               reportError={setToast}
             />
@@ -751,7 +812,7 @@ export default function App({
               <X size={16} />
             </button>
           </div>
-          {apps.map((app) => (
+          {launcherApps.map((app) => (
             <button
               className="launcher-app"
               key={app.id}
@@ -839,7 +900,7 @@ export default function App({
             </span>
           </button>
           <span className="dock-divider" />
-          {apps.map((app) => (
+          {dockApps.map((app) => (
             <button
               key={app.id}
               title={

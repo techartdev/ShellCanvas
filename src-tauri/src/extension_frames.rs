@@ -61,7 +61,7 @@ impl FrameDocuments {
         );
         let document = Document {
             owner: owner.into(), html, script,
-            style: format!("html,body{{margin:0;min-height:100%;background:#182731;color:#dce7ec;font:14px system-ui}}*{{box-sizing:border-box}}\n{style}"),
+            style: format!("html,body{{margin:0;min-height:100%;background:#182731;color:#dce7ec;font:14px system-ui;color-scheme:dark}}*{{box-sizing:border-box}}\n{style}"),
             policy,
         };
         let mut documents = self

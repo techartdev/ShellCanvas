@@ -8,7 +8,7 @@ import type { AppLease } from "./catalog";
 import { documentStateMethod, type AppDocumentState } from "./window-api";
 import { isFrameHandshake, mountAppDocument } from "./frame-document";
 
-/** Experimental host, currently exercised only by the development fixture.
+/** Isolated app document shared by the desktop and development workbenches.
  * One effect owns one document, port and system handle. A prop change retires that instance.
  */
 export function ExtensionFrame({

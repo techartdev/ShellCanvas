@@ -1,6 +1,16 @@
-# Runtime app development workbench
+# Runtime apps and development workbenches
 
-The runtime-app boundary and package manager are currently available in the Vite development workbenches. The production native desktop still has `frame-src 'none'` and does not load these packages. Do not loosen that policy without completing the native isolation gates in [kernel-roadmap.md](kernel-roadmap.md).
+The Windows desktop now installs and runs self-contained app packages without rebuilding or restarting ShellCanvas. The browser preview uses the same catalog/window lifecycle with sandboxed browser documents. Native loading on other platforms remains gated until their isolation checks are completed. The full kernel objective is tracked in [kernel-roadmap.md](kernel-roadmap.md).
+
+## Install an app in the desktop
+
+Open **Apps** from the dock or launcher, choose **Install package**, and select a `.shellcanvas.json` file. Review its version and requested permissions before choosing **Install app**. Installed apps appear in the launcher; running apps also appear in the dock. **Open app** in the manager creates a new window. A dock click restores an existing window; its context menu can create another.
+
+Runtime apps use the same desktop stacking, minimize, maximize, window menu, dirty-close confirmation and native quit protection as bundled apps. Their instance holds a fixed package generation and grant snapshot. Updating or disabling a package preserves its existing windows. Removing a package requires its windows to be closed.
+
+A host reconnect leaves the app's document and draft mounted. The previous session API is retired. The app's window then offers **Use reconnected host**: accepting explicitly directs subsequent requests to the new connection. Requests already dispatched retain their original scope and cannot silently change targets. Hiding/switching a workspace preserves windows while its shared dialogs are canceled. App-reported dirty/busy state participates in workspace-close and native-quit reviews.
+
+The catalog persists in WebView IndexedDB, separate from host profiles. The normal browser preview uses a different database name. This is a per-desktop runtime; cross-process invalidation and active-window coordination are still pending. No crash recovery for unsaved app documents is claimed.
 
 ## Build and load a separate app
 
@@ -53,13 +63,13 @@ Available bridged operations are `system.dialogs.messageBox`, `system.dialogs.op
 
 The frame uses `sandbox="allow-scripts"` without `allow-same-origin`, a host-built document and a restrictive document CSP. The handshake checks both the exact iframe window and a per-document token before transferring its instance-owned port. The token rejects a queued handshake from an old document when a browser reuses the same iframe window. This follows the browser's [iframe sandbox model](https://developer.mozilla.org/en-US/docs/Web/HTML/Reference/Elements/iframe). Native integration must additionally satisfy [Tauri's capability boundary](https://v2.tauri.app/security/capabilities/); a browser walkthrough is not proof of native IPC isolation.
 
-This is not yet a security claim for arbitrary hostile packages. In particular, document CSP is not a universal navigation/network sandbox, and a same-renderer app can consume CPU or memory. Native navigation handling, direct-IPC probes, platform-specific behavior, package provenance and reviewed grants need verification before this becomes a production install flow. Native adapters will have a distinct process trust model.
+This is not a security claim for arbitrary hostile packages. In particular, document CSP is not a universal navigation/network sandbox, and a same-renderer app can consume CPU or memory. The Windows navigation and direct-IPC checks are described below. Equivalent checks on other platforms, publisher authentication and stronger resource containment remain open. Native adapters will have a distinct process trust model.
 
-The original `runtime-app.html` channel workbench still immediately replaces/unloads its one sample, without preserving dirty app state. Use the catalog workbench for pinned generations and close confirmation. Production-native installation, persistent per-app data, clipboard, additional lifecycle events, streaming services, native adapters and their hot switching remain open in the roadmap.
+The original `runtime-app.html` channel workbench still immediately replaces/unloads its one sample, without preserving dirty app state. Use the desktop or catalog workbench for pinned generations and close confirmation. Persistent per-app data, clipboard, additional lifecycle events, streaming services, native adapters and their hot switching remain open in the roadmap.
 
 ## Evidence
 
-`npm test -- src/extensions` exercises method grants, channel isolation, out-of-order replies, cancellation, retirement, replay rejection, malformed input, error redaction, message shapes and package validation. Browser walkthroughs exercise the separately compiled package through actual `MessagePort` channels and shared desktop dialogs. These checks do not establish full-goal completion or production-native readiness.
+`npm test -- src/extensions` exercises method grants, channel isolation, out-of-order replies, cancellation, retirement, replay rejection, malformed input, error redaction, message shapes and package validation. Browser walkthroughs exercise the separately compiled package through actual `MessagePort` channels and shared desktop dialogs. Native checks are separate evidence described below; none of these checks establishes full-goal completion.
 
 The initial walkthrough loaded and reloaded the separately compiled Field Notes package, returned `ok` and `cancel` from a desktop message box, selected `welcome.md`, and created `field-notes.txt` in the in-memory provider with the submitted text and revision `fixture-1`. Escape restored focus to the initiating button. Unknown service calls returned `unavailable`, and unloading removed the frame. Save As originally failed against the intentionally read-only preview backend; the workbench now supplies its own explicit create-only fake provider. No real-host save was performed in this walkthrough.
 
@@ -86,4 +96,18 @@ The probe build temporarily replaces `target/debug/shellcanvas.exe`. Restore the
 npm run tauri -- build --debug --no-bundle
 ```
 
-This is native boundary evidence, not a completed native package-installation UI. The normal desktop still denies extension frames through its production CSP until the launcher, workspace lifecycle and package management are integrated and verified. It is also not a claim of CPU/memory containment, arbitrary network-exfiltration prevention, or cross-platform isolation.
+The normal desktop now permits only the host-managed app resource origin for native frames. This is not a claim of CPU/memory containment, arbitrary network-exfiltration prevention, or cross-platform isolation.
+
+## Native desktop integration probe
+
+```sh
+npm run tauri -- build --debug --no-bundle --config src-tauri/tauri.desktop-probe.conf.json
+node scripts/run-extension-probe.mjs
+npm run tauri -- build --debug --no-bundle
+```
+
+This separate hidden native entry point renders the actual `App`, Apps manager, window manager and SDK example under React StrictMode. It supplies a dedicated test catalog and fake host services; no SSH connection is made. The fixture delivers a separately bundled package through the file-input change workflow, reviews and installs two versions, withholds file access from the update, verifies the old draft, checks shared dialogs and native quit protection, reconnects a fake host with explicit API rebinding, and exercises disable/removal/dirty-close behavior. It removes its test package after success. Selecting a file in the operating system's chooser is not automated by this probe.
+
+For visual inspection in Vite, open `/tests/fixtures/native-desktop-probe.html?inspect=1`; it pauses with both versions running. Without `inspect`, the browser fixture runs through cleanup. Browser publication is deferred until the owner survives StrictMode's synthetic cleanup, and cleanup does not enqueue a competing srcdoc navigation. Native documents use the custom resource origin. Both keep the same opaque sandbox and token-bound handshake.
+
+The browser walkthrough also clicked inside each overlapping app frame and verified that the corresponding desktop window became focused without reloading either draft. The shared dark color scheme keeps embedded scrollbars consistent with the desktop.

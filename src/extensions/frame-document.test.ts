@@ -100,3 +100,22 @@ it("rejects stale-generation handshakes even from a reused iframe window", () =>
     ),
   ).toBe(true);
 });
+it("does not start the discarded browser document during StrictMode setup and cleanup", async () => {
+  vi.mocked(isTauri).mockReturnValue(false);
+  const documents: string[] = [];
+  const frame = {
+    set srcdoc(value: string) {
+      documents.push(value);
+    },
+    src: "",
+    removeAttribute: vi.fn(),
+  } as unknown as HTMLIFrameElement;
+  const first = mountAppDocument(frame, app, "retired-token", vi.fn());
+  first();
+  const second = mountAppDocument(frame, app, "live-token", vi.fn());
+  await turn();
+  expect(documents).toHaveLength(1);
+  expect(documents[0]).toContain('content="live-token"');
+  second();
+  expect(frame.src).toBe("about:blank");
+});

@@ -14,9 +14,11 @@ export function ExtensionManager({
   catalog,
   launch,
   sample,
+  open,
 }: {
   catalog: AppCatalog;
-  launch(lease: AppLease): void;
+  launch?(lease: AppLease): void;
+  open?(id: string): void;
   sample?: () => Promise<string>;
 }) {
   const apps = useSyncExternalStore(catalog.subscribe, catalog.snapshot);
@@ -234,8 +236,11 @@ export function ExtensionManager({
                 onClick={() => {
                   let lease: AppLease | undefined;
                   try {
-                    lease = catalog.launch(entry.package.id);
-                    launch(lease);
+                    if (open) open(entry.package.id);
+                    else if (launch) {
+                      lease = catalog.launch(entry.package.id);
+                      launch(lease);
+                    } else throw new Error("The desktop cannot open this app.");
                     setError("");
                   } catch (failure) {
                     lease?.close();

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 import { useLayoutEffect, useMemo } from "react";
-import { apps } from "../apps/registry";
+import type { DesktopRuntime } from "../extensions/desktop-runtime";
 import { focusedApp, instanceTitle, type DesktopAction } from "../desktop";
 import { bindSession } from "../session-services";
 import type { AppContext, HostServices } from "../sdk";
@@ -9,6 +9,7 @@ import { AppWindow } from "./AppWindow";
 
 export function WorkspaceWindows({
   workspace,
+  runtime,
   backend,
   active,
   preview,
@@ -17,6 +18,7 @@ export function WorkspaceWindows({
   reportError,
 }: {
   workspace: Workspace;
+  runtime: DesktopRuntime;
   backend: HostServices;
   active: boolean;
   preview: boolean;
@@ -79,12 +81,13 @@ export function WorkspaceWindows({
     >
       {Object.keys(workspace.desktop.instances).map((id) => {
         const instance = workspace.desktop.instances[id];
-        const app = apps.find((app) => app.id === instance.appId)!;
+        const app = runtime.resolve(instance);
+        if (!app) return null;
         return (
           <AppWindow
             key={id}
             app={app}
-            title={instanceTitle(app, instance)}
+            title={`${instanceTitle(app, instance)}${instance.extension ? ` · ${app.subtitle}` : ""}`}
             dirty={instance.dirty}
             busy={instance.busy}
             cascade={instance.ordinal - 1}

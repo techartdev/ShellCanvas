@@ -10,6 +10,8 @@ export interface DesktopState {
     {
       appId: string;
       ordinal: number;
+      /** Host-owned runtime lease; never supplied by an extension RPC request. */
+      extension?: string;
       launch?: { path?: string; directory?: string };
       dirty?: boolean;
       busy?: boolean;
@@ -20,7 +22,12 @@ export interface DesktopState {
 }
 export type DesktopAction =
   | { type: "open" | "focus" | "minimize" | "close"; id: string }
-  | { type: "new"; id: string; launch?: { path?: string; directory?: string } }
+  | {
+      type: "new";
+      id: string;
+      launch?: { path?: string; directory?: string };
+      extension?: string;
+    }
   | { type: "show-desktop" }
   | {
       type: "document-state";
@@ -99,6 +106,9 @@ export function updateDesktop(
           appId: app.id,
           ordinal,
           launch: action.type === "new" ? action.launch : undefined,
+          ...(action.type === "new" && action.extension
+            ? { extension: action.extension }
+            : {}),
         },
       },
     };

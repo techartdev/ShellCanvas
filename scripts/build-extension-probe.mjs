@@ -16,10 +16,27 @@ await writeFile(
   ".local/native-extension-probe/client.js",
   source.outputFiles[0].text,
 );
+const desktop = await bundle({
+  entryPoints: ["tests/fixtures/desktop-probe-client.ts"],
+  bundle: true,
+  format: "iife",
+  platform: "browser",
+  target: "es2022",
+  write: false,
+});
+await writeFile(
+  ".local/native-extension-probe/desktop-client.js",
+  desktop.outputFiles[0].text,
+);
 await build({
   build: {
     outDir: ".local/native-extension-probe/dist",
     emptyOutDir: true,
-    rollupOptions: { input: resolve("tests/fixtures/native-frame-probe.html") },
+    rollupOptions: {
+      input: [
+        resolve("tests/fixtures/native-frame-probe.html"),
+        resolve("tests/fixtures/native-desktop-probe.html"),
+      ],
+    },
   },
 });
