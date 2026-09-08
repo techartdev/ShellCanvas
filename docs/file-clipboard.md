@@ -14,9 +14,11 @@ Cut/Paste requires `files.move`. Source/destination tokens are opaque: the clipb
 
 ## Verification
 
+- A Windows native walkthrough passed selected-file path and full-preview text copying into editor drafts through the OS clipboard, copied-folder navigation in a second Files instance, Ctrl+X and Paste here with a shared pending item, and exact remote move readback/cleanup. See [native file workflows](native-file-workflows.md). Native selected-substring copy, keyboard-triggered file paste and interrupted transfers remain separate from these checks.
+
 - The text clipboard browser fixture passed selected opaque-path Copy through a native copy event, full preview text and a selected word, untouched address-field Copy, clipboard-folder navigation isolated to the second Files window, multiline rejection and read/write failure recovery. The fixture exposes clipboard text and refusal controls for repeatable checks. Sixty frontend tests passed. These browser checks use a fake clipboard service; selected-file/preview OS clipboard integration remains a separate native gate.
 
 - Seven clipboard tests cover shared immutable selections, exact opaque tokens and revisions, same-folder/self refusal, one-shot success, explicit retry after failure, duplicate/pending actions, capability checks, host isolation, disconnect and late outcomes, relocation invalidation and deletion outcomes. The full frontend suite passed 54 tests.
 - The two-window browser fixture passed context-menu Cut, shared indicators, collision refusal with both original items intact, successful retry into an empty folder, both listings refreshing, shortcut/edit-event cut and paste, ordinary address-field text paste, Escape cancellation and pasting after the source window closed.
 - The opaque fixture passed `object@93?kind=text` into `node@19%2Fopaque`, returning `moved@1`. The 768×1024 viewport check showed no cut-banner horizontal overflow and kept both action buttons visible.
-- The normal Windows debug desktop build passed. This checkpoint changes frontend coordination only; the previous disposable SFTP move probes establish provider behavior. A native GUI Cut/Paste move walkthrough and physical-network interruption remain separate integration checks.
+- The normal Windows debug desktop build passed. This checkpoint changes frontend coordination only; the previous disposable SFTP move probes establish provider behavior. The subsequent native GUI Cut/Paste happy path is recorded above; physical-network interruption remains a separate integration check.

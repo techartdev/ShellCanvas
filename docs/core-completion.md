@@ -15,6 +15,8 @@ Additional protocols are optional until these core workflows work well. Connecti
 
 ## Evidence and outstanding work
 
+- Windows native file walkthrough passed selected-file path copying, full-preview text copying through the OS clipboard, clipboard-folder navigation in Files 2, shared Cut/Paste across windows, and Save As replacement. Readback proved no write during review, exact Unicode replacement, and correct moved contents/source absence. The native app exited normally and exact disposable-directory cleanup passed. See [native file workflows](native-file-workflows.md). Native editor relocation, selected-substring copying and physical-network interruption remain separate checks.
+
 - Editor Save As now supports explicit replacement review with canonical destination/revision capture, safe new-name creation, draft and undo retention, fresh review after conflict, and late-result suppression on connection loss. All 65 frontend tests, browser opaque-path, permission/conflict/disconnect and two-editor checks, and the standard Windows debug build passed. Native replacement UI verification and optional draft recovery remain; see [editor behavior](text-editor.md#save-as-replacement).
 
 - Files text Copy now handles native edit events as well as keydown shortcuts. Preview Copy uses its own selection or full text; editable controls keep native behavior. Browser checks passed exact opaque paths, selected/full preview text, second-window clipboard navigation and clipboard refusal/recovery; 60 frontend tests and the standard Windows debug build passed. The terminal fixture was rechecked at 500px and 260px: unused row pixels match the terminal background and remain above the footer. The existing terminal fix required no further source change.

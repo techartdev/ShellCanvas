@@ -22,7 +22,7 @@ The Editor supports **Save as** (Ctrl+Shift+S). Saving an unnamed draft (Ctrl+S)
 
 Only files, symlinks and **empty** directories can be deleted. There is no recursive delete, remote trash, undo, cross-host move, or remote copy/duplicate yet. Already-open editors follow confirmed workspace rename/move results, including descendants of folders, while preserving drafts and conflict revisions; see [editor coordination](text-editor.md). [Files navigation, history and previews](file-navigation.md) also follow confirmed workspace relocations. Externally initiated moves are not tracked. Regular-file upload/download and cancellation are described in [transfers](transfers.md). Navigation is provider-owned; the production adapter still uses POSIX SFTP conventions. Other production providers and composite adapters remain backlog items.
 
-The Windows native walkthrough browsed `/etc`, used Copy folder path from the Files menu, and pasted the exact path into an unsaved editor draft through the OS clipboard. The draft was discarded without a remote write. Selected-file/text copy and clipboard-path navigation still need native walkthroughs; their browser fixture checks remain separate.
+The Windows native walkthrough browsed `/etc`, used Copy folder path from the Files menu, and pasted the exact path into an unsaved editor draft through the OS clipboard. The draft was discarded without a remote write. A follow-up native walkthrough passed selected-file path/full-preview text copy, clipboard-folder navigation, Cut/Paste and Save As replacement with exact remote readback/cleanup; see [native file workflows](native-file-workflows.md). Selected-substring clipboard checks and native failure injection remain separate.
 
 ## Evidence
 
