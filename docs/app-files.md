@@ -32,8 +32,30 @@ The returned `RemoteTextDocument` contains the provider's text, name, path, pare
 
 Calls accept an optional `AbortSignal`. Cancellation before dispatch prevents work; cancellation or source replacement after dispatch suppresses late results but cannot undo a provider write already issued. The existing native text methods do not have interruptible byte streaming. Do not retry mutations automatically after cancellation, failure or uncertain completion. Provider error messages are returned as `failed`; structured conflict categories remain part of the error-contract consolidation work.
 
-This API uses the existing bounded text-document service. It does not replace the streaming binary/folder transfer engine or impose a file-tree count limit. Public directory browsing, file mutations, terminal streams and transfers remain separate SDK deliverables. Installed process adapters still need their text/mutation bridges before they can advertise these capabilities.
+Text operations use the existing bounded text-document service. They do not replace the streaming binary/folder transfer engine or impose a file-tree count limit. File mutations, terminal streams and transfers remain separate SDK deliverables. Installed process adapters still need their text/mutation bridges before they can advertise these capabilities.
+
+## Directory browsing
+
+```ts
+const { binding } = await desktop.environment.get();
+if (!binding) throw new Error("Connect to a workspace first.");
+for await (const page of desktop.files.list({ binding })) {
+  // Omitting path asks for the provider's default directory.
+  console.log(page.name, page.parent, page.home, page.roots);
+  for (const entry of page.entries) {
+    console.log(entry.name, { binding: page.binding, path: entry.path });
+  }
+}
+```
+
+`files.list({binding, path?}, signal?)` yields `RemoteDirectoryPage` values. Each page repeats navigation metadata and contains up to 128 entries. Empty directories still yield one page so their roots/home/parent remain usable. Retain the page's binding with its locations; navigate using those opaque tokens, not string manipulation. A new iteration opens a new snapshot; it is not a live watcher.
+
+The SDK owns the listing ID and sends cleanup when the loop ends, breaks or throws. Aborting also releases the host snapshot while consumer code is paused between pages. Disconnect, source replacement and closing the owning frame retire its listings. Closing is allowed even when read access becomes unavailable. Do not manually retain an iterator indefinitely; use `for await`, or call `return()` when abandoning it.
+
+Pages stay within a bounded control-message envelope, including unusually long names. There is no total entry-count or depth cap. Each window can retain 16 simultaneous listings; additional starts return `busy` until capacity becomes available. A canceled provider read retains its capacity charge until it actually finishes, because the existing native read cannot be interrupted. That is a resource-concurrency limit, not a limit on the size of a directory. An individual entry or navigation-metadata block exceeding the page envelope fails explicitly instead of truncating data.
+
+The current native `list` service materializes one directory before the broker captures and pages it. This is not yet constant-memory discovery from the remote provider. The iterator contract allows an incremental provider bridge without changing app code; recursive folder transfers already use their separate incremental engine.
 
 ## Verification
 
-The file bridge tests drive the public client through the actual RPC implementation. They cover Unicode/opaque locations, unchanged revision snapshots, separate grants, invalid native-ID injection, stale bindings, late replies, conflict refusal and cancellation around writes. The Windows desktop probe additionally exercises the installed SDK artifact inside its isolated frame with synthetic file services, including reconnect and denied permissions. See [SDK verification](app-sdk.md#verification) for the packed-SDK build and native fixture commands.
+The file bridge tests drive the public client through the actual RPC implementation. They cover Unicode/opaque locations, unchanged revision snapshots, separate grants, invalid native-ID injection, stale bindings, late replies, conflict refusal and cancellation around writes. Directory tests cover 50,000 entries, stable snapshots, empty-directory navigation, large names, early break, paused cancellation, owner/source retirement and resource-capacity recovery. The Windows desktop probe additionally exercises the installed SDK artifact inside its isolated frame with synthetic file services, including multi-page listings, reconnect and denied permissions. See [SDK verification](app-sdk.md#verification) for the packed-SDK build and native fixture commands.

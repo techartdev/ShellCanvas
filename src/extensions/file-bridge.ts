@@ -4,7 +4,10 @@ import { RpcError, type Json, type RpcMethod } from "./rpc";
 
 export interface AppFileSource {
   binding: string;
-  services: Pick<SessionServices, "readText" | "saveText" | "createText">;
+  services: Pick<
+    SessionServices,
+    "readText" | "saveText" | "createText" | "list"
+  >;
 }
 /** Supplied by the owning window, never by extension parameters. */
 export type AppFileSourceGetter = () => AppFileSource | undefined;

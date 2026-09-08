@@ -4,7 +4,7 @@ Updated: 2026-09-08. `[x]` means implemented and checked within the stated scope
 
 Current BASE-11 checkpoint (2026-09-09): runtime app and adapter packages, shared system dialogs/storage/events/text clipboard, standalone app SDK and independent installed-adapter source replacement are implemented. The Windows adapter fixture verifies Files replacement with a surviving console and custom-app acceptance. Remaining goal work and evidence gates are tracked in [the kernel roadmap](docs/kernel-roadmap.md); historical milestone notes below are not a completion claim for the full extension platform.
 
-Public app file checkpoint: binding-aware remote text read/create/save now runs through the SDK and broker. The Windows installed-app probe passes 33 checks including stale revisions, reconnect isolation and denied access. Directory browsing, general mutations, terminal and transfer SDK APIs are still pending; see [runtime app files](docs/app-files.md).
+Public app file checkpoint: binding-aware remote text read/create/save and paged directory iteration now run through the SDK and broker. The Windows installed-app probe passes 35 checks including stale revisions, multi-page listings, reconnect isolation and denied access. General mutations, terminal and transfer SDK APIs are still pending; see [runtime app files](docs/app-files.md). The current listing backend materializes a directory; paging is at the app boundary.
 
 ## Immediate delivery focus — everyday basics
 

@@ -5,6 +5,7 @@ import type { AppPackage } from "./package";
 import { RpcPeer, RpcError, messagePortTransport, type Json } from "./rpc";
 import { systemMethods } from "./system-bridge";
 import { fileMethods, type AppFileSourceGetter } from "./file-bridge";
+import { AppDirectories } from "./directory-bridge";
 import type { AppLease } from "./catalog";
 import { documentStateMethod, type AppDocumentState } from "./window-api";
 import { isFrameHandshake, mountAppDocument } from "./frame-document";
@@ -67,6 +68,7 @@ export function ExtensionFrame({
     ]);
     let stopEnvironment: (() => void) | undefined;
     const clipboardOwner = clipboard ? new AppClipboard(clipboard) : undefined;
+    const directories = fileSource ? new AppDirectories(fileSource) : undefined;
     const receive = (event: MessageEvent) => {
       if (
         retired ||
@@ -87,6 +89,9 @@ export function ExtensionFrame({
       const methods = new Map(systemMethods(system, approved));
       if (fileSource)
         for (const [name, method] of fileMethods(fileSource))
+          methods.set(name, method);
+      if (directories)
+        for (const [name, method] of directories.methods())
           methods.set(name, method);
       const customService = customMethods(
         custom,
@@ -154,6 +159,7 @@ export function ExtensionFrame({
         },
       });
       const publishEnvironment = () => {
+        directories?.refresh(environment.snapshot().connection === "connected");
         events.publish(
           "system.environment",
           environment.snapshot() as unknown as Json,
@@ -168,6 +174,7 @@ export function ExtensionFrame({
         approved,
       );
       peer.onClose(() => {
+        directories?.close();
         clipboardOwner?.close();
         stopEnvironment?.();
         events.close();
@@ -182,6 +189,7 @@ export function ExtensionFrame({
     setError("");
     const unmount = mountAppDocument(frame, app, token, setError);
     const retire = () => {
+      directories?.close();
       retired = true;
       window.removeEventListener("message", receive);
       peer?.close();

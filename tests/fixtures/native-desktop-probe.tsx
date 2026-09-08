@@ -54,6 +54,23 @@ let remoteText = "Original note";
 let remoteRevision = 1;
 const services = {
   ...previewServices,
+  list: async (id: number, path?: string) =>
+    path === "fixture:many"
+      ? {
+          path,
+          name: "Many entries",
+          parent: "fixture:root",
+          home: null,
+          roots: [{ path: "fixture:root", name: "Root" }],
+          entries: Array.from({ length: 257 }, (_, index) => ({
+            path: `fixture:item:${index}`,
+            name: `item-${index}`,
+            kind: "file" as const,
+            size: index,
+            modified: null,
+          })),
+        }
+      : previewServices.list(id, path),
   connect: async () => ({ ...fixtureSession, id: ++sessionSerial }),
   readText: async (_id: number, path: string) => ({
     path,
@@ -437,9 +454,10 @@ async function run() {
     acceptedEnvironment.environment.binding !==
       initialEnvironment.environment?.binding;
   button("Cancel", fileDialog).click();
+  const staleFiles = (await ask(first, "files-stale")).files;
   checks.sdkOldDocumentRejected =
-    (await ask(first, "files-stale")).files?.rejected === true &&
-    fileWrites === 1;
+    staleFiles?.rejected === true && fileWrites === 1;
+  checks.sdkOldListingRejected = staleFiles?.listingRejected === true;
   await frameState(first, (state) => state.ready);
   document
     .querySelector<HTMLButtonElement>('button[aria-label="Open Apps"]')!
@@ -457,8 +475,9 @@ async function run() {
   );
   await frameState(second, (state) => state.ready);
   const secondEnvironment = await ask(second, "environment");
-  checks.sdkFileGrantDenied =
-    (await ask(second, "files-denied")).files?.rejected === true;
+  const deniedFiles = (await ask(second, "files-denied")).files;
+  checks.sdkFileGrantDenied = deniedFiles?.rejected === true;
+  checks.sdkListingGrantDenied = deniedFiles?.listingRejected === true;
   const beforeDeniedRead = clipboardReads;
   checks.clipboardGrantDenied =
     (await ask(second, "clipboard-denied")).clipboard?.denied === true &&

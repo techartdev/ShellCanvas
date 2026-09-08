@@ -18,6 +18,7 @@ export type {
   AppFilesAPI,
   RemoteFileLocation,
   RemoteTextDocument,
+  RemoteDirectoryPage,
 } from "./file-client.js";
 export type { AppDocumentState } from "./window-api.js";
 export type { AppStorageAPI, AppValue, StoragePage } from "./storage-api.js";

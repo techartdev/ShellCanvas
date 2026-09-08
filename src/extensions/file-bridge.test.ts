@@ -14,6 +14,7 @@ const document = {
 };
 function setup(grants = ["files.read", "files.edit", "files.create"]) {
   const services = {
+    list: vi.fn(),
     readText: vi.fn(async () => ({ ...document })),
     saveText: vi.fn(async (_path: string, text: string, _revision: string) => ({
       ...document,

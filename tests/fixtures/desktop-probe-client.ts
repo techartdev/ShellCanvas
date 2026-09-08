@@ -11,6 +11,8 @@ let capturedDocument:
       ReturnType<NonNullable<Awaited<typeof connection>>["files"]["readText"]>
     >
   | undefined;
+let capturedListing:
+  AsyncIterator<import("@shellcanvas/app-sdk").RemoteDirectoryPage> | undefined;
 let watching = false;
 window.addEventListener("message", async (event) => {
   if (event.source !== parent || event.data?.type !== "desktop-probe") return;
@@ -50,6 +52,19 @@ window.addEventListener("message", async (event) => {
       name: "new.txt",
       text: "Created 🌿",
     });
+    const paths: string[] = [];
+    let pages = 0;
+    for await (const page of client.files.list({
+      binding,
+      path: "fixture:many",
+    })) {
+      pages++;
+      paths.push(...page.entries.map((entry) => entry.path));
+    }
+    capturedListing = client.files
+      .list({ binding, path: "fixture:many" })
+      [Symbol.asyncIterator]();
+    await capturedListing.next();
     files = {
       read: capturedDocument.text === "Original note",
       saved:
@@ -57,6 +72,11 @@ window.addEventListener("message", async (event) => {
         saved.revision !== capturedDocument.revision,
       conflict,
       created: created.text === "Created 🌿",
+      listed:
+        pages === 3 &&
+        paths.length === 257 &&
+        new Set(paths).size === 257 &&
+        paths[256] === "fixture:item:256",
     };
   }
   if (
@@ -79,6 +99,19 @@ window.addEventListener("message", async (event) => {
           (error as { code: string }).code ===
           (event.data.action === "files-stale" ? "closed" : "denied"),
       };
+    }
+    try {
+      if (event.data.action === "files-stale") await capturedListing!.next();
+      else
+        await client.files
+          .list({ binding: (await client.environment.get()).binding! })
+          [Symbol.asyncIterator]()
+          .next();
+      files.listingRejected = false;
+    } catch (error) {
+      files.listingRejected =
+        (error as { code: string }).code ===
+        (event.data.action === "files-stale" ? "closed" : "denied");
     }
   }
   let clipboard: Record<string, boolean> | undefined;
