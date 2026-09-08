@@ -806,11 +806,15 @@ button:active:not(:disabled) {
   padding: 20px 21px 17px;
   gap: 8px;
 }
+.folder-heading > div {
+  flex: 1;
+  min-width: 0;
+}
 .folder-heading h2 {
   font-size: 20px;
   letter-spacing: -0.5px;
   font-weight: 550;
-  max-width: 200px;
+  white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
@@ -820,6 +824,7 @@ button:active:not(:disabled) {
   margin-top: 6px;
 }
 .file-search {
+  flex-shrink: 0;
   display: flex;
   align-items: center;
   gap: 7px;

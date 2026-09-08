@@ -886,7 +886,13 @@ export function Files({
         </div>
         <div className="folder-heading">
           <div>
-            <h2>
+            <h2
+              title={
+                directory.home?.path === directory.path
+                  ? directory.home.name
+                  : directory.name
+              }
+            >
               {directory.home?.path === directory.path
                 ? directory.home.name
                 : directory.name}
