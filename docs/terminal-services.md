@@ -23,4 +23,6 @@ The native SSH walkthrough verified Select all and Ctrl+Shift+C by pasting the d
 
 Floating and right-tiled native terminals rendered without the black strip or footer overlap. The 500-pixel and 260-pixel browser fixtures also retained the terminal background in the unused pixels below the last whole text row. `.xterm-viewport` explicitly uses the same background as the terminal theme, overriding xterm's default black background.
 
-Native paste into a terminal, Files clipboard actions and interrupted-network GUI checks remain pending.
+The follow-up native walkthrough copied `/etc` from the Files folder menu and pasted that exact path into an editor draft. The editor's Copy all action then supplied `# ShellCanvas clipboard check 🌍` through the Windows clipboard. Ctrl+Shift+V pasted the single-line comment at the live SSH prompt; Ctrl+U cleared it without executing it. Keyboard resizing reduced both terminal dimensions, and Enter finished resizing with the buffer and footer intact and no black strip. The temporary draft was discarded without saving, and the test process exited normally.
+
+Native selected-file/text clipboard actions, clipboard-path navigation and interrupted-network GUI checks remain pending. The walkthrough above covers folder-path copy and terminal paste, not all Files clipboard actions.

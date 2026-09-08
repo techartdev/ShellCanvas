@@ -23,7 +23,7 @@ Additional protocols are optional until these core workflows work well. Connecti
 
 - Files now has a capability-gated **Move to folder…** dialog with provider-owned navigation, destination review, no replacement and stale-session safeguards. Browser collision/denial/retry/two-window/opaque-location checks and live disposable file/folder/symlink moves passed. Real unprivileged move refusal/recovery and exact cleanup passed too. See [file actions](file-actions.md). Cross-host copy/move and interrupted-move integration remain separate work.
 
-- Windows native terminal checks passed copy through the OS clipboard into an editor draft, opening and closing a second terminal, right tiling, F6 focus cycling, Shift+F10 menus and keyboard move/cancel. Floating/tiled native windows and compact/large browser fixtures showed no black strip or footer overlap. Native terminal paste, Files clipboard and keyboard resize remain separate checks; see [terminal services](terminal-services.md) and [window controls](window-management.md).
+- Windows native terminal checks passed copy through the OS clipboard into an editor draft, opening and closing a second terminal, right tiling, F6 focus cycling, Shift+F10 menus and keyboard move/cancel. Floating/tiled native windows and compact/large browser fixtures showed no black strip or footer overlap. Follow-up native checks passed folder-path copy into an editor, Unicode terminal paste without command execution, and keyboard resizing. Selected-file/text clipboard, clipboard navigation and interrupted-network checks remain; see [terminal services](terminal-services.md) and [window controls](window-management.md).
 
 - Real unprivileged SFTP permission refusal and recovery now pass for reads, file actions, editor saves and transfers. Original files and temporary cleanup were checked; browser folder/editor failures retained their inputs and recovered on retry. See [permission validation](permission-validation.md).
 
@@ -33,7 +33,7 @@ Additional protocols are optional until these core workflows work well. Connecti
 
 - Provider selection now has bounded per-attempt shared probes and connection-neutral inspection contracts. Recognized/unknown/failed/no-exec/timed-out fixtures, concurrent cache checks, 29 Rust tests, Clippy and a read-only Linux SSH/SFTP/PTY regression passed. This completes BASE-04; composite bindings and further connection-neutral lifecycle/terminal contracts remain open. See [device detection](device-detection.md).
 
-- Window menus now expose keyboard move/resize and left/right tiling. Titlebars support F6 cycling and Shift+F10 menus. Browser geometry, cancellation, restore, edge bounds and desktop/tablet transition checks passed; see [window controls](window-management.md). Native keyboard and layout persistence checks remain separate.
+- Window menus now expose keyboard move/resize and left/right tiling. Titlebars support F6 cycling and Shift+F10 menus. Browser geometry, cancellation, restore, edge bounds and desktop/tablet transition checks passed; see [window controls](window-management.md). Native keyboard move/cancel and resize/accept checks also passed; layout persistence remains separate.
 
 - Host details now renders provider-defined remote settings with individual availability, proposals, review/apply and conflict/uncertain-outcome handling. Linux hostname/timezone commands have controlled tests; live read-only inspection and desktop/tablet UI checks passed. Actual systemd mutations still require a disposable host. See [remote settings](remote-settings.md).
 

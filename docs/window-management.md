@@ -17,4 +17,6 @@ Browser walkthrough: keyboard move and Escape restored the original rectangle; r
 
 Windows native walkthrough also passed right tiling between toolbar and dock, F6 focus cycling, Shift+F10 titlebar menus, a 16-pixel keyboard move and Escape restoring the original position. The connected terminal retained its buffer through those changes.
 
-Native keyboard resizing, drag-to-edge snap previews, touch resize handles and persistence across process restarts remain separate work.
+The follow-up native walkthrough entered Resize with keyboard from the terminal titlebar menu, reduced height and width with Up/Left, and accepted with Enter. Both dimensions changed by the expected 16 pixels, the terminal refit, and its prompt/footer stayed intact without a black strip. Precision resize and resize cancellation remain browser-verified only.
+
+Drag-to-edge snap previews, touch resize handles and persistence across process restarts remain separate work.
