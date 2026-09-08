@@ -9,6 +9,7 @@ import {
   Grid2X2,
   Plus,
   Power,
+  RotateCcw,
   Server,
   Settings2,
   ShieldCheck,
@@ -17,7 +18,12 @@ import {
 } from "lucide-react";
 import { apps } from "./apps/registry";
 import type { DesktopAction } from "./desktop";
-import { initialWorkspaces, updateWorkspaces } from "./workspaces";
+import {
+  connectionProfile,
+  initialWorkspaces,
+  sameEndpoint,
+  updateWorkspaces,
+} from "./workspaces";
 import { WorkspaceWindows } from "./components/WorkspaceWindows";
 import { ContextMenu, type MenuAction } from "./components/ContextMenu";
 import { ConfirmDialog } from "./components/ConfirmDialog";
@@ -39,10 +45,12 @@ export default function App({
   services = defaultServices,
   initialSession = native ? null : previewSession,
   isNative = native,
+  initialConnection,
 }: {
   services?: HostServices;
   initialSession?: Session | null;
   isNative?: boolean;
+  initialConnection?: HostProfile;
 } = {}) {
   const [workspaces, update] = useReducer(
     (
@@ -50,8 +58,10 @@ export default function App({
       action: Parameters<typeof updateWorkspaces>[1],
     ) => updateWorkspaces(state, action, apps),
     initialSession,
-    (session) => initialWorkspaces(apps, session),
+    (session) => initialWorkspaces(apps, session, initialConnection),
   );
+  const workspaceState = useRef(workspaces);
+  workspaceState.current = workspaces;
   const workspace = workspaces.items.find((w) => w.key === workspaces.active)!;
   const { session, label, desktop } = workspace;
   const connected = !!session && workspace.connected !== false;
@@ -114,6 +124,19 @@ export default function App({
   const switcher = useRef<HTMLDivElement>(null);
   const [profiles, setProfiles] = useState<HostProfile[]>([]);
   const [connecting, setConnecting] = useState(false);
+  const attempt = useRef<AbortController | null>(null);
+  const [reconnectTarget, setReconnectTarget] = useState<{
+    key: string;
+    sessionId: number;
+    connection: HostProfile;
+  } | null>(null);
+  useEffect(
+    () => () => {
+      attempt.current?.abort();
+      attempt.current = null;
+    },
+    [],
+  );
   const [connectOpen, setConnectOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [editingProfile, setEditingProfile] = useState<HostProfile>();
@@ -177,7 +200,9 @@ export default function App({
   }, [
     isNative,
     services,
-    workspaces.items.map((w) => `${w.key}:${w.connected}`).join(","),
+    workspaces.items
+      .map((w) => `${w.key}:${w.session?.id}:${w.connected}`)
+      .join(","),
   ]);
   useEffect(() => {
     if (!switcherOpen) return;
@@ -201,27 +226,96 @@ export default function App({
     };
   }, [switcherOpen]);
   const showConnect = useCallback(() => {
+    setReconnectTarget(null);
     setSwitcherOpen(false);
     setEditingProfile(undefined);
     setError("");
     setConnectOpen(true);
   }, []);
+  function reconnect() {
+    if (
+      !session ||
+      connected ||
+      !workspace.connection ||
+      Object.values(desktop.instances).some((instance) => instance.busy)
+    )
+      return;
+    setReconnectTarget({
+      key: workspace.key,
+      sessionId: session.id,
+      connection: workspace.connection,
+    });
+    setEditingProfile(workspace.connection);
+    setSwitcherOpen(false);
+    setError("");
+    setConnectOpen(true);
+  }
+  function cancelConnection() {
+    attempt.current?.abort();
+    attempt.current = null;
+    setConnecting(false);
+    setError("Connection canceled. You can try again.");
+  }
   async function connect(options: ConnectOptions, name: string) {
+    const profile = connectionProfile(options, name);
+    const target = reconnectTarget;
+    if (target && !sameEndpoint(target.connection, profile)) {
+      setError(
+        "Reconnect uses the original host, port and user. Use Add host for a different connection.",
+      );
+      return;
+    }
+    attempt.current?.abort();
+    const controller = new AbortController();
+    attempt.current = controller;
     setConnecting(true);
     setError("");
     try {
-      const result = await services.connect(options);
-      update({
-        type: "connected",
-        session: result,
-        label: name || result.info.hostname,
-      });
+      const result = await services.connect(options, controller.signal);
+      if (controller.signal.aborted || attempt.current !== controller) {
+        await services.disconnect(result.id);
+        return;
+      }
+      if (target) {
+        const current = workspaceState.current.items.find(
+          (w) => w.key === target.key,
+        );
+        if (
+          !current ||
+          current.session?.id !== target.sessionId ||
+          current.connected !== false
+        ) {
+          await services.disconnect(result.id);
+          throw new Error(
+            "The previous workspace is no longer available. Open a new connection instead.",
+          );
+        }
+        update({
+          type: "reconnected",
+          key: target.key,
+          previousSessionId: target.sessionId,
+          session: result,
+          connection: profile,
+          label: name || result.info.hostname,
+        });
+      } else
+        update({
+          type: "connected",
+          session: result,
+          label: name || result.info.hostname,
+          connection: profile,
+        });
       setConnectOpen(false);
+      setReconnectTarget(null);
       if (result.info.notices.length) setToast(result.info.notices.join(" "));
     } catch (e) {
-      setError(String(e));
+      if (attempt.current === controller && !controller.signal.aborted)
+        setError(String(e));
     } finally {
-      setConnecting(false);
+      if (attempt.current === controller) {
+        attempt.current = null;
+        setConnecting(false);
+      }
     }
   }
   async function disconnect() {
@@ -311,6 +405,12 @@ export default function App({
               label: "Connect another host",
               separatorBefore: true,
               run: showConnect,
+            },
+            {
+              id: "reconnect",
+              label: "Reconnect host",
+              disabled: connected || !workspace.connection || !session,
+              run: reconnect,
             },
             {
               id: "settings",
@@ -448,9 +548,22 @@ export default function App({
               )}
             </h1>
           </div>
-          <button className="workspace-connect" onClick={showConnect}>
-            <Plus size={15} />
-            {session ? "Add host" : "Connect a host"}
+          <button
+            className="workspace-connect"
+            onClick={
+              !connected && workspace.connection ? reconnect : showConnect
+            }
+          >
+            {!connected && workspace.connection ? (
+              <RotateCcw size={15} />
+            ) : (
+              <Plus size={15} />
+            )}
+            {!connected && workspace.connection
+              ? "Reconnect host"
+              : session
+                ? "Add host"
+                : "Connect a host"}
             <ArrowUpRight size={14} />
           </button>
         </div>
@@ -503,7 +616,13 @@ export default function App({
             <button
               className="launcher-app"
               key={app.id}
-              disabled={!!session && !!unavailableReason(app, session)}
+              disabled={
+                !!session &&
+                !!unavailableReason(app, session) &&
+                !desktop.open.some(
+                  (id) => desktop.instances[id].appId === app.id,
+                )
+              }
               title={unavailableReason(app, session) ?? app.subtitle}
               onClick={() => openApp(app.id)}
             >
@@ -544,6 +663,7 @@ export default function App({
             openApp("host-details");
           }}
           manageHost={(profile) => {
+            setReconnectTarget(null);
             setSettingsOpen(false);
             setEditingProfile(profile);
             setError("");
@@ -583,7 +703,13 @@ export default function App({
                   : app.title
               }
               aria-label={`Open ${app.title}`}
-              disabled={!!session && !!unavailableReason(app, session)}
+              disabled={
+                !!session &&
+                !!unavailableReason(app, session) &&
+                !desktop.open.some(
+                  (id) => desktop.instances[id].appId === app.id,
+                )
+              }
               className={
                 desktop.open.some(
                   (id) => desktop.instances[id].appId === app.id,
@@ -675,6 +801,8 @@ export default function App({
           profiles={profiles}
           initialProfile={editingProfile}
           busy={connecting}
+          reconnecting={!!reconnectTarget}
+          cancelConnect={cancelConnection}
           error={error}
           preview={!isNative}
           save={async (profile) => {

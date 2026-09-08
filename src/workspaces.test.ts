@@ -2,8 +2,90 @@
 import { describe, expect, it } from "vitest";
 import { apps } from "./apps/registry";
 import { previewSession } from "./preview";
-import { initialWorkspaces, updateWorkspaces } from "./workspaces";
+import {
+  connectionProfile,
+  initialWorkspaces,
+  updateWorkspaces,
+} from "./workspaces";
 describe("independent workspaces", () => {
+  it("reconnects the same endpoint without replacing desktop state or retaining secrets", () => {
+    const profile = connectionProfile(
+      {
+        host: "alpha.example",
+        port: 22,
+        username: "fixture",
+        keyPath: "/key",
+        password: "do not retain",
+        passphrase: "not retained either",
+      },
+      "Alpha",
+    );
+    expect(Object.keys(profile).sort()).toEqual([
+      "host",
+      "keyPath",
+      "name",
+      "port",
+      "username",
+    ]);
+    let state = initialWorkspaces(apps, { ...previewSession, id: 8 }, profile);
+    state = updateWorkspaces(
+      state,
+      {
+        type: "connected",
+        session: { ...previewSession, id: 9 },
+        label: "other",
+      },
+      apps,
+    );
+    const desktop = state.items[1].desktop,
+      other = state.items[2];
+    state = updateWorkspaces(state, { type: "lost", sessionId: 8 }, apps);
+    const lost = state;
+    expect(
+      updateWorkspaces(
+        state,
+        {
+          type: "reconnected",
+          key: "session-8",
+          previousSessionId: 8,
+          session: { ...previewSession, id: 10 },
+          connection: { ...profile, host: "different.example" },
+          label: "wrong",
+        },
+        apps,
+      ),
+    ).toBe(lost);
+    state = updateWorkspaces(
+      state,
+      {
+        type: "reconnected",
+        key: "session-8",
+        previousSessionId: 8,
+        session: { ...previewSession, id: 10 },
+        connection: profile,
+        label: "Alpha",
+      },
+      apps,
+    );
+    expect(state.items[1].desktop).toBe(desktop);
+    expect(state.items[2]).toBe(other);
+    expect(state.items[1].session?.id).toBe(10);
+    expect(state.items[1].connected).toBe(true);
+    expect(state.active).toBe("session-8");
+    state = updateWorkspaces(state, { type: "remove", sessionId: 8 }, apps);
+    expect(state.items).toHaveLength(3);
+    expect(
+      updateWorkspaces(
+        state,
+        {
+          type: "connected",
+          session: { ...previewSession, id: 10 },
+          label: "duplicate",
+        },
+        apps,
+      ),
+    ).toBe(state);
+  });
   it("retains unsaved instance state after transport loss", () => {
     let state = initialWorkspaces(apps, { ...previewSession, id: 5 });
     state = updateWorkspaces(

@@ -7,6 +7,7 @@ use std::sync::{
 };
 use tauri::{ipc::Channel, State};
 use tokio::sync::{mpsc, Mutex};
+mod connection_attempts;
 mod profile_store;
 mod session_registry;
 use session_registry::SessionRegistry;
@@ -21,6 +22,7 @@ struct ActiveSession {
 struct DesktopState {
     registry: Arc<Mutex<SessionRegistry<ActiveSession>>>,
     next_id: AtomicU64,
+    attempts: Mutex<connection_attempts::ConnectionAttempts>,
 }
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -59,9 +61,30 @@ async fn remove_profile(app: tauri::AppHandle, id: String) -> Result<(), String>
 }
 
 #[tauri::command]
+async fn begin_connect(state: State<'_, DesktopState>) -> Result<u64, String> {
+    let id = state.next_id.fetch_add(1, Ordering::Relaxed) + 1;
+    state.attempts.lock().await.begin(id)?;
+    Ok(id)
+}
+#[tauri::command]
+async fn cancel_connect(request_id: u64, state: State<'_, DesktopState>) -> Result<(), String> {
+    state.attempts.lock().await.cancel(request_id);
+    Ok(())
+}
+#[tauri::command]
 async fn connect(
     options: ConnectOptions,
+    request_id: u64,
     state: State<'_, DesktopState>,
+) -> Result<SessionInfo, String> {
+    let canceled = state.attempts.lock().await.claim(request_id)?;
+    let result = connection_attempts::cancellable(canceled, connect_session(options, &state)).await;
+    state.attempts.lock().await.finish(request_id);
+    result
+}
+async fn connect_session(
+    options: ConnectOptions,
+    state: &DesktopState,
 ) -> Result<SessionInfo, String> {
     let connection = Arc::new(
         Connection::connect(options)
@@ -397,6 +420,8 @@ pub fn run() {
             remove_profile,
             session_alive,
             connect,
+            begin_connect,
+            cancel_connect,
             disconnect,
             list_directory,
             preview_file,

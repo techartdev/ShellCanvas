@@ -75,7 +75,7 @@ export interface HostServices {
   profiles(): Promise<HostProfile[]>;
   saveProfile(profile: HostProfile): Promise<HostProfile>;
   removeProfile(id: string): Promise<void>;
-  connect(options: ConnectOptions): Promise<Session>;
+  connect(options: ConnectOptions, signal?: AbortSignal): Promise<Session>;
   disconnect(sessionId: number): Promise<void>;
   alive(sessionId: number): Promise<boolean>;
   list(sessionId: number, path: string): Promise<Directory>;
@@ -111,6 +111,7 @@ export interface SessionServices {
   ): Promise<TerminalSession>;
 }
 export interface AppContext {
+  unavailableReason?: string;
   connected?: boolean;
   setDocumentState?(state: {
     dirty: boolean;

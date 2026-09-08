@@ -63,6 +63,10 @@ export function AppWindow({
     top: number;
   } | null>(null);
   const reason = unavailableReason(app, context.session);
+  const [opened, setOpened] = useState(!reason);
+  useEffect(() => {
+    if (!reason) setOpened(true);
+  }, [reason]);
   useEffect(() => {
     if (!cascade || !element.current || window.innerWidth < 900) return;
     const el = element.current;
@@ -223,6 +227,7 @@ export function AppWindow({
             <button
               title={`New ${app.title} window`}
               aria-label={`New ${app.title} window`}
+              disabled={!!reason}
               onClick={() => context.openApp?.(app.id)}
             >
               <Plus size={14} />
@@ -253,7 +258,7 @@ export function AppWindow({
         </div>
       </header>
       <div className="window-content">
-        {reason ? (
+        {reason && !opened ? (
           <div className="app-empty">
             <span className={`empty-icon ${app.id}`}>
               <Icon size={30} />
@@ -267,15 +272,17 @@ export function AppWindow({
             )}
           </div>
         ) : (
-          <AppBoundary
-            key={
-              app.scope === "host"
-                ? (context.session?.id ?? "disconnected")
-                : "local"
-            }
-            title={app.title}
-          >
-            <Component {...context} />
+          <AppBoundary title={app.title}>
+            {reason && (
+              <div className="inline-error" role="status">
+                {reason}. Your open work is preserved.
+              </div>
+            )}
+            <Component
+              {...context}
+              connected={context.connected !== false && !reason}
+              unavailableReason={reason ?? undefined}
+            />
           </AppBoundary>
         )}
       </div>
@@ -290,6 +297,7 @@ export function AppWindow({
                   {
                     id: "new",
                     label: `New ${app.title} window`,
+                    disabled: !!reason,
                     run: () => context.openApp?.(app.id),
                   },
                 ]

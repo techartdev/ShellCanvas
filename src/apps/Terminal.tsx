@@ -14,6 +14,8 @@ export function Terminal({
   preview,
   reportError,
   active = true,
+  connected = true,
+  unavailableReason,
 }: AppContext) {
   const container = useRef<HTMLDivElement>(null);
   const instance = useRef<XTerminal | null>(null);
@@ -43,6 +45,16 @@ export function Terminal({
   const [ready, setReady] = useState(false);
   const [status, setStatus] = useState("Opening shell…");
   const [attempt, setAttempt] = useState(0);
+  useEffect(() => {
+    if (instance.current) instance.current.options.disableStdin = !connected;
+    if (!connected) {
+      setReady(false);
+      setStatus(
+        unavailableReason ||
+          "Connection closed · reconnect the host to open a new shell",
+      );
+    }
+  }, [connected, unavailableReason]);
   async function copy() {
     const text = instance.current?.getSelection();
     if (!text) return;
@@ -68,7 +80,7 @@ export function Terminal({
   const clipboardActions = useRef({ copy, paste });
   clipboardActions.current = { copy, paste };
   useEffect(() => {
-    if (!container.current || !session) return;
+    if (!container.current || !session || !connected) return;
     let disposed = false;
     let closed = false;
     let remote: TerminalSession | undefined;
@@ -267,6 +279,7 @@ export function Terminal({
             {
               id: "new-shell",
               label: "New shell",
+              disabled: !connected,
               run: () => setAttempt((value) => value + 1),
             },
           ]}
@@ -276,6 +289,7 @@ export function Terminal({
         <span title={status}>{status}</span>
         <button
           onClick={() => setAttempt(attempt + 1)}
+          disabled={!connected}
           title="Open a new shell"
         >
           <RotateCcw size={12} /> New shell

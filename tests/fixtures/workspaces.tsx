@@ -13,11 +13,15 @@ import type {
 } from "../../src/sdk";
 import "../../src/styles.css";
 const sessions = new Map<number, Session>();
+const sessionHosts = new Map<number, string>([[101, "alpha.example"]]);
+const fileKey = (id: number, path: string) =>
+  `${sessionHosts.get(id) ?? id}:${path}`;
+let nextWithoutFiles = false;
 const documents = new Map<string, TextDocument>();
 const folders = new Map<string, Directory>();
 async function folder(id: number, path: string) {
   if (!sessions.has(id)) throw new Error("Fixture session closed");
-  const key = `${id}:${path}`;
+  const key = fileKey(id, path);
   if (!folders.has(key)) {
     const initial = await previewServices.list(id, path);
     folders.set(key, {
@@ -72,7 +76,7 @@ const backend: HostServices = {
       modified: 1,
       revision: "1",
     });
-    documents.set(`${id}:${path}`, doc);
+    documents.set(fileKey(id, path), doc);
     log(`created ${path}`);
     return { ...doc };
   },
@@ -89,7 +93,7 @@ const backend: HostServices = {
       modified: 1,
       revision: "1",
     });
-    folders.set(`${id}:${path}`, { path, entries: [] });
+    folders.set(fileKey(id, path), { path, entries: [] });
     log(`folder created ${path}`);
     return path;
   },
@@ -101,10 +105,10 @@ const backend: HostServices = {
     entry.name = name;
     entry.path = destination;
     entry.revision = String(Number(entry.revision) + 1);
-    const doc = documents.get(`${id}:${path}`);
+    const doc = documents.get(fileKey(id, path));
     if (doc) {
-      documents.delete(`${id}:${path}`);
-      documents.set(`${id}:${destination}`, { ...doc, path: destination });
+      documents.delete(fileKey(id, path));
+      documents.set(fileKey(id, destination), { ...doc, path: destination });
     }
     log(`renamed ${path} -> ${destination}`);
     return destination;
@@ -114,12 +118,12 @@ const backend: HostServices = {
     if (entry.kind === "directory" && (await folder(id, path)).entries.length)
       throw new Error("Only empty folders can be deleted.");
     parent.entries = parent.entries.filter((entry) => entry.path !== path);
-    documents.delete(`${id}:${path}`);
+    documents.delete(fileKey(id, path));
     log(`deleted ${path}`);
   },
   readText: async (id, path) => {
     if (!sessions.has(id)) throw new Error("Fixture session closed");
-    const key = `${id}:${path}`;
+    const key = fileKey(id, path);
     if (!documents.has(key))
       documents.set(key, {
         path,
@@ -131,9 +135,9 @@ const backend: HostServices = {
   },
   saveText: async (id, path, text, revision) => {
     if (!sessions.has(id)) throw new Error("Fixture session closed");
-    const key = `${id}:${path}`,
+    const key = fileKey(id, path),
       current = documents.get(key)!;
-    if (current.revision !== revision)
+    if (!current || current.revision !== revision)
       throw new Error(
         "CONFLICT: The remote file changed. Your draft is intact.",
       );
@@ -143,24 +147,42 @@ const backend: HostServices = {
     return saved;
   },
   profiles: async () =>
-    ["beta", "failure"].map((name) => ({
+    ["beta", "failure", "slow", "late"].map((name) => ({
       name: `Fixture ${name}`,
       host: `${name}.example`,
       username: "fixture",
       port: 22,
       keyPath: "/fixture/key",
     })),
-  connect: async (options) => {
+  connect: async (options, signal) => {
+    if (options.host === "slow.example" || options.host === "late.example") {
+      log(`connecting ${options.host}`);
+      await new Promise<void>((resolve, reject) => {
+        const timer = setTimeout(resolve, 2500);
+        if (options.host === "slow.example")
+          signal?.addEventListener(
+            "abort",
+            () => {
+              clearTimeout(timer);
+              reject(new Error("Connection canceled"));
+            },
+            { once: true },
+          );
+      });
+    }
     if (options.host === "failure.example")
       throw new Error("Fixture connection refused");
-    const session = {
+    const session: Session = {
       ...first,
       id: ++next,
       info: {
         ...first.info,
         hostname: `fixture-${options.host.split(".")[0]}`,
+        capabilities: nextWithoutFiles ? ["terminal"] : first.info.capabilities,
       },
     };
+    nextWithoutFiles = false;
+    sessionHosts.set(session.id, options.host);
     sessions.set(session.id, session);
     log(`connected ${session.id}`);
     return session;
@@ -200,7 +222,18 @@ function Fixture() {
   log = (text) => setEvents((old) => [...old.slice(-19), text]);
   return (
     <>
-      <App services={backend} initialSession={first} isNative />
+      <App
+        services={backend}
+        initialSession={first}
+        initialConnection={{
+          name: "fixture-alpha",
+          host: "alpha.example",
+          port: 22,
+          username: "fixture",
+          keyPath: "/fixture/key",
+        }}
+        isNative
+      />
       <details
         style={{
           position: "fixed",
@@ -225,8 +258,20 @@ function Fixture() {
         >
           Simulate remote edit
         </button>
-        <button onClick={() => sessions.clear()}>
+        <button
+          onClick={() => {
+            for (const id of sessions.keys())
+              if (sessionHosts.get(id) === "alpha.example") sessions.delete(id);
+          }}
+        >
           Simulate connection loss
+        </button>
+        <button
+          onClick={() => {
+            nextWithoutFiles = true;
+          }}
+        >
+          Next connection without files
         </button>
         <pre aria-label="Fixture events">{events.join("\n")}</pre>
       </details>

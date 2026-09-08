@@ -1223,6 +1223,16 @@ button:active:not(:disabled) {
   padding: 7px 10px;
   border-radius: 6px;
 }
+.cancel-connection {
+  display: block;
+  width: 100%;
+  margin-top: 10px;
+  padding: 10px;
+  border: 1px solid #9bbbc233;
+  border-radius: 7px;
+  color: #b8cdd6;
+  font-size: 12px;
+}
 .launcher {
   position: absolute;
   bottom: 95px;

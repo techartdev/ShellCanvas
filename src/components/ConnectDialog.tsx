@@ -20,7 +20,11 @@ export function ConnectDialog({
   save,
   remove,
   initialProfile,
+  reconnecting = false,
+  cancelConnect,
 }: {
+  reconnecting?: boolean;
+  cancelConnect?(): void;
   initialProfile?: HostProfile;
   profiles: HostProfile[];
   busy: boolean;
@@ -161,11 +165,14 @@ export function ConnectDialog({
   }, []);
   useEffect(() => {
     function escape(e: KeyboardEvent) {
-      if (e.key === "Escape" && !locked) close();
+      if (e.key === "Escape" && !saving) {
+        if (busy) cancelConnect?.();
+        close();
+      }
     }
     window.addEventListener("keydown", escape);
     return () => window.removeEventListener("keydown", escape);
-  }, [locked, close]);
+  }, [busy, saving, close, cancelConnect]);
   function field(name: keyof ConnectOptions, value: string | number) {
     setSaveMessage("");
     setOptions((old) => ({ ...old, [name]: value }));
@@ -187,8 +194,11 @@ export function ConnectDialog({
         <button
           className="dialog-close icon-button"
           aria-label="Close connection dialog"
-          disabled={locked}
-          onClick={close}
+          disabled={saving}
+          onClick={() => {
+            if (busy) cancelConnect?.();
+            close();
+          }}
         >
           <X size={19} />
         </button>
@@ -199,9 +209,15 @@ export function ConnectDialog({
           </span>
         </div>
         <p className="eyebrow">A WORKSPACE, ANYWHERE</p>
-        <h1 id="connect-title">Make yourself at home.</h1>
+        <h1 id="connect-title">
+          {reconnecting
+            ? "Pick up where you left off."
+            : "Make yourself at home."}
+        </h1>
         <p className="dialog-intro">
-          Connect to your host. Everything stays on your machine.
+          {reconnecting
+            ? "Reconnect this host with your windows and drafts intact. Terminal windows open fresh shells."
+            : "Connect to your host. Everything stays on your machine."}
         </p>
         <form
           onSubmit={(e) => {
@@ -218,36 +234,38 @@ export function ConnectDialog({
           }}
         >
           <fieldset disabled={locked || preview}>
-            <label className="form-field">
-              Your hosts
-              <select
-                aria-label="Host profile"
-                value={selected}
-                onChange={(e) => {
-                  if (!e.target.value) {
-                    newProfile();
-                    return;
-                  }
-                  const profile = profiles.find(
-                    (p, i) => (p.id ?? `import-${i}`) === e.target.value,
-                  );
-                  if (profile) {
-                    select(profile);
-                    setSelected(e.target.value);
-                  }
-                }}
-              >
-                <option value="">New host…</option>
-                {profiles.map((p, i) => (
-                  <option
-                    key={p.id ?? `import-${i}`}
-                    value={p.id ?? `import-${i}`}
-                  >
-                    {p.id ? "Saved" : "SSH config"} · {p.name} · {p.host}
-                  </option>
-                ))}
-              </select>
-            </label>
+            {!reconnecting && (
+              <label className="form-field">
+                Your hosts
+                <select
+                  aria-label="Host profile"
+                  value={selected}
+                  onChange={(e) => {
+                    if (!e.target.value) {
+                      newProfile();
+                      return;
+                    }
+                    const profile = profiles.find(
+                      (p, i) => (p.id ?? `import-${i}`) === e.target.value,
+                    );
+                    if (profile) {
+                      select(profile);
+                      setSelected(e.target.value);
+                    }
+                  }}
+                >
+                  <option value="">New host…</option>
+                  {profiles.map((p, i) => (
+                    <option
+                      key={p.id ?? `import-${i}`}
+                      value={p.id ?? `import-${i}`}
+                    >
+                      {p.id ? "Saved" : "SSH config"} · {p.name} · {p.host}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
             <label className="form-field">
               Name <span className="optional">optional</span>
               <input
@@ -267,6 +285,7 @@ export function ConnectDialog({
                   required
                   placeholder="server.example.com"
                   value={options.host}
+                  readOnly={reconnecting}
                   onChange={(e) => field("host", e.target.value)}
                   autoCapitalize="off"
                   spellCheck={false}
@@ -280,6 +299,7 @@ export function ConnectDialog({
                   min="1"
                   max="65535"
                   value={options.port}
+                  readOnly={reconnecting}
                   onChange={(e) => field("port", Number(e.target.value))}
                 />
               </label>
@@ -290,6 +310,7 @@ export function ConnectDialog({
                 required
                 placeholder="Your remote username"
                 value={options.username}
+                readOnly={reconnecting}
                 onChange={(e) => field("username", e.target.value)}
                 autoCapitalize="off"
                 spellCheck={false}
@@ -414,10 +435,20 @@ export function ConnectDialog({
               </>
             ) : (
               <>
-                Open workspace <ArrowUpRight size={17} />
+                {reconnecting ? "Reconnect workspace" : "Open workspace"}{" "}
+                <ArrowUpRight size={17} />
               </>
             )}
           </button>
+          {busy && cancelConnect && (
+            <button
+              type="button"
+              className="cancel-connection"
+              onClick={cancelConnect}
+            >
+              Cancel connection
+            </button>
+          )}
         </form>
         <p className="trust-note">
           <ShieldCheck size={15} />

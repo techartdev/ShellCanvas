@@ -16,7 +16,7 @@ Saves are serialized across editor windows within one workspace. This is optimis
 
 ## Unsaved work
 
-Closing an editor, reloading a file, disconnecting its workspace and closing the app guard unsaved changes. Running editor operations block deliberate close/disconnect until completion. Transport loss preserves the workspace and its editor buffers, disables saving, and permits copying drafts. Reconnecting creates a new session rather than reusing an old handle. Drafts are in memory; forced termination or a process crash can lose them. No editor content is automatically persisted or sent to an external service.
+Closing an editor, reloading a file, disconnecting its workspace and closing the app guard unsaved changes. Running editor operations block deliberate close/disconnect until completion. Transport loss preserves the workspace and its editor buffers, disables saving, and permits copying drafts. Reconnecting creates a new session and keeps the editor buffer and original revision in the same workspace; a later save still checks for conflicts. If file support is unavailable after reconnect, the draft remains accessible with remote actions disabled. See [connection recovery](connection-recovery.md). Drafts are in memory; forced termination or a process crash can lose them. No editor content is automatically persisted or sent to an external service.
 
 ## Validation
 

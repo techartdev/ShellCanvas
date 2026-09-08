@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 import { Channel, invoke, isTauri } from "@tauri-apps/api/core";
-import type { HostServices, TerminalEvent } from "./sdk";
+import type { HostServices, Session, TerminalEvent } from "./sdk";
 export const native = isTauri();
 export const nativeServices: HostServices = {
   createText: (sessionId, parent, name, text) =>
@@ -14,7 +14,32 @@ export const nativeServices: HostServices = {
   profiles: () => invoke("profiles"),
   saveProfile: (profile) => invoke("save_profile", { profile }),
   removeProfile: (id) => invoke("remove_profile", { id }),
-  connect: (options) => invoke("connect", { options }),
+  connect: async (options, signal) => {
+    if (signal?.aborted) throw new Error("Connection canceled");
+    const requestId = await invoke<number>("begin_connect");
+    const cancel = () => {
+      void invoke("cancel_connect", { requestId }).catch((error) =>
+        console.warn("Connection cancellation failed", error),
+      );
+    };
+    signal?.addEventListener("abort", cancel, { once: true });
+    try {
+      if (signal?.aborted) {
+        await invoke("cancel_connect", { requestId });
+        throw new Error("Connection canceled");
+      }
+      const result = await invoke<Session>("connect", { options, requestId });
+      if (signal?.aborted) {
+        await invoke("disconnect", { sessionId: result.id });
+        throw new Error("Connection canceled");
+      }
+      return result;
+    } finally {
+      signal?.removeEventListener("abort", cancel);
+      // Also release a registration if IPC failed before connect claimed it.
+      cancel();
+    }
+  },
   disconnect: (sessionId) => invoke("disconnect", { sessionId }),
   alive: (sessionId) => invoke("session_alive", { sessionId }),
   list: (sessionId, path) => invoke("list_directory", { sessionId, path }),

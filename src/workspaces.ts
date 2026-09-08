@@ -5,20 +5,53 @@ import {
   type DesktopAction,
   type DesktopState,
 } from "./desktop";
-import type { DesktopApp, Session } from "./sdk";
+import type { ConnectOptions, DesktopApp, HostProfile, Session } from "./sdk";
+export function connectionProfile(
+  options: ConnectOptions,
+  name: string,
+): HostProfile {
+  return {
+    name,
+    host: options.host,
+    port: options.port,
+    username: options.username,
+    keyPath: options.keyPath,
+  };
+}
+export function sameEndpoint(a: HostProfile, b: HostProfile) {
+  return (
+    a.host.trim().toLowerCase() === b.host.trim().toLowerCase() &&
+    a.port === b.port &&
+    a.username === b.username
+  );
+}
 export interface Workspace {
   key: string;
   label: string;
   session: Session | null;
   desktop: DesktopState;
   connected?: boolean;
+  connection?: HostProfile;
 }
 export interface Workspaces {
   items: Workspace[];
   active: string;
 }
 export type WorkspaceAction =
-  | { type: "connected"; session: Session; label: string }
+  | {
+      type: "connected";
+      session: Session;
+      label: string;
+      connection?: HostProfile;
+    }
+  | {
+      type: "reconnected";
+      key: string;
+      previousSessionId: number;
+      session: Session;
+      connection: HostProfile;
+      label: string;
+    }
   | { type: "select"; key: string }
   | { type: "remove"; sessionId: number }
   | { type: "lost"; sessionId: number }
@@ -26,6 +59,7 @@ export type WorkspaceAction =
 export function initialWorkspaces(
   apps: readonly DesktopApp[],
   session: Session | null,
+  connection?: HostProfile,
 ): Workspaces {
   const local: Workspace = {
     key: "local",
@@ -37,7 +71,12 @@ export function initialWorkspaces(
   return session
     ? updateWorkspaces(
         state,
-        { type: "connected", session, label: session.info.hostname },
+        {
+          type: "connected",
+          session,
+          label: session.info.hostname,
+          connection,
+        },
         apps,
       )
     : state;
@@ -50,7 +89,12 @@ export function updateWorkspaces(
   switch (action.type) {
     case "connected": {
       const key = `session-${action.session.id}`;
-      if (state.items.some((w) => w.key === key)) return state;
+      if (
+        state.items.some(
+          (w) => w.key === key || w.session?.id === action.session.id,
+        )
+      )
+        return state;
       return {
         items: [
           ...state.items,
@@ -60,9 +104,39 @@ export function updateWorkspaces(
             label: action.label,
             desktop: initialDesktop(apps),
             connected: true,
+            connection: action.connection,
           },
         ],
         active: key,
+      };
+    }
+    case "reconnected": {
+      const target = state.items.find((w) => w.key === action.key);
+      if (
+        !target ||
+        state.items.some(
+          (w) => w.key !== action.key && w.session?.id === action.session.id,
+        ) ||
+        target.connected !== false ||
+        target.session?.id !== action.previousSessionId ||
+        !target.connection ||
+        !sameEndpoint(target.connection, action.connection)
+      )
+        return state;
+      return {
+        ...state,
+        active: target.key,
+        items: state.items.map((w) =>
+          w.key === target.key
+            ? {
+                ...w,
+                session: action.session,
+                connection: action.connection,
+                label: action.label,
+                connected: true,
+              }
+            : w,
+        ),
       };
     }
     case "select":

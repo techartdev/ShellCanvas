@@ -32,6 +32,7 @@ Windows output: `target/debug/shellcanvas.exe`. This debug build is for local ev
 - Move, resize, maximize, minimize, and reopen windows across the full desktop between the top toolbar and bottom dock. Windows can cover desktop widgets, which remain clickable when uncovered. Narrow displays use stacked layouts.
 - Real SSH connections with private-key/passphrase or password authentication.
 - Multiple simultaneous host workspaces. Use the host pill in the top bar to switch; each workspace keeps its Files navigation, terminal buffer and window layout. Add host opens another connection; Disconnect closes only the selected host.
+- Cancel pending connections and reconnect a lost host in its existing workspace, preserving folders, windows and editor drafts. Reconnection opens fresh shells. [Recovery behavior and limits](docs/connection-recovery.md).
 - Strict verification against the user's existing `~/.ssh/known_hosts`. Unknown and changed keys are refused. No automatic trust enrollment or security downgrade.
 - Import of basic, explicit `Host` blocks from `~/.ssh/config`. Select the profile and supply any missing username.
 - Save, edit and remove named host profiles in the native connection dialog. Saved entries live in the application data directory, independently of SSH config; passwords and passphrases are excluded. Use **Save host** before connecting if you want to keep an entry.
@@ -44,7 +45,7 @@ Windows output: `target/debug/shellcanvas.exe`. This debug build is for local ev
 - Linux detection behind a system-provider interface; generic SSH fallback when no provider matches.
 - A bundled app registry with local/host scope and capability requirements. No calculator is included.
 - Versioned bundled app manifests, generic window layouts, per-app render failure recovery, and a Host details reference app. Minimize preserves an app; close releases it (closing Terminal ends its shell).
-- Unavailable apps are disabled in the launcher and dock with an explanation. Limited devices retain their supported tools; independent command probing is optional and device detection has a total time budget.
+- Unavailable apps cannot be newly launched. Existing windows remain accessible after capability loss so local drafts can be recovered. Limited devices retain their supported tools; independent command probing is optional and device detection has a total time budget.
 
 ## Current boundaries
 

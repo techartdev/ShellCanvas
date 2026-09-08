@@ -105,7 +105,7 @@ export function Files({
   }, [active, closeMenu]);
   function back() {
     const previous = history.at(-1);
-    if (previous && !loading) {
+    if (previous && !loading && connected) {
       setHistory(history.slice(0, -1));
       void navigate(previous, false);
     }
@@ -118,6 +118,7 @@ export function Files({
     }
   }
   async function clipboardPath() {
+    if (!connected) return;
     const current = request.current;
     try {
       const path = (await clipboard.readText()).trim();
@@ -130,7 +131,7 @@ export function Files({
     }
   }
   async function navigate(path: string, remember = true) {
-    if (!session) return;
+    if (!session || !connected) return;
     const current = ++request.current;
     ++previewRequest.current;
     setLoading(true);
@@ -151,13 +152,21 @@ export function Files({
     }
   }
   useEffect(() => {
-    void navigate(launch?.path || session?.info.home || ".", false);
+    if (!connected) setLoading(false);
+    else
+      void navigate(
+        directory.path === "."
+          ? launch?.path || session?.info.home || "."
+          : directory.path,
+        false,
+      );
     return () => {
       ++request.current;
       ++previewRequest.current;
     };
-  }, [session?.id]);
+  }, [session?.id, connected]);
   async function open(entry: FileEntry) {
+    if (!connected) return;
     if (entry.kind === "directory") {
       void navigate(entry.path);
       return;
@@ -214,6 +223,7 @@ export function Files({
             {
               id: "edit",
               label: "Open in text editor",
+              disabled: !connected,
               run: () => openApp("editor", { path: entry.path }),
             },
           ]
@@ -225,6 +235,7 @@ export function Files({
               label:
                 entry.kind === "directory" ? "Open folder" : "Preview file",
               shortcut: "Enter",
+              disabled: !connected,
               run: () => void open(entry),
             },
             ...(entry.kind === "directory" && openApp
@@ -232,6 +243,7 @@ export function Files({
                   {
                     id: "new-window",
                     label: "Open in new window",
+                    disabled: !connected,
                     run: () => openApp("files", { path: entry.path }),
                   },
                 ]
@@ -278,28 +290,28 @@ export function Files({
         label: "Back",
         shortcut: "Alt+←",
         separatorBefore: true,
-        disabled: !history.length || loading,
+        disabled: !connected || !history.length || loading,
         run: back,
       },
       {
         id: "parent",
         label: "Parent folder",
         shortcut: "Alt+↑",
-        disabled: loading || directory.path === "/",
+        disabled: !connected || loading || directory.path === "/",
         run: () => void navigate(parentPath(directory.path)),
       },
       {
         id: "refresh",
         label: "Refresh",
         shortcut: "F5",
-        disabled: loading,
+        disabled: !connected || loading,
         run: () => void navigate(directory.path, false),
       },
       {
         id: "clipboard-path",
         label: "Go to clipboard path",
         separatorBefore: true,
-        disabled: loading,
+        disabled: !connected || loading,
         run: () => void clipboardPath(),
       },
       {
@@ -376,12 +388,14 @@ export function Files({
         <p className="eyebrow">PLACES</p>
         <button
           className={directory.path === session?.info.home ? "selected" : ""}
+          disabled={!connected}
           onClick={() => void navigate(session?.info.home || ".")}
         >
           <Home size={16} /> Home
         </button>
         <button
           className={directory.path === "/" ? "selected" : ""}
+          disabled={!connected}
           onClick={() => void navigate("/")}
         >
           <Server size={16} /> Filesystem
@@ -394,11 +408,13 @@ export function Files({
           <div>
             <strong>{session?.info.hostname}</strong>
             <small>
-              {preview
-                ? "Sample filesystem"
-                : session?.info.capabilities.includes("files.manage")
-                  ? "SFTP"
-                  : "SFTP · read only"}
+              {!connected
+                ? "File access unavailable"
+                : preview
+                  ? "Sample filesystem"
+                  : session?.info.capabilities.includes("files.manage")
+                    ? "SFTP"
+                    : "SFTP · read only"}
             </small>
           </div>
         </div>
@@ -409,7 +425,7 @@ export function Files({
             className="icon-button"
             title="Back"
             aria-label="Back"
-            disabled={!history.length || loading}
+            disabled={!connected || !history.length || loading}
             onClick={back}
           >
             <ArrowLeft size={17} />
@@ -418,7 +434,7 @@ export function Files({
             className="icon-button"
             title="Parent folder"
             aria-label="Parent folder"
-            disabled={loading || directory.path === "/"}
+            disabled={!connected || loading || directory.path === "/"}
             onClick={() => void navigate(parentPath(directory.path))}
           >
             <ArrowUp size={17} />
@@ -434,6 +450,7 @@ export function Files({
             <input
               ref={pathField}
               aria-label="Remote path"
+              readOnly={!connected}
               value={pathInput}
               onChange={(e) => setPathInput(e.target.value)}
             />
@@ -442,7 +459,7 @@ export function Files({
             className="icon-button"
             title="Refresh"
             aria-label="Refresh directory"
-            disabled={loading}
+            disabled={!connected || loading}
             onClick={() => void navigate(directory.path, false)}
           >
             <RefreshCw size={16} className={loading ? "spin" : ""} />
@@ -635,6 +652,7 @@ export function Files({
           <span>{entries.length} items</span>
           {selected && (
             <button
+              disabled={!connected}
               onClick={() => {
                 const entry = entries.find((e) => e.path === selected);
                 if (entry) void open(entry);
@@ -644,11 +662,13 @@ export function Files({
             </button>
           )}
           <span>
-            {busy
-              ? "Working…"
-              : session?.info.capabilities.includes("files.manage")
-                ? "Remote filesystem"
-                : "Read-only explorer"}
+            {!connected
+              ? "Cached listing · file access unavailable"
+              : busy
+                ? "Working…"
+                : session?.info.capabilities.includes("files.manage")
+                  ? "Remote filesystem"
+                  : "Read-only explorer"}
           </span>
         </footer>
       </div>

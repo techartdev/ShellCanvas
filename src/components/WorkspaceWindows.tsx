@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
-import { useLayoutEffect, useState } from "react";
+import { useLayoutEffect, useMemo } from "react";
 import { apps } from "../apps/registry";
 import { focusedApp, type DesktopAction } from "../desktop";
 import { bindSession } from "../session-services";
@@ -24,8 +24,11 @@ export function WorkspaceWindows({
   connect(): void;
   reportError(message: string): void;
 }) {
-  // Each keyed workspace owns a fixed handle. Switching never replaces its session.
-  const [binding] = useState(() => bindSession(backend, workspace.session));
+  // Switching keeps the handle. An explicit reconnect gets a fresh generation.
+  const binding = useMemo(
+    () => bindSession(backend, workspace.session),
+    [backend, workspace.session?.id],
+  );
   useLayoutEffect(() => {
     if (workspace.connected !== false) binding.activate();
     else binding.dispose();

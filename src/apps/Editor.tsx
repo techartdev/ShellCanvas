@@ -41,6 +41,7 @@ export function Editor({
   services,
   active = true,
   connected = true,
+  unavailableReason,
   setDocumentState,
 }: AppContext) {
   const { values: preferences, set: setPreference } = usePreferences();
@@ -84,6 +85,7 @@ export function Editor({
   const dirty = buffer.text !== normaliseText(document?.text ?? "");
   const canSave =
     !!document?.writable &&
+    !!session?.info.capabilities.includes("files.edit") &&
     connected &&
     !busy &&
     dirty &&
@@ -369,8 +371,9 @@ export function Editor({
       )}
       {!connected && (
         <div className="editor-offline">
-          Connection closed. Your draft is still here; copy it before closing
-          this workspace.
+          {unavailableReason ||
+            "Connection closed. Reconnect this host to continue."}{" "}
+          Your draft is still here; copy it before closing this workspace.
         </div>
       )}
       {error && (
