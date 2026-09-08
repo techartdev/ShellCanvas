@@ -10,6 +10,7 @@ import {
   X,
 } from "lucide-react";
 import type { ConnectOptions, HostProfile } from "../sdk";
+import { HostProfilePicker } from "./HostProfilePicker";
 export function ConnectDialog({
   profiles,
   busy,
@@ -235,36 +236,24 @@ export function ConnectDialog({
         >
           <fieldset disabled={locked || preview}>
             {!reconnecting && (
-              <label className="form-field">
-                Your hosts
-                <select
-                  aria-label="Host profile"
-                  value={selected}
-                  onChange={(e) => {
-                    if (!e.target.value) {
-                      newProfile();
-                      return;
-                    }
-                    const profile = profiles.find(
-                      (p, i) => (p.id ?? `import-${i}`) === e.target.value,
-                    );
-                    if (profile) {
-                      select(profile);
-                      setSelected(e.target.value);
-                    }
-                  }}
-                >
-                  <option value="">New host…</option>
-                  {profiles.map((p, i) => (
-                    <option
-                      key={p.id ?? `import-${i}`}
-                      value={p.id ?? `import-${i}`}
-                    >
-                      {p.id ? "Saved" : "SSH config"} · {p.name} · {p.host}
-                    </option>
-                  ))}
-                </select>
-              </label>
+              <HostProfilePicker
+                profiles={profiles}
+                disabled={locked || preview}
+                value={selected}
+                onChange={(value) => {
+                  if (!value) {
+                    newProfile();
+                    return;
+                  }
+                  const profile = profiles.find(
+                    (p, i) => (p.id ?? `import-${i}`) === value,
+                  );
+                  if (profile) {
+                    select(profile);
+                    setSelected(value);
+                  }
+                }}
+              />
             )}
             <label className="form-field">
               Name <span className="optional">optional</span>

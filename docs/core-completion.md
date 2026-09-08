@@ -15,6 +15,8 @@ Additional protocols are optional until these core workflows work well. Connecti
 
 ## Evidence and outstanding work
 
+- Connections now has a searchable, keyboard-accessible host picker with separate saved/imported groups and endpoint details. The 80-profile fixture passed search, navigation, no-match handling, saved-copy removal and narrow-layout checks without submitting a connection. Native profile persistence and reconnect semantics are unchanged; see [host profiles](host-profiles.md).
+
 - Native terminal opening and pumping now use transport-independent console traits, with independent read/write progress and explicit per-console cancellation. Tests cover blocked input, optional resize, byte preservation and cleanup; the live two-console Linux probe passed independent state/dimensions and survival after closing one. See [terminal services](terminal-services.md). This does not add another production protocol or replace the pending GUI walkthrough.
 
 - Provider selection now has bounded per-attempt shared probes and connection-neutral inspection contracts. Recognized/unknown/failed/no-exec/timed-out fixtures, concurrent cache checks, 29 Rust tests, Clippy and a read-only Linux SSH/SFTP/PTY regression passed. This completes BASE-04; composite bindings and further connection-neutral lifecycle/terminal contracts remain open. See [device detection](device-detection.md).

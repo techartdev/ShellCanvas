@@ -1,0 +1,138 @@
+.host-picker {
+  position: relative;
+  margin-bottom: 16px;
+}
+.host-picker-label {
+  display: block;
+  color: #b4c9d1;
+  font-size: 10px;
+  margin-bottom: 7px;
+}
+.host-picker-trigger {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: 11px;
+  padding: 11px 12px;
+  border: 1px solid #aac5cd35;
+  border-radius: 8px;
+  background: #101f2b55;
+  color: #a2cbbc;
+  text-align: left;
+}
+.host-picker-trigger > span,
+.host-picker-list button > span {
+  flex: 1;
+  min-width: 0;
+}
+.host-picker strong,
+.host-picker small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.host-picker strong {
+  color: #d7e5e8;
+  font-size: 12px;
+  font-weight: 500;
+}
+.host-picker small {
+  color: #8da9b8;
+  font-size: 10px;
+  margin-top: 4px;
+}
+.host-picker svg {
+  flex-shrink: 0;
+}
+.host-picker-panel {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  z-index: 20;
+  border: 1px solid #9fbec644;
+  border-radius: 10px;
+  background: #1a2d38;
+  box-shadow: 0 14px 38px #07131cb3;
+  overflow: hidden;
+}
+.host-picker-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 11px 12px;
+  border-bottom: 1px solid #94b4bf22;
+  color: #89a7b6;
+}
+.host-picker-search input {
+  min-width: 0;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #d7e5e8;
+  font-size: 11px;
+  outline: none;
+}
+.host-picker-search:focus-within {
+  box-shadow: inset 0 -2px #a2cbbc;
+}
+.host-picker-list {
+  max-height: 208px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 4px 5px;
+}
+.host-picker-group {
+  display: flex;
+  justify-content: space-between;
+  padding: 10px 8px 6px;
+  font-size: 9px;
+  color: #8eaab8;
+  letter-spacing: 0.5px;
+}
+.host-picker-group > span {
+  color: #b9cbc9;
+}
+.host-picker-list button {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  gap: 10px;
+  padding: 10px 8px;
+  color: #8da9b8;
+  border-radius: 5px;
+  text-align: left;
+}
+.host-picker-list button[data-active="true"],
+.host-picker-list button:hover {
+  background: #a2cbbc16;
+}
+.host-picker-list button[aria-selected="true"] {
+  color: #a2cbbc;
+}
+.host-picker-bottom {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-top: 1px solid #94b4bf22;
+  padding: 9px 12px;
+  color: #8eaab8;
+  font-size: 9px;
+}
+.host-picker-bottom button {
+  display: flex;
+  gap: 5px;
+  align-items: center;
+  color: #bbdecf;
+  font-size: 10px;
+  padding: 4px;
+}
+.host-picker-empty {
+  color: #9fb9c5;
+  font-size: 11px;
+  text-align: center;
+  padding: 20px 12px;
+  margin: 0;
+}

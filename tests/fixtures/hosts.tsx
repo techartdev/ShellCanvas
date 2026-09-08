@@ -6,15 +6,29 @@ import type { HostProfile } from "../../src/sdk";
 import "../../src/styles.css";
 
 function Fixture() {
-  const [profiles, setProfiles] = useState<HostProfile[]>([]);
+  const [profiles, setProfiles] = useState<HostProfile[]>(() =>
+    new URLSearchParams(location.search).has("many")
+      ? Array.from({ length: 80 }, (_, i) => ({
+          id: i < 40 ? `fixture-${i}` : undefined,
+          name: `${i < 40 ? "Production" : "Lab"} ${i + 1}`,
+          host: `node-${i + 1}.example.test`,
+          username: i < 40 ? "deploy" : "root",
+          port: i < 40 ? 22 : 2222,
+          keyPath: "~/.ssh/fixture-key",
+        }))
+      : [],
+  );
   const [open, setOpen] = useState(true);
   const [leaked, setLeaked] = useState(false);
+  const [submitted, setSubmitted] = useState(0);
   return (
     <>
       <button onClick={() => setOpen(true)}>Open host manager fixture</button>
       <p>
         Saved profiles: {profiles.length} · Secret fields sent to store:{" "}
         {String(leaked)}
+        {" · Connection submissions: "}
+        {submitted}
       </p>
       {open && (
         <ConnectDialog
@@ -23,7 +37,7 @@ function Fixture() {
           preview={false}
           error=""
           close={() => setOpen(false)}
-          submit={() => {}}
+          submit={() => setSubmitted((old) => old + 1)}
           save={async (profile) => {
             setLeaked("password" in profile || "passphrase" in profile);
             const saved = { ...profile, id: profile.id ?? crypto.randomUUID() };
