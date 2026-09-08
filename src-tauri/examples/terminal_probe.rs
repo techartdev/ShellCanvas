@@ -6,8 +6,11 @@ mod connection_resource;
 mod session_registry;
 #[path = "../src/terminals.rs"]
 mod terminals;
+#[allow(dead_code)]
+#[path = "../src/workspace_services.rs"]
+mod workspace_services;
 use anyhow::{ensure, Result};
-use shellcanvas_core::{ConnectOptions, Connection};
+use shellcanvas_core::{ConnectOptions, Connection, SftpFileSystem};
 use shellcanvas_services::{
     ConnectionIdentity, TerminalEvent, TerminalInput, TerminalService, TerminalSize,
 };
@@ -45,7 +48,6 @@ async fn main() -> Result<()> {
         })
         .await?,
     );
-    let service: Arc<dyn TerminalService> = connection.clone();
     let resource = connection_resource::ConnectionResource::new(
         ConnectionIdentity {
             instance: 1001,
@@ -62,8 +64,23 @@ async fn main() -> Result<()> {
         resource.identity().instance != 1,
         "Connection and workspace identities were conflated"
     );
+    let mut workspace = workspace_services::WorkspaceServices::new(vec![resource.clone()])
+        .map_err(anyhow::Error::msg)?;
+    workspace
+        .bind_terminal(&resource, connection.clone())
+        .map_err(anyhow::Error::msg)?;
+    workspace
+        .bind_files(
+            &resource,
+            Arc::new(SftpFileSystem(connection.sftp().await?)),
+        )
+        .map_err(anyhow::Error::msg)?;
+    let files = workspace.files.clone().unwrap();
+    files.list(None).await?;
+    println!("Explicit SSH file/console bindings and read-only file dispatch: OK");
+    let service: Arc<dyn TerminalService> = workspace.terminal.clone().unwrap();
     let mut registry = session_registry::SessionRegistry::default();
-    registry.sessions.insert(1, connection.clone());
+    registry.sessions.insert(1, workspace);
     let mut tasks = Vec::new();
     let mut outputs = Vec::new();
     for id in 10..12 {
@@ -123,8 +140,13 @@ async fn main() -> Result<()> {
         .await?;
     wait_output(&outputs[1], "SC_SURVIVOR:second").await?;
     println!("Closing one console preserves the other; stale/cross-session handles refused");
-    registry.remove(1);
+    let workspace = registry.remove(1).unwrap();
     timeout(Duration::from_secs(5), tasks.remove(0)).await??;
+    workspace.disconnect().await.map_err(anyhow::Error::msg)?;
+    ensure!(
+        files.list(None).await.is_err(),
+        "A retained service accepted a closed workspace"
+    );
     resource.disconnect().await.map_err(anyhow::Error::msg)?;
     resource.disconnect().await.map_err(anyhow::Error::msg)?;
     ensure!(

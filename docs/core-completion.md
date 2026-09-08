@@ -15,6 +15,8 @@ Additional protocols are optional until these core workflows work well. Connecti
 
 ## Evidence and outstanding work
 
+- Native service bindings now route every production role through an explicit connection source and workspace lifetime. Shared connection leases close on last workspace release; late reads/handles are rejected or cleaned up and late writes report uncertainty. Mixed files/console and shared-owner fixtures passed, along with all 53 Rust tests, Clippy and the live bound SFTP/two-console probe. See [workspace bindings](workspace-bindings.md). Per-binding UI/status, service generations and independent-leg reconnect remain.
+
 - Connection-neutral identity and lifecycle now drive the native workspace's health/disconnect path. One shared resource coordinates cancellation-safe, bounded, once-only teardown and retains failures. Workspace IDs and established connection instances are separate. All 46 Rust tests, 65 frontend tests, all-target Clippy and the live two-console lifecycle probe passed. See [connection lifecycle](connection-lifecycle.md). Mixed-adapter routing, per-binding status/generations and last-workspace leases remain before the composition gate is complete.
 
 - Windows native file walkthrough passed selected-file path copying, full-preview text copying through the OS clipboard, clipboard-folder navigation in Files 2, shared Cut/Paste across windows, and Save As replacement. Readback proved no write during review, exact Unicode replacement, and correct moved contents/source absence. The native app exited normally and exact disposable-directory cleanup passed. See [native file workflows](native-file-workflows.md). Native editor relocation, selected-substring copying and physical-network interruption remain separate checks.

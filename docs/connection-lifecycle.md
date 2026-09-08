@@ -12,7 +12,7 @@ The resource starts explicit disconnect once, immediately stops reporting connec
 
 The native registry still removes one workspace's terminal owners and closes its transfers before awaiting connection teardown. Removing the workspace prevents new operations from acquiring its service handles. Frontend stale-session and native operation ownership checks remain in place. This resource does not itself add per-service authorization or remap provider paths.
 
-This is the lifecycle foundation for composition. One production workspace still has one connection resource. Explicit multi-adapter routing, last-workspace resource leases, per-binding generations/status, independent leg reconnect and general command/API/configuration contracts remain separate work. The two-resource fixture tests prove independent lifecycle behavior, not a complete mixed-protocol workspace.
+The subsequent [workspace binding layer](workspace-bindings.md) implements explicit native multi-source routing and last-workspace resource leases around this resource. One production SSH workspace still has one connection resource. Per-binding generations/status, independent leg reconnect and general command/API/configuration contracts remain separate work. Lifecycle tests alone do not prove a complete mixed-protocol desktop.
 
 ## Verification
 

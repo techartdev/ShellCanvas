@@ -2,19 +2,21 @@
 use shellcanvas_services::{ConnectionIdentity, ConnectionLifecycle};
 use std::sync::{
     atomic::{AtomicBool, Ordering},
-    Arc,
+    Arc, Mutex,
 };
 use std::time::Duration;
 use tokio::sync::watch;
 
 /// One established connection shared by its service roles. Explicit teardown is
 /// started once, survives a canceled caller and reports the same outcome to all
-/// waiters. Last-workspace lease release will be owned by the composite broker.
+/// waiters. Service handles do not count as workspace leases.
 pub struct ConnectionResource {
     identity: ConnectionIdentity,
     lifecycle: Arc<dyn ConnectionLifecycle>,
     closing: AtomicBool,
     outcome: watch::Sender<Option<Result<(), String>>>,
+    leases: Mutex<usize>,
+    runtime: tokio::runtime::Handle,
 }
 
 impl ConnectionResource {
@@ -25,6 +27,8 @@ impl ConnectionResource {
             lifecycle,
             closing: AtomicBool::new(false),
             outcome,
+            leases: Mutex::new(0),
+            runtime: tokio::runtime::Handle::current(),
         })
     }
 
@@ -36,11 +40,21 @@ impl ConnectionResource {
         !self.closing.load(Ordering::Acquire) && self.lifecycle.is_connected()
     }
 
-    pub async fn disconnect(self: &Arc<Self>) -> Result<(), String> {
-        let mut outcome = self.outcome.subscribe();
+    pub fn lease(self: &Arc<Self>) -> Result<ConnectionLease, String> {
+        let mut leases = self.leases.lock().unwrap();
+        if !self.is_connected() {
+            return Err("Cannot lease a disconnected connection".into());
+        }
+        *leases += 1;
+        Ok(ConnectionLease {
+            resource: Some(self.clone()),
+        })
+    }
+
+    fn start_disconnect(self: &Arc<Self>) {
         if !self.closing.swap(true, Ordering::AcqRel) {
             let resource = self.clone();
-            tokio::spawn(async move {
+            self.runtime.spawn(async move {
                 let lifecycle = resource.lifecycle.clone();
                 let mut task = tokio::spawn(async move { lifecycle.disconnect().await });
                 let result = match tokio::time::timeout(Duration::from_secs(15), &mut task).await {
@@ -56,6 +70,11 @@ impl ConnectionResource {
                 resource.outcome.send_replace(Some(result));
             });
         }
+    }
+
+    pub async fn disconnect(self: &Arc<Self>) -> Result<(), String> {
+        let mut outcome = self.outcome.subscribe();
+        self.start_disconnect();
         loop {
             if let Some(result) = outcome.borrow_and_update().clone() {
                 return result;
@@ -65,6 +84,41 @@ impl ConnectionResource {
                 .await
                 .map_err(|_| "Connection teardown result unavailable".to_string())?;
         }
+    }
+}
+
+/// A logical workspace's ownership, independent of retained operation handles.
+pub struct ConnectionLease {
+    resource: Option<Arc<ConnectionResource>>,
+}
+impl ConnectionLease {
+    pub fn resource(&self) -> &Arc<ConnectionResource> {
+        self.resource.as_ref().unwrap()
+    }
+    fn release(&mut self) -> Option<(Arc<ConnectionResource>, bool)> {
+        let resource = self.resource.take()?;
+        let last = {
+            let mut leases = resource.leases.lock().unwrap();
+            *leases -= 1;
+            let last = *leases == 0;
+            if last {
+                resource.start_disconnect();
+            }
+            last
+        };
+        Some((resource, last))
+    }
+    pub async fn close(mut self) -> Result<(), String> {
+        if let Some((resource, true)) = self.release() {
+            resource.disconnect().await
+        } else {
+            Ok(())
+        }
+    }
+}
+impl Drop for ConnectionLease {
+    fn drop(&mut self) {
+        self.release();
     }
 }
 

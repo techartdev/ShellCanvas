@@ -40,7 +40,9 @@ Apps now receive session-bound services without connection/profile administratio
 
 ## Lifecycle
 
-The established connection now implements a [transport-independent lifecycle](connection-lifecycle.md). The native workspace holds a shared resource with a separate connection identity; health/disconnect no longer reach into an SSH client handle. Setup/trust remain in the SSH adapter, and composite service routing remains pending.
+The established connection now implements a [transport-independent lifecycle](connection-lifecycle.md). The native workspace holds a shared resource with a separate connection identity; health/disconnect no longer reach into an SSH client handle. Setup/trust remain in the SSH adapter.
+
+The subsequent [workspace binding layer](workspace-bindings.md) now routes all native service roles through explicit resource/lifetime guards. Mixed-source and shared-lease behavior is verified in native fixtures; production connection setup remains SSH-only while per-binding status and reconnect UI are developed.
 
 - Session IDs prevent commands from accidentally acting on a replacement host.
 - A native registry keeps independent connections and terminal owners under a short mutex. Network connection setup does not remove or block an existing host. Terminal creation rechecks ownership after its network await, so disconnecting during creation cannot register an orphan.

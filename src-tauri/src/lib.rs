@@ -14,19 +14,10 @@ mod profile_store;
 mod session_registry;
 mod terminals;
 mod transfers;
+mod workspace_services;
 use connection_resource::ConnectionResource;
 use session_registry::SessionRegistry;
-
-struct ActiveSession {
-    connection: Arc<ConnectionResource>,
-    terminal: Option<Arc<dyn TerminalService>>,
-    files: Option<Arc<dyn FileSystemProvider>>,
-    text: Option<Arc<dyn TextFileService>>,
-    mutations: Option<Arc<dyn FileMutationService>>,
-    moves: Option<Arc<dyn FileMoveService>>,
-    transfers: Option<Arc<dyn FileTransferService>>,
-    settings: Option<Arc<dyn HostSettingsService>>,
-}
+use workspace_services::WorkspaceServices as ActiveSession;
 #[derive(Default)]
 struct DesktopState {
     registry: Arc<Mutex<SessionRegistry<ActiveSession>>>,
@@ -203,20 +194,28 @@ async fn connect_session(
         },
         connection.clone(),
     );
-    let connections = vec![resource.identity().clone()];
-    state.registry.lock().await.sessions.insert(
-        id,
-        ActiveSession {
-            terminal: Some(connection.clone()),
-            connection: resource,
-            files,
-            text,
-            mutations,
-            moves,
-            transfers,
-            settings,
-        },
-    );
+    let mut active = ActiveSession::new(vec![resource.clone()])?;
+    active.bind_terminal(&resource, connection.clone())?;
+    if let Some(service) = files {
+        active.bind_files(&resource, service)?;
+    }
+    if let Some(service) = text {
+        active.bind_text(&resource, service)?;
+    }
+    if let Some(service) = mutations {
+        active.bind_mutations(&resource, service)?;
+    }
+    if let Some(service) = moves {
+        active.bind_moves(&resource, service)?;
+    }
+    if let Some(service) = transfers {
+        active.bind_transfers(&resource, service)?;
+    }
+    if let Some(service) = settings {
+        active.bind_settings(&resource, service)?;
+    }
+    let connections = active.identities();
+    state.registry.lock().await.sessions.insert(id, active);
     Ok(SessionInfo {
         id,
         info,
@@ -242,7 +241,7 @@ async fn disconnect(session_id: u64, state: State<'_, DesktopState>) -> Result<(
     let removed = state.registry.lock().await.remove(session_id);
     state.transfers.lock().await.close_session(session_id);
     if let Some(old) = removed {
-        old.connection.disconnect().await.map_err(error)?;
+        old.disconnect().await?;
     }
     Ok(())
 }
@@ -255,7 +254,7 @@ async fn session_alive(session_id: u64, state: State<'_, DesktopState>) -> Resul
         .await
         .sessions
         .get(&session_id)
-        .is_some_and(|s| s.connection.is_connected()))
+        .is_some_and(|s| s.is_connected()))
 }
 
 async fn filesystem(
@@ -270,7 +269,7 @@ async fn filesystem(
     active
         .files
         .clone()
-        .ok_or("SFTP is not available on this host".into())
+        .ok_or("File browsing is not available in this workspace".into())
 }
 
 async fn host_settings(
