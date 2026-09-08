@@ -47,7 +47,7 @@ Windows output: `target/debug/shellcanvas.exe`. This debug build is for local ev
 - Files windows, Back history and previews follow confirmed workspace renames/moves. Background refresh preserves filters and typed addresses; stale responses cannot restore old locations. [Navigation behavior](docs/file-navigation.md).
 - Multiple Files and Terminal instances per workspace, with numbered titles, independent buffers/navigation and close/minimize behavior. The titlebar plus button creates another instance; the dock context menu lists existing windows. Desktop and titlebar context menus provide common window actions.
 - Linux detection behind a system-provider interface; generic SSH fallback when no provider matches.
-- A bundled app registry with local/host scope and capability requirements. No calculator is included.
+- A bundled app registry with local/host scope and required/optional capabilities. App service handles reject undeclared calls and keep transfer tickets scoped to their app. [Service declarations](docs/app-services.md).
 - Versioned bundled app manifests, generic window layouts, per-app render failure recovery, and a Host details reference app. Minimize preserves an app; close releases it (closing Terminal ends its shell).
 - Unavailable apps cannot be newly launched. Existing windows remain accessible after capability loss so local drafts can be recovered. Limited devices retain their supported tools; independent command probing is optional and device detection has a total time budget.
 

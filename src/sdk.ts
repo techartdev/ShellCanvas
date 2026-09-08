@@ -258,7 +258,9 @@ export interface DesktopApp {
   title: string;
   subtitle: string;
   scope: "host" | "local";
-  requires: Capability[];
+  requires: readonly Capability[];
+  /** Services the app may use when available, without blocking startup. */
+  optional?: readonly Capability[];
   icon: ComponentType<{ size?: number; strokeWidth?: number }>;
   component: ComponentType<AppContext>;
   window?: {
@@ -282,7 +284,7 @@ export function defineApps(definitions: DesktopApp[]): readonly DesktopApp[] {
       if (app.scope !== "host" && app.scope !== "local")
         throw new Error(`Invalid app scope: ${app.id}`);
       if (
-        app.requires.some(
+        [...app.requires, ...(app.optional ?? [])].some(
           (cap) =>
             ![
               "terminal",
@@ -298,7 +300,10 @@ export function defineApps(definitions: DesktopApp[]): readonly DesktopApp[] {
         )
       )
         throw new Error(`Unknown app capability: ${app.id}`);
-      if (app.scope === "local" && app.requires.length)
+      const declared = [...app.requires, ...(app.optional ?? [])];
+      if (new Set(declared).size !== declared.length)
+        throw new Error(`Duplicate app capability: ${app.id}`);
+      if (app.scope === "local" && declared.length)
         throw new Error(
           `Local apps cannot require host capabilities: ${app.id}`,
         );
@@ -308,7 +313,12 @@ export function defineApps(definitions: DesktopApp[]): readonly DesktopApp[] {
       )
         throw new Error(`Invalid window layout: ${app.id}`);
       ids.add(app.id);
-      return { ...app, requires: [...app.requires], window: { ...app.window } };
+      return Object.freeze({
+        ...app,
+        requires: Object.freeze([...app.requires]),
+        optional: Object.freeze([...(app.optional ?? [])]),
+        window: Object.freeze({ ...app.window }),
+      });
     }),
   );
 }

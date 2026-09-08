@@ -3,6 +3,7 @@ import {
   useCallback,
   useEffect,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
   type CSSProperties,
@@ -17,6 +18,7 @@ import {
 } from "lucide-react";
 import type { AppContext, DesktopApp } from "../sdk";
 import { unavailableReason } from "../sdk";
+import { scopeAppServices } from "../app-services";
 import { AppBoundary } from "./AppBoundary";
 import { ContextMenu } from "./ContextMenu";
 import { ConfirmDialog } from "./ConfirmDialog";
@@ -47,6 +49,10 @@ export function AppWindow({
   dirty?: boolean;
   busy?: boolean;
 }) {
+  const appServices = useMemo(
+    () => scopeAppServices(context.services, app),
+    [context.services, app],
+  );
   const [position, setPosition] = useState<{
     left: number;
     top: number;
@@ -449,6 +455,7 @@ export function AppWindow({
             )}
             <Component
               {...context}
+              services={appServices}
               connected={context.connected !== false && !reason}
               unavailableReason={reason ?? undefined}
             />

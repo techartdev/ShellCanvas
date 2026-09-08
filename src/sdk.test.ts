@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: MPL-2.0
 import { describe, expect, it } from "vitest";
 import { unavailableReason, type DesktopApp, type Session } from "./sdk";
-const app = { scope: "host", requires: ["files.read"] } as DesktopApp;
+const app = {
+  scope: "host",
+  requires: ["files.read"],
+} as unknown as DesktopApp;
 describe("capability-driven desktop", () => {
   it("keeps local apps available without an SSH session", () => {
     expect(
@@ -25,7 +28,10 @@ describe("capability-driven desktop", () => {
     ).toBeNull();
   });
   it("keeps app availability independent of transport and OS names", () => {
-    const terminal = { scope: "host", requires: ["terminal"] } as DesktopApp;
+    const terminal = {
+      scope: "host",
+      requires: ["terminal"],
+    } as unknown as DesktopApp;
     const details = { scope: "host", requires: [] } as unknown as DesktopApp;
     const apiDevice = {
       info: { provider: "fixture-api", capabilities: ["files.read"] },

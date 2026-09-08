@@ -103,6 +103,13 @@ class FileClipboard {
 
 // One clipboard per fixed service binding, never indexed by a host name or path.
 const clipboards = new WeakMap<SessionServices, FileClipboard>();
+/** Shell-only alias for a declared move-capable app in the same workspace. */
+export function shareFileClipboard(
+  source: SessionServices,
+  target: SessionServices,
+) {
+  clipboards.set(target, fileClipboard(source));
+}
 export function fileClipboard(services: SessionServices) {
   let clipboard = clipboards.get(services);
   if (!clipboard) {
