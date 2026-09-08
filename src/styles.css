@@ -684,6 +684,7 @@ button:active:not(:disabled) {
   flex-direction: column;
 }
 .files-app {
+  container: files / inline-size;
   display: flex;
   flex: 1;
   min-height: 0;
@@ -863,8 +864,36 @@ button:active:not(:disabled) {
   border-bottom: 1px solid #97b2be15;
   margin-bottom: 5px;
 }
-.file-table-head span:last-child {
-  text-align: right;
+.file-table-head > button {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 4px;
+  height: 26px;
+  min-width: 0;
+  padding: 0;
+  color: inherit;
+  font: inherit;
+  border-radius: 3px;
+}
+.file-table-head > button[aria-pressed="true"] {
+  color: #b6d6ce;
+}
+.file-table-head > button:hover {
+  background: #91b3c014;
+}
+.file-table-head > button:last-child {
+  justify-content: flex-end;
+}
+.context-menu-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.menu-check {
+  width: 13px;
+  display: inline-flex;
+  flex-shrink: 0;
 }
 .file-row {
   width: 100%;
@@ -2041,7 +2070,7 @@ button:active:not(:disabled) {
     padding-left: 8px;
     padding-right: 8px;
   }
-  .file-table-head > span:nth-child(2),
+  .file-table-head > button:nth-child(2),
   .file-row > span:nth-child(2) {
     display: none;
   }
@@ -2119,6 +2148,70 @@ button:active:not(:disabled) {
   animation: none !important;
   transition: none !important;
   scroll-behavior: auto !important;
+}
+@container files (max-width: 560px) {
+  .file-sidebar {
+    width: 49px;
+    padding: 20px 5px 10px;
+  }
+  .file-sidebar > .eyebrow,
+  .volume {
+    display: none;
+  }
+  .file-sidebar > button {
+    font-size: 0;
+    gap: 0;
+    padding: 0;
+    justify-content: center;
+  }
+  .file-toolbar {
+    padding-left: 8px;
+    padding-right: 8px;
+    gap: 2px;
+  }
+  .folder-heading {
+    padding: 16px 14px;
+  }
+  .folder-heading h2 {
+    font-size: 18px;
+  }
+  .folder-heading p {
+    font-size: 9px;
+  }
+  .file-search {
+    width: 89px;
+  }
+  .file-search input {
+    width: 65px;
+    font-size: 9px;
+  }
+  .file-table {
+    padding: 0 5px;
+  }
+  .file-table-head,
+  .file-row {
+    grid-template-columns: minmax(110px, 1fr) 54px;
+    gap: 6px;
+    padding-left: 8px;
+    padding-right: 8px;
+  }
+  .file-table-head > button:nth-child(2),
+  .file-row > span:nth-child(2) {
+    display: none;
+  }
+  .file-row {
+    font-size: 10px;
+  }
+  .file-row > span:first-child {
+    gap: 8px;
+  }
+  .files-footer {
+    padding: 0 12px;
+    font-size: 8px;
+  }
+  .files-footer span:last-child {
+    display: none;
+  }
 }
 .files-app.compact-files .file-row {
   height: 30px;

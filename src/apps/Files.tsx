@@ -9,6 +9,7 @@ import {
 } from "react";
 import {
   ArrowLeft,
+  ArrowDown,
   ArrowUp,
   ChevronRight,
   Eye,
@@ -58,7 +59,12 @@ export function Files({
   reportError,
   setDocumentState,
 }: AppContext) {
-  const { values: preferences, set: setPreference } = usePreferences();
+  const {
+    values: preferences,
+    set: setPreference,
+    error: preferenceError,
+    blocked: preferencesBlocked,
+  } = usePreferences();
   const cutClipboard = useMemo(() => fileClipboard(services), [services]);
   const cutState = useSyncExternalStore(
     cutClipboard.subscribe,
@@ -190,6 +196,7 @@ export function Files({
     x: number;
     y: number;
     entry?: FileEntry;
+    sort?: boolean;
   } | null>(null);
   const closeMenu = useCallback(() => setMenu(null), []);
   const view = useRef({ directory, pathInput, selected, document, history });
@@ -626,14 +633,65 @@ export function Files({
         run: () => void clipboardPath(),
       },
       {
+        id: "sort-view",
+        label: "Sort and view…",
+        separatorBefore: true,
+        run: () => {
+          if (menu) setMenu({ x: menu.x, y: menu.y, sort: true });
+        },
+      },
+      {
         id: "hidden-files",
         label: preferences.filesShowHidden
           ? "Hide hidden files"
           : "Show hidden files",
         separatorBefore: true,
+        disabled: preferencesBlocked,
         run: () =>
           setPreference("filesShowHidden", !preferences.filesShowHidden),
       },
+    ];
+  }
+  function sortBy(key: typeof preferences.filesSort) {
+    if (key === preferences.filesSort)
+      setPreference("filesDescending", !preferences.filesDescending);
+    else setPreference("filesSort", key);
+  }
+  function sortActions(): MenuAction[] {
+    return [
+      ...(["name", "modified", "size"] as const).map((key) => ({
+        id: `sort-${key}`,
+        label: { name: "Name", modified: "Modified", size: "Size" }[key],
+        checked: preferences.filesSort === key,
+        checkType: "radio" as const,
+        group: "Sort by",
+        disabled: preferencesBlocked,
+        run: () => setPreference("filesSort", key),
+      })),
+      ...([false, true] as const).map((descending) => ({
+        id: descending ? "descending" : "ascending",
+        label: descending ? "Descending" : "Ascending",
+        checked: preferences.filesDescending === descending,
+        checkType: "radio" as const,
+        separatorBefore: !descending,
+        group: "Order",
+        disabled: preferencesBlocked,
+        run: () => setPreference("filesDescending", descending),
+      })),
+      ...(
+        [
+          ["filesFoldersFirst", "Keep folders first"],
+          ["filesShowHidden", "Show hidden files"],
+          ["filesCompact", "Compact rows"],
+        ] as const
+      ).map(([key, label], index) => ({
+        id: key,
+        label,
+        checked: preferences[key],
+        separatorBefore: index === 0,
+        disabled: preferencesBlocked,
+        run: () => setPreference(key, !preferences[key]),
+      })),
     ];
   }
   return (
@@ -752,6 +810,7 @@ export function Files({
         {directory.home && (
           <button
             className={directory.path === directory.home.path ? "selected" : ""}
+            title={directory.home.name}
             disabled={!connected || relocating}
             onClick={() => void navigate(directory.home!.path)}
           >
@@ -762,6 +821,7 @@ export function Files({
           <button
             key={root.path}
             className={directory.path === root.path ? "selected" : ""}
+            title={root.name}
             disabled={!connected || relocating}
             onClick={() => void navigate(root.path)}
           >
@@ -949,9 +1009,9 @@ export function Files({
             </button>
           </div>
         )}
-        {(error || cutState.error) && (
+        {(error || cutState.error || preferenceError) && (
           <div role="alert" className="inline-error">
-            {error || cutState.error}
+            {error || cutState.error || preferenceError}
           </div>
         )}
         {document ? (
@@ -997,9 +1057,36 @@ export function Files({
             }}
           >
             <div className="file-table-head">
-              <span>Name</span>
-              <span>Modified</span>
-              <span>Size</span>
+              {(["name", "modified", "size"] as const).map((key) => {
+                const label = {
+                  name: "Name",
+                  modified: "Modified",
+                  size: "Size",
+                }[key];
+                const selectedSort = preferences.filesSort === key;
+                const direction = preferences.filesDescending
+                  ? "descending"
+                  : "ascending";
+                const Icon = preferences.filesDescending ? ArrowDown : ArrowUp;
+                return (
+                  <button
+                    key={key}
+                    type="button"
+                    disabled={preferencesBlocked}
+                    aria-label={`Sort by ${label}${selectedSort ? ` (${direction})` : ""}`}
+                    aria-pressed={selectedSort}
+                    title={
+                      selectedSort
+                        ? `${label}: ${direction}. Activate to reverse order.`
+                        : `Sort by ${label}`
+                    }
+                    onClick={() => sortBy(key)}
+                  >
+                    <span>{label}</span>
+                    {selectedSort && <Icon size={12} aria-hidden="true" />}
+                  </button>
+                );
+              })}
             </div>
             {loading ? (
               <div className="file-message">
@@ -1123,32 +1210,41 @@ export function Files({
       </div>
       {menu && (
         <ContextMenu
+          key={menu.sort ? "sort" : "actions"}
           {...menu}
-          label={document ? "Preview actions" : "File actions"}
+          label={
+            menu.sort
+              ? "Sort and view"
+              : document
+                ? "Preview actions"
+                : "File actions"
+          }
           close={closeMenu}
           actions={
-            document
-              ? [
-                  {
-                    id: "copy-text",
-                    label: "Copy text",
-                    run: () => void copyText(previewText()),
-                  },
-                  {
-                    id: "copy-document-path",
-                    label: "Copy file path",
-                    run: () => void copyText(document.path),
-                  },
-                  {
-                    id: "close-preview",
-                    label: "Close preview",
-                    run: () => {
-                      ++previewRequest.current;
-                      setDocument(null);
+            menu.sort
+              ? sortActions()
+              : document
+                ? [
+                    {
+                      id: "copy-text",
+                      label: "Copy text",
+                      run: () => void copyText(previewText()),
                     },
-                  },
-                ]
-              : menuActions(menu.entry)
+                    {
+                      id: "copy-document-path",
+                      label: "Copy file path",
+                      run: () => void copyText(document.path),
+                    },
+                    {
+                      id: "close-preview",
+                      label: "Close preview",
+                      run: () => {
+                        ++previewRequest.current;
+                        setDocument(null);
+                      },
+                    },
+                  ]
+                : menuActions(menu.entry)
           }
         />
       )}

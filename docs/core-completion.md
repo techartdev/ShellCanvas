@@ -15,6 +15,8 @@ Additional protocols are optional until these core workflows work well. Connecti
 
 ## Evidence and outstanding work
 
+- Files now exposes sort headers and a checked **Sort and view…** context menu using existing persistent preferences. Browser checks passed keyboard/pointer sorting, selection retention, unknown-date placement, two-window synchronization without extra provider reads, compact rows/right tiling and fresh-page persistence. Small floating windows now adapt independently, keeping the location field and name/size columns usable; the menu still sorts by the hidden Modified column. Shared menus support labeled radio groups and checkbox states. See [settings](settings.md). These are local view controls; no remote data is changed.
+
 - `npm run verify` now provides a fail-fast local check sequence and per-run JSON report; `--native` adds the current platform's debug build. The full Windows run passed runner failure tests, 72 frontend tests, 56 Rust tests, formatting, Clippy and the desktop build, with an unchanged source fingerprint during the run. Invalid options failed without starting checks. See [verification and release checklist](verification.md). This completes the local verification entry point, not the remaining native/network/platform gates.
 
 - Native **Copy to folder…** now passes success/progress/busy guards, source preservation, destination browsing and collision refusal through the Windows UI. Independent SSH readback matched both 8,388,674-byte binaries before/after collision; exact cleanup and normal process exit passed. The walkthrough also fixed long folder headings consuming file-list space. See [native file workflows](native-file-workflows.md). Native cancellation and physical-network interruption remain unverified.
