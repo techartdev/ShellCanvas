@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 use crate::{error, DesktopState};
 use anyhow::{bail, Context, Result};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use shellcanvas_core::{FileTransferService, TRANSFER_CHUNK};
 use std::{
     collections::HashMap,
@@ -292,6 +292,291 @@ pub async fn choose_download_file(
         )],
     )?;
     Ok(tickets.pop())
+}
+
+#[derive(Deserialize)]
+pub struct DownloadSource {
+    path: String,
+    revision: String,
+}
+fn download_name(name: &str) -> Result<(), String> {
+    let stem = name.split('.').next().unwrap_or("").to_uppercase();
+    if name.is_empty()
+        || name.ends_with(['.', ' '])
+        || name
+            .chars()
+            .any(|c| c.is_control() || "<>:\"/\\|?*".contains(c))
+        || matches!(stem.as_str(), "CON" | "PRN" | "AUX" | "NUL")
+        || ["COM", "LPT"].iter().any(|prefix| {
+            stem.strip_prefix(prefix).is_some_and(|n| {
+                matches!(
+                    n,
+                    "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" | "¹" | "²" | "³"
+                )
+            })
+        })
+    {
+        return Err(format!("{name:?} is not a portable local filename. Download it individually and choose a new name."));
+    }
+    Ok(())
+}
+fn download_destinations(folder: &Path, names: &[String]) -> Result<Vec<PathBuf>, String> {
+    let mut unique = std::collections::HashSet::new();
+    names.iter().map(|name| {
+        download_name(name)?;
+        // Conservative on every client: never let case aliases overwrite each other.
+        if !unique.insert(name.to_lowercase()) { return Err("Selected filenames conflict on this computer. Download them individually with different names.".into()); }
+        let path = folder.join(name);
+        if path.symlink_metadata().is_ok() { return Err(format!("{} already exists. Choose a different folder; nothing was replaced.", path.display())); }
+        Ok(path)
+    }).collect()
+}
+#[tauri::command]
+pub async fn choose_download_files(
+    app: tauri::AppHandle,
+    session_id: u64,
+    files: Vec<DownloadSource>,
+    state: State<'_, DesktopState>,
+) -> Result<Vec<Ticket>, String> {
+    if files.is_empty()
+        || files.len() > 16
+        || files
+            .iter()
+            .any(|file| file.path.is_empty() || file.revision.is_empty())
+    {
+        return Err("Choose between 1 and 16 versioned files at a time.".into());
+    }
+    provider(&state, session_id).await?;
+    let fs = crate::filesystem(&state, session_id).await?;
+    let mut names = Vec::new();
+    for file in &files {
+        let location = fs.locate(&file.path).await.map_err(error)?;
+        download_name(&location.name)?;
+        names.push(location.name);
+    }
+    let destination = tauri::async_runtime::spawn_blocking(move || {
+        app.dialog()
+            .file()
+            .set_title("Download files — choose a destination folder")
+            .blocking_pick_folder()
+    })
+    .await
+    .map_err(error)?;
+    let Some(destination) = destination else {
+        return Ok(Vec::new());
+    };
+    let folder = destination.into_path().map_err(error)?;
+    let destinations = download_destinations(&folder, &names)?;
+    let jobs = files
+        .into_iter()
+        .zip(names)
+        .zip(destinations)
+        .map(|((file, name), destination)| {
+            (
+                Job::Download {
+                    destination,
+                    path: file.path,
+                    revision: file.revision,
+                },
+                name,
+                0,
+                "download",
+            )
+        })
+        .collect();
+    let registry = state.registry.lock().await;
+    if !registry.sessions.contains_key(&session_id) {
+        return Err("The host disconnected while choosing a destination".into());
+    }
+    state.transfers.lock().await.add(session_id, jobs)
+}
+
+#[tauri::command]
+pub async fn copy_system_files(
+    session_id: u64,
+    files: Vec<DownloadSource>,
+    state: State<'_, DesktopState>,
+) -> Result<u32, String> {
+    #[cfg(not(windows))]
+    {
+        let _ = (session_id, files, state);
+        Err("File clipboard integration is currently available on Windows.".into())
+    }
+    #[cfg(windows)]
+    {
+        let sequence =
+            unsafe { windows::Win32::System::DataExchange::GetClipboardSequenceNumber() };
+        if files.is_empty() || files.len() > 16 {
+            return Err("Select up to 16 regular files.".into());
+        }
+        let service = provider(&state, session_id).await?;
+        let fs = crate::filesystem(&state, session_id).await?;
+        let mut directories = HashMap::new();
+        let mut names = std::collections::HashSet::new();
+        let mut sources = Vec::new();
+        for file in files {
+            let location = fs.locate(&file.path).await.map_err(error)?;
+            let parent = location
+                .parent
+                .ok_or("Only regular files can be copied to Explorer")?;
+            if !directories.contains_key(&parent) {
+                directories.insert(parent.clone(), fs.list(Some(&parent)).await.map_err(error)?);
+            }
+            let entry = directories[&parent]
+                .entries
+                .iter()
+                .find(|entry| {
+                    entry.path == location.path
+                        && entry.kind == "file"
+                        && !entry.revision.is_empty()
+                        && entry.revision == file.revision
+                })
+                .ok_or("A selected file changed. Refresh and copy it again.")?
+                .clone();
+            download_name(&entry.name)?;
+            if entry.name.encode_utf16().count() >= 260 || !names.insert(entry.name.to_lowercase())
+            {
+                return Err("The selected filenames are too long or conflict in Explorer.".into());
+            }
+            sources.push(crate::clipboard_stream::Source {
+                entry,
+                service: service.clone(),
+                runtime: tokio::runtime::Handle::current(),
+            });
+        }
+        if !state
+            .registry
+            .lock()
+            .await
+            .sessions
+            .contains_key(&session_id)
+        {
+            return Err("The host disconnected while copying".into());
+        }
+        crate::windows_clipboard::publish(sources, sequence).await
+    }
+}
+#[tauri::command]
+pub async fn system_clipboard_sequence() -> Result<u32, String> {
+    #[cfg(windows)]
+    {
+        crate::windows_clipboard::current_sequence().await
+    }
+    #[cfg(not(windows))]
+    {
+        Ok(0)
+    }
+}
+
+// Retain opened local handles before returning any tickets. No path supplied by JS.
+#[cfg(any(windows, test))]
+fn clipboard_uploads(
+    paths: Vec<PathBuf>,
+    parent: String,
+) -> Result<Vec<(Job, String, u64, &'static str)>, String> {
+    if paths.is_empty() || paths.len() > 16 {
+        return Err("Copy up to 16 regular files at a time.".into());
+    }
+    let mut names = std::collections::HashSet::new();
+    paths.into_iter().map(|path| {
+        if !path.is_absolute() || !std::fs::symlink_metadata(&path).map_err(error)?.file_type().is_file() {
+            return Err("Paste currently supports regular files only. Folders and links are not uploaded.".into());
+        }
+        let name = path.file_name().and_then(|name| name.to_str()).ok_or("Invalid clipboard filename")?.to_string();
+        if !names.insert(name.clone()) { return Err("Copied files have duplicate names. Paste them separately.".into()); }
+        let (file, size, modified) = source(&path).map_err(error)?;
+        Ok((Job::Upload { file, parent: parent.clone(), name: name.clone(), size, modified }, name, size, "upload"))
+    }).collect()
+}
+
+#[tauri::command]
+pub async fn paste_system_files(
+    session_id: u64,
+    parent: String,
+    state: State<'_, DesktopState>,
+) -> Result<Option<Vec<Ticket>>, String> {
+    #[cfg(not(windows))]
+    {
+        let _ = (session_id, parent, state);
+        Err("File clipboard integration is currently available on Windows.".into())
+    }
+    #[cfg(windows)]
+    {
+        if parent.is_empty() {
+            return Err("Choose a remote destination folder.".into());
+        }
+        provider(&state, session_id).await?;
+        let jobs = tauri::async_runtime::spawn_blocking(move || {
+            crate::windows_file_input::files()?
+                .map(|paths| clipboard_uploads(paths, parent))
+                .transpose()
+        })
+        .await
+        .map_err(error)??;
+        let Some(jobs) = jobs else {
+            return Ok(None);
+        };
+        let registry = state.registry.lock().await;
+        if !registry.sessions.contains_key(&session_id) {
+            return Err("The host disconnected while preparing clipboard files.".into());
+        }
+        state.transfers.lock().await.add(session_id, jobs).map(Some)
+    }
+}
+
+#[tauri::command]
+pub async fn cut_system_file(
+    session_id: u64,
+    path: String,
+    revision: String,
+    state: State<'_, DesktopState>,
+) -> Result<u32, String> {
+    #[cfg(not(windows))]
+    {
+        let _ = (session_id, path, revision, state);
+        Err("File clipboard integration is currently available on Windows.".into())
+    }
+    #[cfg(windows)]
+    {
+        let sequence = crate::windows_file_input::sequence();
+        let fs = crate::filesystem(&state, session_id).await?;
+        let location = fs.locate(&path).await.map_err(error)?;
+        let parent = location.parent.ok_or("Cannot cut a filesystem root")?;
+        let entry = fs
+            .list(Some(&parent))
+            .await
+            .map_err(error)?
+            .entries
+            .into_iter()
+            .find(|entry| {
+                entry.path == location.path && !revision.is_empty() && entry.revision == revision
+            })
+            .ok_or("The selected item changed. Refresh and cut again.")?;
+        let mut sources = Vec::new();
+        if entry.kind == "file" {
+            if let Ok(service) = provider(&state, session_id).await {
+                download_name(&entry.name)?;
+                if entry.name.encode_utf16().count() >= 260 {
+                    return Err("Filename is too long for Explorer.".into());
+                }
+                sources.push(crate::clipboard_stream::Source {
+                    entry,
+                    service,
+                    runtime: tokio::runtime::Handle::current(),
+                });
+            }
+        }
+        if !state
+            .registry
+            .lock()
+            .await
+            .sessions
+            .contains_key(&session_id)
+        {
+            return Err("The host disconnected while cutting.".into());
+        }
+        crate::windows_clipboard::publish(sources, sequence).await
+    }
 }
 #[tauri::command]
 pub async fn cancel_transfer(

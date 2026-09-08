@@ -2,24 +2,26 @@
 
 The generic `AppWindow` wraps the workspace's `SessionServices` before rendering an app. `scopeAppServices` captures the manifest's `requires` and `optional` declarations. Each method checks its capability before forwarding to the fixed workspace handle. Local apps receive no remote service access. The manifest and its capability arrays are copied/frozen by `defineApps`; unsupported and duplicate declarations fail at registration.
 
-| Methods | Declaration |
-| --- | --- |
-| list, preview, readText | files.read |
-| saveText | files.edit |
-| createText | files.create |
-| makeDirectory, renameEntry, removeEntry | files.manage |
-| moveEntry | files.move |
-| terminal | terminal |
-| readHostSettings, applyHostSetting | host.settings |
-| chooseUploads | files.upload |
-| chooseDownload | files.download |
-| runTransfer, cancelTransfer | A ticket acquired by this app scope; its original direction determines access |
+| Methods                                 | Declaration                                                                   |
+| --------------------------------------- | ----------------------------------------------------------------------------- |
+| list, preview, readText                 | files.read                                                                    |
+| saveText                                | files.edit                                                                    |
+| createText                              | files.create                                                                  |
+| makeDirectory, renameEntry, removeEntry | files.manage                                                                  |
+| moveEntry                               | files.move                                                                    |
+| terminal                                | terminal                                                                      |
+| readHostSettings, applyHostSetting      | host.settings                                                                 |
+| chooseUploads                           | files.upload                                                                  |
+| chooseDownload                          | files.download                                                                |
+| runTransfer, cancelTransfer             | A ticket acquired by this app scope; its original direction determines access |
 
 Required capabilities govern launch availability. Optional capabilities allow enhancements without disabling the entire app when they are absent. Files requires read and optionally uses creation, management, move and transfer services. Editor requires read and optionally uses edit/create. Terminal declares only terminal. Host details uses the connection snapshot with optional host settings. Host capability metadata is still visible as metadata; it is not permission to call an undeclared service.
 
 Scopes are stable per manifest and workspace handle. Multiple instances of one app share a scope; another app cannot run/cancel their transfer tickets. Picker results are copied before exposure, and the scope retains the original ticket metadata. Workspace ownership, capability checks, cancellation and stale-result rejection remain in `bindSession` and the native broker. Reconnect supplies a new base handle and hence a new scope. This does not add per-window grants or user-configurable permission revocation.
 
 The shared file clipboard aliases only move-capable scopes to the owning workspace clipboard. It remains tied to that workspace's lifetime, so scoping does not break cross-window Cut/Paste or let a reader call move through the clipboard. No paths are translated by this layer.
+
+Clipboard imports require `files.upload`, exports require `files.download`, and Cut synchronization requires `files.move`. The receiving app adopts every pasted/downloaded/prepared-copy transfer ticket. Sequence checks require `files.read` and expose no clipboard contents. A caller cannot start or cancel another app's clipboard transfers; stale preparation is canceled if its workspace closes.
 
 This is a trusted bundled-module contract. Arbitrary third-party code is not isolated from the webview, native IPC or source imports. Do not enable external packages based on these checks alone. Native extension authorization, execution isolation and composite per-binding policy remain prerequisites for that work.
 

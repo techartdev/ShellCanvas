@@ -1,5 +1,39 @@
 // SPDX-License-Identifier: MPL-2.0
 use super::*;
+
+#[test]
+fn clipboard_uploads_capture_bytes_and_refuse_folders_and_duplicate_names() {
+    use std::io::Read;
+    let directory = tempfile::tempdir().unwrap();
+    let first = directory.path().join("local 🌍.bin");
+    std::fs::write(&first, b"clipboard source").unwrap();
+    let second = directory.path().join("second.txt");
+    std::fs::write(&second, b"second").unwrap();
+    let jobs = clipboard_uploads(vec![first.clone(), second], "opaque@destination".into()).unwrap();
+    assert_eq!(jobs.len(), 2);
+    let (
+        Job::Upload {
+            mut file, parent, ..
+        },
+        name,
+        size,
+        direction,
+    ) = jobs.into_iter().next().unwrap()
+    else {
+        panic!("Expected upload")
+    };
+    let mut bytes = Vec::new();
+    file.read_to_end(&mut bytes).unwrap();
+    assert_eq!(bytes, b"clipboard source");
+    assert_eq!(parent, "opaque@destination");
+    assert_eq!(
+        (name.as_str(), size, direction),
+        ("local 🌍.bin", 16, "upload")
+    );
+    assert!(clipboard_uploads(vec![first.clone(), first.clone()], "dest".into()).is_err());
+    assert!(clipboard_uploads(vec![first, directory.path().to_path_buf()], "dest".into()).is_err());
+    assert!(clipboard_uploads(vec![], "dest".into()).is_err());
+}
 use async_trait::async_trait;
 use shellcanvas_core::{FileLocation, TransferFile, TransferReader, TransferWriter};
 use std::sync::{
@@ -269,4 +303,34 @@ fn registry_rejects_cross_host_controls_and_releases_only_the_closed_host() {
     registry.close_session(1);
     assert!(*cancel.borrow());
     assert!(registry.claim(2, b).is_ok());
+}
+#[test]
+fn batch_download_names_never_escape_or_alias_the_chosen_folder() {
+    for name in [
+        "",
+        ".",
+        "..",
+        "../escape",
+        "C:\\escape",
+        "a/b",
+        "bad:stream",
+        "NUL.txt",
+        "COM1",
+        "LPT².txt",
+        "trailing.",
+        "trailing ",
+    ] {
+        assert!(super::download_name(name).is_err(), "{name}");
+    }
+    let directory = tempfile::tempdir().unwrap();
+    let names = vec!["Notes 🌍.txt".into(), "second.bin".into()];
+    let paths = super::download_destinations(directory.path(), &names).unwrap();
+    assert_eq!(paths[0], directory.path().join(&names[0]));
+    assert!(
+        super::download_destinations(directory.path(), &["A.txt".into(), "a.txt".into()]).is_err()
+    );
+    std::fs::write(&paths[1], b"keep").unwrap();
+    assert!(super::download_destinations(directory.path(), &names).is_err());
+    assert_eq!(std::fs::read(&paths[1]).unwrap(), b"keep");
+    assert!(!paths[0].exists());
 }

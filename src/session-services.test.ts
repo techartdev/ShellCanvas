@@ -4,6 +4,46 @@ import { bindSession } from "./session-services";
 import { previewServices, previewSession } from "./preview";
 import type { Directory, TerminalSession, FileRelocation } from "./sdk";
 import { watchFileChanges } from "./file-events";
+it("keeps clipboard uploads session-owned and cancels late preparation after disconnect", async () => {
+  const ticket = {
+    id: 91,
+    name: "local.txt",
+    size: 8,
+    direction: "upload" as const,
+  };
+  let finish!: (value: (typeof ticket)[]) => void;
+  const pasteSystemFiles = vi.fn(
+    () =>
+      new Promise<(typeof ticket)[]>((resolve) => {
+        finish = resolve;
+      }),
+  );
+  const cancelTransfer = vi.fn(async () => {});
+  const backend = { ...previewServices, pasteSystemFiles, cancelTransfer };
+  const unsupported = bindSession(backend, {
+    ...previewSession,
+    info: { ...previewSession.info, capabilities: ["files.read"] },
+  });
+  await expect(
+    unsupported.services.pasteSystemFiles("destination"),
+  ).rejects.toThrow("files.upload");
+  expect(pasteSystemFiles).not.toHaveBeenCalled();
+  const binding = bindSession(backend, {
+    ...previewSession,
+    id: 91,
+    info: { ...previewSession.info, capabilities: ["files.upload"] },
+  });
+  const pending = binding.services.pasteSystemFiles("opaque@destination");
+  expect(pasteSystemFiles).toHaveBeenCalledWith(91, "opaque@destination");
+  binding.dispose();
+  finish([ticket]);
+  await expect(pending).rejects.toThrow();
+  expect(cancelTransfer).toHaveBeenCalledWith(91, 91);
+  await expect(
+    binding.services.runTransfer(ticket, () => {}),
+  ).rejects.toThrow();
+  unsupported.dispose();
+});
 it("moves opaque locations only in the owning capable session, with stale completion reporting", async () => {
   let finish!: (location: FileRelocation) => void;
   const moveEntry = vi.fn(

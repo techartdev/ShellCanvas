@@ -1,4 +1,8 @@
-# Cut and paste remote items
+# File clipboard
+
+Current Copy/Paste, multi-file downloads and Windows clipboard behavior are documented in [File clipboard and Windows transfers](system-clipboard.md). This supersedes the single-item clipboard limitations below.
+
+## Earlier single-item Cut/Paste checkpoint
 
 Files supports one pending cut per connected workspace. Select a file, folder or symlink and use **Cut** (Ctrl+X). Browse to a destination in the same or another Files window, then use **Paste here** (Ctrl+V). A folder's context menu also offers **Paste into folder**. The banner shows the item and its original location; **Cancel cut** or Escape outside editable fields clears it without contacting the host.
 

@@ -7,6 +7,8 @@ use std::sync::{
 };
 use tauri::{ipc::Channel, State};
 use tokio::sync::{mpsc, Mutex};
+#[cfg(windows)]
+mod clipboard_stream;
 mod connection_attempts;
 mod connection_resource;
 mod host_trust;
@@ -14,6 +16,10 @@ mod profile_store;
 mod session_registry;
 mod terminals;
 mod transfers;
+#[cfg(windows)]
+mod windows_clipboard;
+#[cfg(windows)]
+mod windows_file_input;
 mod workspace_services;
 use connection_resource::ConnectionResource;
 use session_registry::SessionRegistry;
@@ -618,6 +624,11 @@ pub fn run() {
             remove_entry,
             transfers::choose_upload_files,
             transfers::choose_download_file,
+            transfers::choose_download_files,
+            transfers::copy_system_files,
+            transfers::cut_system_file,
+            transfers::paste_system_files,
+            transfers::system_clipboard_sequence,
             transfers::prepare_file_copy,
             transfers::run_transfer,
             transfers::cancel_transfer,

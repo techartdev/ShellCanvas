@@ -43,6 +43,19 @@ function directory(path = "/home/demo"): Directory {
   };
 }
 export const previewServices: HostServices = {
+  systemClipboardSequence: async () => 0,
+  pasteSystemFiles: async () => {
+    throw new Error("Use the Windows desktop app to paste local files.");
+  },
+  cutToSystem: async () => {
+    throw new Error("System file clipboard is unavailable in the preview.");
+  },
+  copyToSystem: async () => {
+    throw new Error("System file clipboard is unavailable in the preview.");
+  },
+  chooseDownloads: async () => {
+    throw new Error("Use the native desktop app to download files.");
+  },
   prepareCopy: async () => {
     throw new Error("File copying is unavailable in the design preview.");
   },

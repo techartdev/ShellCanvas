@@ -28,6 +28,7 @@ import {
   Download,
   Scissors,
   ClipboardPaste,
+  Copy,
 } from "lucide-react";
 import type { AppContext, Directory, FileEntry } from "../sdk";
 import { ContextMenu, type MenuAction } from "../components/ContextMenu";
@@ -107,6 +108,34 @@ export function Files({
     return () => queue.dispose();
   }, [queue]);
   const [picking, setPicking] = useState(false);
+  const copyEpoch = useRef(0);
+  const [systemCopyNotice, setSystemCopyNotice] = useState("");
+  useEffect(() => {
+    if (!services.systemFileClipboard || !connected) return;
+    let alive = true;
+    const refreshClipboard = () => {
+      const expected = cutClipboard.snapshot().systemSequence;
+      if (expected === undefined) return;
+      void services
+        .systemClipboardSequence()
+        .then((sequence) => {
+          if (
+            alive &&
+            expected === cutClipboard.snapshot().systemSequence &&
+            sequence !== expected
+          ) {
+            cutClipboard.clear();
+            setSystemCopyNotice("");
+          }
+        })
+        .catch(() => {});
+    };
+    window.addEventListener("focus", refreshClipboard);
+    return () => {
+      alive = false;
+      window.removeEventListener("focus", refreshClipboard);
+    };
+  }, [services, connected, cutClipboard]);
   const transferBusy = picking || transfers.some(pendingTransfer);
   const canUpload =
     connected &&
@@ -136,6 +165,32 @@ export function Files({
     try {
       const ticket = await services.chooseDownload(entry.path, entry.revision);
       if (ticket) queue.enqueue([ticket]);
+    } catch (error) {
+      setError(String(error));
+    } finally {
+      setPicking(false);
+    }
+  }
+  async function downloadSelection() {
+    if (!canDownload || !selectedEntries.length) return;
+    if (selectedEntries.length === 1) return download(selectedEntries[0]);
+    if (
+      selectedEntries.length > 16 ||
+      selectedEntries.some((entry) => entry.kind !== "file" || !entry.revision)
+    ) {
+      setError("Select up to 16 regular files to download together.");
+      return;
+    }
+    setPicking(true);
+    try {
+      queue.enqueue(
+        await services.chooseDownloads(
+          selectedEntries.map((entry) => ({
+            path: entry.path,
+            revision: entry.revision!,
+          })),
+        ),
+      );
     } catch (error) {
       setError(String(error));
     } finally {
@@ -298,8 +353,13 @@ export function Files({
     if (directory.parent !== null) void navigate(directory.parent);
   }
   async function copyText(text: string) {
+    const epoch = ++copyEpoch.current;
     try {
       await clipboard.writeText(text);
+      if (epoch === copyEpoch.current && services.systemFileClipboard) {
+        cutClipboard.clear();
+        setSystemCopyNotice("");
+      }
       setError((previous) =>
         previous.startsWith("Copy failed:") ? "" : previous,
       );
@@ -318,20 +378,98 @@ export function Files({
     return text || document?.text || "";
   }
   function copySelection() {
-    void copyText(
-      document
-        ? previewText()
-        : selectedEntries.length
-          ? selectedEntries.map((entry) => entry.path).join("\n")
-          : directory.path,
-    );
+    if (document) {
+      void copyText(previewText());
+      return;
+    }
+    if (!selectedEntries.length) {
+      void copyText(directory.path);
+      return;
+    }
+    void copyFiles(selectedEntries);
   }
-  function cut(entry: FileEntry) {
-    if (!canMove || cutState.working || !entry.revision) return;
+  const copyAvailable =
+    connected &&
+    !picking &&
+    !loading &&
+    !cutState.working &&
+    (session?.info.capabilities.includes("files.copy") ||
+      (services.systemFileClipboard &&
+        session?.info.capabilities.includes("files.download")));
+  async function copyFiles(items: FileEntry[]) {
+    if (!copyAvailable) return;
+    const epoch = ++copyEpoch.current;
+    try {
+      cutClipboard.copy(items, directory.path);
+      setError("");
+      setSystemCopyNotice("");
+      if (
+        services.systemFileClipboard &&
+        session?.info.capabilities.includes("files.download")
+      ) {
+        setPicking(true);
+        const sequence = await services.copyToSystem(
+          items.map((entry) => ({
+            path: entry.path,
+            revision: entry.revision!,
+          })),
+        );
+        if (
+          epoch === copyEpoch.current &&
+          currentServices.current === services
+        ) {
+          cutClipboard.syncSystem(sequence);
+          setSystemCopyNotice(
+            "Also ready to paste in Windows Explorer · keep this app and connection open",
+          );
+        }
+      }
+    } catch (error) {
+      if (epoch === copyEpoch.current && currentServices.current === services)
+        setError(String(error));
+    } finally {
+      if (currentServices.current === services) setPicking(false);
+    }
+  }
+  async function cut(entry: FileEntry) {
+    if (!canMove || picking || cutState.working || !entry.revision) return;
+    const epoch = ++copyEpoch.current;
     setError("");
+    setSystemCopyNotice("");
     cutClipboard.cut(entry, directory.path);
+    if (!services.systemFileClipboard) return;
+    setPicking(true);
+    try {
+      const sequence = await services.cutToSystem(entry.path, entry.revision);
+      if (epoch === copyEpoch.current && currentServices.current === services) {
+        cutClipboard.syncSystem(sequence);
+        setSystemCopyNotice(
+          entry.kind === "file"
+            ? "Pasting in Explorer copies the file and keeps its remote source"
+            : "Folder moves are available within this workspace",
+        );
+      }
+    } catch (error) {
+      if (epoch === copyEpoch.current && currentServices.current === services)
+        setError(String(error));
+    } finally {
+      if (currentServices.current === services) setPicking(false);
+    }
   }
-  function canPasteInto(parent: string) {
+  function canRemotePasteInto(parent: string) {
+    if (cutState.copies?.length)
+      return (
+        connected &&
+        !!session?.info.capabilities.includes("files.copy") &&
+        !loading &&
+        !busy &&
+        !transferBusy &&
+        !cutState.working &&
+        !!parent &&
+        cutState.copies.every(
+          (item) => item.parent !== parent && item.entry.path !== parent,
+        )
+      );
     return (
       canMove &&
       !transferBusy &&
@@ -341,17 +479,56 @@ export function Files({
       parent !== cutState.item.entry.path
     );
   }
+  function canPasteInto(parent: string) {
+    return (
+      canRemotePasteInto(parent) ||
+      (!!services.systemFileClipboard &&
+        canUpload &&
+        !!parent &&
+        !loading &&
+        !busy &&
+        !transferBusy &&
+        !cutState.working)
+    );
+  }
   async function pasteInto(parent: string) {
     if (!canPasteInto(parent)) return;
     setError("");
+    setPicking(true);
     try {
-      await cutClipboard.paste(parent);
+      if (services.systemFileClipboard) {
+        const sequence = await services.systemClipboardSequence();
+        if (sequence !== cutClipboard.snapshot().systemSequence) {
+          cutClipboard.clear();
+          setSystemCopyNotice("");
+          if (!session?.info.capabilities.includes("files.upload"))
+            throw new Error(
+              "This host does not support uploading clipboard files.",
+            );
+          const tickets = await services.pasteSystemFiles(parent);
+          if (tickets === null)
+            throw new Error(
+              "Copy files in Windows Explorer first. Clipboard text can be pasted in a terminal or editor.",
+            );
+          queue.enqueue(tickets);
+          return;
+        }
+      }
+      if (!canRemotePasteInto(parent))
+        throw new Error(
+          "Choose a different destination folder for these files.",
+        );
+      if (cutState.copies?.length)
+        queue.enqueue(await cutClipboard.prepareCopies(parent, services));
+      else await cutClipboard.paste(parent);
     } catch (error) {
       if (
         currentServices.current === services &&
         !cutClipboard.snapshot().error
       )
         setError(String(error));
+    } finally {
+      if (currentServices.current === services) setPicking(false);
     }
   }
   async function clipboardPath() {
@@ -542,6 +719,29 @@ export function Files({
     if (selectedEntries.length > 1)
       return [
         {
+          id: "copy-files",
+          label: `Copy ${selectedEntries.length} files`,
+          shortcut: "Ctrl+C",
+          disabled:
+            !copyAvailable ||
+            selectedEntries.length > 16 ||
+            selectedEntries.some(
+              (entry) => entry.kind !== "file" || !entry.revision,
+            ),
+          run: copySelection,
+        },
+        {
+          id: "download-files",
+          label: "Download files…",
+          disabled:
+            !canDownload ||
+            selectedEntries.length > 16 ||
+            selectedEntries.some(
+              (entry) => entry.kind !== "file" || !entry.revision,
+            ),
+          run: () => void downloadSelection(),
+        },
+        {
           id: "copy-names",
           label: `Copy ${selectedEntries.length} names`,
           run: () =>
@@ -550,8 +750,10 @@ export function Files({
         {
           id: "copy-paths",
           label: `Copy ${selectedEntries.length} paths`,
-          shortcut: "Ctrl+C",
-          run: copySelection,
+          run: () =>
+            void copyText(
+              selectedEntries.map((entry) => entry.path).join("\n"),
+            ),
         },
         {
           id: "delete-selection",
@@ -600,6 +802,14 @@ export function Files({
               disabled:
                 !canDownload || entry.kind !== "file" || !entry.revision,
               run: () => void download(entry),
+            },
+            {
+              id: "copy-clipboard",
+              label: "Copy",
+              shortcut: "Ctrl+C",
+              disabled:
+                !copyAvailable || entry.kind !== "file" || !entry.revision,
+              run: () => void copyFiles([entry]),
             },
             {
               id: "copy-file",
@@ -673,7 +883,6 @@ export function Files({
             {
               id: "copy-path",
               label: "Copy path",
-              shortcut: "Ctrl+C",
               run: () => void copyText(entry.path),
             },
             {
@@ -904,11 +1113,12 @@ export function Files({
         } else if (event.key === "Escape" && !document && selection.length) {
           event.preventDefault();
           setSelection([]);
-          if (cutState.item && !cutState.working) cutClipboard.clear();
+          if ((cutState.item || cutState.copies?.length) && !cutState.working)
+            cutClipboard.clear();
         } else if (
           event.key === "Escape" &&
           !document &&
-          cutState.item &&
+          (cutState.item || cutState.copies?.length) &&
           !cutState.working
         ) {
           event.preventDefault();
@@ -1010,16 +1220,22 @@ export function Files({
           </button>
           <button
             className="icon-button"
-            aria-label="Download selected file"
-            title="Download selected file"
+            aria-label={
+              selectedEntries.length > 1
+                ? "Download selected files"
+                : "Download selected file"
+            }
+            title="Download selected files"
             disabled={
               !canDownload ||
-              singleEntry?.kind !== "file" ||
-              !singleEntry.revision
+              !selectedEntries.length ||
+              selectedEntries.length > 16 ||
+              selectedEntries.some(
+                (entry) => entry.kind !== "file" || !entry.revision,
+              )
             }
             onClick={() => {
-              const entry = singleEntry;
-              if (entry) void download(entry);
+              void downloadSelection();
             }}
           >
             <Download size={16} />
@@ -1123,24 +1339,31 @@ export function Files({
             />
           </label>
         </div>
-        {(cutState.item || cutState.working) && (
+        {(cutState.item || cutState.copies?.length || cutState.working) && (
           <div className="file-cut-bar" role="status">
             {cutState.working ? (
               <LoaderCircle size={15} className="spin" />
+            ) : cutState.copies?.length ? (
+              <Copy size={15} />
             ) : (
               <Scissors size={15} />
             )}
             <div className="file-cut-description">
               <strong>
                 {cutState.working
-                  ? "Moving item…"
-                  : `Ready to move · ${cutState.item!.entry.name}`}
+                  ? cutState.copies?.length
+                    ? "Preparing copies…"
+                    : "Moving item…"
+                  : cutState.copies?.length
+                    ? `Ready to copy · ${cutState.copies.length} ${cutState.copies.length === 1 ? "file" : "files"}`
+                    : `Ready to move · ${cutState.item!.entry.name}`}
               </strong>
               {cutState.item && (
                 <span title={cutState.item.entry.path}>
                   {cutState.item.entry.path}
                 </span>
               )}
+              {systemCopyNotice ? <span>{systemCopyNotice}</span> : null}
             </div>
             <button
               disabled={!canPasteInto(directory.path)}
@@ -1150,8 +1373,10 @@ export function Files({
             </button>
             <button
               className="icon-button"
-              aria-label="Cancel cut"
-              title="Cancel cut · Esc"
+              aria-label={
+                cutState.copies?.length ? "Clear copied files" : "Cancel cut"
+              }
+              title="Clear file clipboard · Esc"
               disabled={cutState.working}
               onClick={() => cutClipboard.clear()}
             >

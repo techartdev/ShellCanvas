@@ -18,6 +18,14 @@ function Fixture() {
   };
   clipboard.readText = async () => "fixture paste";
   const [services] = useState<SessionServices>(() => ({
+    systemClipboardSequence: async () => 0,
+    pasteSystemFiles: async () => null,
+    cutToSystem: async () => 0,
+    copyToSystem: async () => {
+      throw new Error("Unavailable");
+    },
+    chooseDownloads: (files) =>
+      previewServices.chooseDownloads(previewSession.id, files),
     prepareCopy: async () => {
       throw new Error("Unavailable");
     },

@@ -41,6 +41,11 @@ Build BASE-05/08 incrementally alongside CORE-07. Full BASE-09/10 composition re
 - [x] **CORE-08 — Files actions and shared menus.** Shared keyboard menu supports open/preview, folder in a new window, parent/back/refresh, copy name/path/text and clipboard-path navigation. Files, terminal, titlebar, dock and desktop use shared menu styling. Browser fixture verified selected-path copy, new-folder-window isolation, clipboard navigation, and dock keyboard creation/minimize/restore. Native folder-path copy into an editor draft passed. Native selected-file path/full-preview text copy and clipboard-folder navigation now pass; selected-substring copying remains a native follow-up. See [native file workflows](docs/native-file-workflows.md). Upload/download and remote changes follow CORE-04/05.
 - [ ] **UX-01 — Desktop polish (partly implemented).** Visible window menus, keyboard move/resize and cancellation, titlebar F6 cycling, left/right tiling, restore and viewport bounds passed browser desktop/tablet checks. See [window controls](docs/window-management.md). Native right tiling, F6, Shift+F10 and keyboard move/cancel passed. Native keyboard resize and acceptance passed too. Drag-to-edge previews, touch resize handles and persisted layouts remain. Preserve the approved visual direction.
 
+## File clipboard follow-up
+
+- [x] **CORE-05b — Regular-file clipboard transfers.** Multi-file remote Copy/Paste, multi-file Download through one folder picker, Windows virtual-file streaming to Explorer, and Explorer file Paste into the upload queue. New local Copy replaces stale remote selections. Remote Cut synchronizes the clipboard; cross-device pastes retain sources. See [behavior and verification](docs/system-clipboard.md).
+- [ ] **CORE-05c — Expanded clipboard semantics.** Cross-device moves with verified deletion, recursive folder copying, multi-item Cut, native macOS/Linux adapters, and physical-network interruption during Explorer paste. Native incoming Ctrl+V and Cut interoperability walkthroughs remain follow-ups to the verified menu/Copy paths.
+
 ## M3 — Remote providers
 
 - [ ] **HOST-01 — Linux variants and Raspberry Pi OS.** Fixtures and live checks for Ubuntu/Debian, Alpine/BusyBox and Raspberry Pi OS. Gate: missing utilities, unprivileged users and disabled SFTP degrade honestly. Raspberry Pi hardware alone is not a provider.

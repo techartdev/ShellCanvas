@@ -84,6 +84,53 @@ export function bindSession(
     notifyFileChanges(session!.id, relocate ? "relocation" : "content");
   }
   const services: SessionServices = {
+    systemClipboardSequence: async () => {
+      const expected = generation;
+      check("files.read");
+      const result = await backend.systemClipboardSequence();
+      check("files.read", expected);
+      return result;
+    },
+    pasteSystemFiles: async (parent) => {
+      const expected = generation;
+      const result = await backend.pasteSystemFiles(
+        check("files.upload"),
+        parent,
+      );
+      const adopted = await adopt(result ?? [], expected, "files.upload");
+      return result === null ? null : adopted;
+    },
+    cutToSystem: async (path, revision) => {
+      const expected = generation;
+      const result = await backend.cutToSystem(
+        check("files.move"),
+        path,
+        revision,
+      );
+      check("files.move", expected);
+      return result;
+    },
+    systemFileClipboard: backend.systemFileClipboard,
+    copyToSystem: async (files) => {
+      const expected = generation;
+      const result = await backend.copyToSystem(
+        check("files.download"),
+        files.map((file) => ({ ...file })),
+      );
+      check("files.download", expected);
+      return result;
+    },
+    chooseDownloads: async (files) => {
+      const expected = generation;
+      return adopt(
+        await backend.chooseDownloads(
+          check("files.download"),
+          files.map((file) => ({ ...file })),
+        ),
+        expected,
+        "files.download",
+      );
+    },
     prepareCopy: async (path, revision, parent) => {
       const expected = generation;
       return (

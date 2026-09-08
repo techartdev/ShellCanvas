@@ -1,5 +1,7 @@
 # File transfers
 
+The [system clipboard integration](system-clipboard.md) adds multi-file remote Copy/Paste, Windows Explorer streaming in both directions, and multi-file downloads through one destination-folder picker. The existing queue/publication guarantees below apply to uploads, downloads and in-app copies; Explorer owns external paste progress and local publication.
+
 Real unprivileged SFTP checks now cover denied uploads/private downloads and successful transfer recovery on the same services. See [permission validation](permission-validation.md). Physical-network interruption and broader Windows GUI error-path checks remain separate.
 
 Files now supports native **Upload files** and **Download selected file** actions in its toolbar and context menus. Upload chooses up to 16 regular local files and captures the current remote folder. Download chooses a new local filename for one selected regular remote file. Canceling either picker creates no transfer. Existing destinations are refused; the first version never replaces them, even if the system save dialog offered replacement.
@@ -10,11 +12,11 @@ Each Files window has a sequential queue with progress, cancellation, clearable 
 
 ### Copy to folder
 
-The selected regular file's context menu offers **Copy to folder…** when `files.copy` is available. The destination browser keeps the original filename, requires a different folder, and queues the copy alongside uploads/downloads. The source remains in place and existing destinations are refused. Completion refreshes Files windows in that workspace. Clipboard Copy continues to copy text/path; Cut/Paste continues to move an item.
+The selected regular file's context menu offers **Copy to folder…** when `files.copy` is available. The destination browser keeps the original filename, requires a different folder, and queues the copy alongside uploads/downloads. The source remains in place and existing destinations are refused. Completion refreshes Files windows in that workspace. Clipboard Copy/Paste now also queues multiple regular-file copies; Cut/Paste moves one item within the workspace.
 
 The transport-neutral `copy_regular_file` helper streams through one explicitly bound `FileTransferService`, with one 32 KiB chunk in memory. Bytes travel through the desktop process, without JavaScript buffers, local staging files or remote shell commands. Both size and the provider's final source revision are checked before publishing. Cancellation or failure aborts both handles; cleanup failures remain visible. Successful publication still reports success if cancellation arrives afterward. This inherits the SFTP metadata-revision limitations below.
 
-This first action covers one regular file within one workspace file service. Directory/symlink copies, cross-host copying, renamed duplicates and remote Copy/Paste are separate work.
+This action covers one regular file within one workspace file service. Directory/symlink copies, cross-host copying and renamed duplicates are separate work.
 
 Verification on 2026-09-08: 72 frontend tests, 56 Rust tests, all-target Clippy and the standard Windows debug build passed. The copy browser fixture checked cancellation leaving an empty destination, successful source/destination browsing in separate windows, and a visible collision error. The live `copy_probe` copied 1 MiB + 7 patterned binary bytes with a quoted Unicode filename, verified both files, refused collision and stale revision, canceled a partial copy, and removed its owned `/tmp/shellcanvas-copy-UUID` directory. This probe exercises the provider/helper. A subsequent [Windows GUI walkthrough](native-file-workflows.md#regular-file-copy-follow-up) passed success/progress, busy guards, exact binary readback and collision refusal. Native cancellation and physical-network interruption remain separate gates.
 

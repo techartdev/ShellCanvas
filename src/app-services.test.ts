@@ -75,6 +75,11 @@ it("rejects every undeclared service before invoking a capable host", async () =
     scoped.applyHostSetting("id", "value", "rev"),
     scoped.chooseUploads("folder"),
     scoped.chooseDownload("file", "rev"),
+    scoped.chooseDownloads([{ path: "file", revision: "rev" }]),
+    scoped.copyToSystem([{ path: "file", revision: "rev" }]),
+    scoped.pasteSystemFiles("folder"),
+    scoped.cutToSystem("file", "revision"),
+    scoped.systemClipboardSequence(),
   ];
   await Promise.all(
     attempts.map((attempt) =>
@@ -226,6 +231,38 @@ it("owns transfer tickets per app and ignores caller-mutated ticket metadata", a
   await expect(a.runTransfer(chosen, () => {})).rejects.toThrow(
     "does not belong",
   );
+  binding.dispose();
+});
+
+it("adopts pasted file tickets only in the requesting upload-capable app", async () => {
+  const ticket = {
+    id: 99,
+    name: "pasted.txt",
+    size: 3,
+    direction: "upload" as const,
+  };
+  const pasteSystemFiles = vi.fn(async () => [ticket]);
+  const cancelTransfer = vi.fn(async () => {});
+  const binding = bindSession(
+    { ...previewServices, pasteSystemFiles, cancelTransfer },
+    capableSession,
+  );
+  const a = scopeAppServices(
+    binding.services,
+    manifest("paste-a", [], ["files.upload"]),
+  );
+  const b = scopeAppServices(
+    binding.services,
+    manifest("paste-b", [], ["files.upload"]),
+  );
+  const chosen = (await a.pasteSystemFiles("destination"))![0];
+  await expect(b.runTransfer(chosen, () => {})).rejects.toThrow(
+    "does not belong",
+  );
+  await b.cancelTransfer(chosen.id);
+  expect(cancelTransfer).not.toHaveBeenCalled();
+  await a.cancelTransfer(chosen.id);
+  expect(cancelTransfer).toHaveBeenCalledWith(1201, chosen.id);
   binding.dispose();
 });
 

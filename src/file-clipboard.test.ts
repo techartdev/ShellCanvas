@@ -18,8 +18,90 @@ const session = (id: number) => ({
   id,
   info: {
     ...previewSession.info,
-    capabilities: ["files.move" as const, "files.manage" as const],
+    capabilities: [
+      "files.move" as const,
+      "files.manage" as const,
+      "files.copy" as const,
+    ],
   },
+});
+it("copies several immutable sources, queues through the receiving app, and permits another destination", async () => {
+  let id = 10;
+  const prepareCopy = vi.fn(async () => ({
+    id: ++id,
+    name: "copy",
+    size: 10,
+    direction: "copy" as const,
+  }));
+  const binding = bindSession(
+    { ...previewServices, prepareCopy },
+    session(1110),
+  );
+  const clipboard = fileClipboard(binding.services);
+  const other = { ...source, path: "other@file" };
+  clipboard.copy([source, other], "folder@source");
+  other.revision = "changed";
+  await expect(
+    clipboard.prepareCopies("folder@source", binding.services),
+  ).rejects.toThrow("different destination");
+  expect(
+    await clipboard.prepareCopies("folder@target", binding.services),
+  ).toHaveLength(2);
+  expect(prepareCopy.mock.calls[1]).toEqual([
+    1110,
+    "other@file",
+    source.revision,
+    "folder@target",
+  ]);
+  expect(clipboard.snapshot().copies).toHaveLength(2);
+  expect(
+    await clipboard.prepareCopies("another@target", binding.services),
+  ).toHaveLength(2);
+  binding.dispose();
+});
+it("releases all prepared copies if a later preparation fails, without running any transfer", async () => {
+  const cancelTransfer = vi.fn(async () => {});
+  const runTransfer = vi.fn();
+  const prepareCopy = vi
+    .fn()
+    .mockResolvedValueOnce({ id: 10, name: "one", size: 1, direction: "copy" })
+    .mockRejectedValueOnce(new Error("Queue full"));
+  const binding = bindSession(
+    { ...previewServices, prepareCopy, cancelTransfer, runTransfer },
+    session(1111),
+  );
+  const clipboard = fileClipboard(binding.services);
+  clipboard.copy([source, { ...source, path: "two" }], "source");
+  await expect(
+    clipboard.prepareCopies("destination", binding.services),
+  ).rejects.toThrow("Queue full");
+  expect(cancelTransfer).toHaveBeenCalledWith(1111, 10);
+  expect(runTransfer).not.toHaveBeenCalled();
+  expect(clipboard.snapshot().working).toBe(false);
+  expect(clipboard.snapshot().copies).toHaveLength(2);
+  binding.dispose();
+});
+it("invalidates copied batches when a source is removed or relocated", () => {
+  const binding = bindSession(previewServices, session(1112));
+  const clipboard = fileClipboard(binding.services);
+  clipboard.copy([source], "source");
+  clipboard.removed(source.path);
+  expect(clipboard.snapshot().copies).toBeUndefined();
+  clipboard.copy([source], "source");
+  clipboard.relocated({
+    path: "target",
+    locations: [
+      {
+        previous: "source",
+        location: { path: "target", name: "Target", parent: null },
+      },
+    ],
+  });
+  expect(clipboard.snapshot().copies).toBeUndefined();
+  expect(() =>
+    clipboard.copy([{ ...source, kind: "directory" }], "source"),
+  ).toThrow("regular files");
+  binding.dispose();
 });
 const moved: FileRelocation = {
   path: "moved@1",
@@ -30,6 +112,46 @@ const moved: FileRelocation = {
     },
   ],
 };
+
+it("does not let a late canceled preparation unlock work on a reactivated clipboard", async () => {
+  const binding = bindSession(previewServices, session(1113));
+  const clipboard = fileClipboard(binding.services);
+  let finishOld!: (ticket: any) => void;
+  let finishNew!: (ticket: any) => void;
+  const services = {
+    ...binding.services,
+    prepareCopy: vi
+      .fn()
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            finishOld = resolve;
+          }),
+      )
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            finishNew = resolve;
+          }),
+      ),
+    cancelTransfer: vi.fn(async () => {}),
+  };
+  clipboard.copy([source], "source");
+  const old = clipboard.prepareCopies("destination", services);
+  clipboard.dispose();
+  clipboard.activate();
+  clipboard.copy([{ ...source, path: "new-source" }], "source");
+  const newer = clipboard.prepareCopies("destination", services);
+  finishOld({ id: 1, name: "old", size: 10, direction: "copy" });
+  await expect(old).rejects.toThrow("changed");
+  expect(clipboard.snapshot().working).toBe(true);
+  expect(clipboard.snapshot().copies?.[0].entry.path).toBe("new-source");
+  finishNew({ id: 2, name: "new", size: 10, direction: "copy" });
+  await expect(newer).resolves.toHaveLength(1);
+  expect(clipboard.snapshot().working).toBe(false);
+  expect(services.cancelTransfer).toHaveBeenCalledExactlyOnceWith(1);
+  binding.dispose();
+});
 
 it("shares one immutable cut across windows of a binding, preserves opaque paths and consumes it once", async () => {
   const moveEntry = vi.fn(async () => moved);

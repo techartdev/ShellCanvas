@@ -49,6 +49,26 @@ export function scopeAppServices(
     return { ...ticket };
   }
   const services: SessionServices = {
+    systemClipboardSequence: guard(
+      "files.read",
+      base.systemClipboardSequence.bind(base),
+    ),
+    pasteSystemFiles: guard("files.upload", async (parent: string) => {
+      const result = await base.pasteSystemFiles(parent);
+      return result === null ? null : result.map(adopt);
+    }),
+    cutToSystem: guard("files.move", base.cutToSystem.bind(base)),
+    systemFileClipboard:
+      (declared.has("files.download") ||
+        declared.has("files.upload") ||
+        declared.has("files.move")) &&
+      base.systemFileClipboard,
+    copyToSystem: guard("files.download", base.copyToSystem.bind(base)),
+    chooseDownloads: guard(
+      "files.download",
+      async (files: { path: string; revision: string }[]) =>
+        (await base.chooseDownloads(files)).map(adopt),
+    ),
     prepareCopy: guard(
       "files.copy",
       async (path: string, revision: string, parent: string) =>

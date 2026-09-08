@@ -9,6 +9,19 @@ import type {
 } from "./sdk";
 export const native = isTauri();
 export const nativeServices: HostServices = {
+  systemClipboardSequence: () => invoke("system_clipboard_sequence"),
+  pasteSystemFiles: (sessionId, parent) =>
+    invoke("paste_system_files", { sessionId, parent }),
+  cutToSystem: (sessionId, path, revision) =>
+    invoke("cut_system_file", { sessionId, path, revision }),
+  systemFileClipboard:
+    native &&
+    typeof navigator !== "undefined" &&
+    /Windows/.test(navigator.userAgent),
+  copyToSystem: (sessionId, files) =>
+    invoke("copy_system_files", { sessionId, files }),
+  chooseDownloads: (sessionId, files) =>
+    invoke("choose_download_files", { sessionId, files }),
   prepareCopy: (sessionId, path, revision, parent) =>
     invoke("prepare_file_copy", { sessionId, path, revision, parent }),
   readHostSettings: (sessionId) => invoke("read_host_settings", { sessionId }),

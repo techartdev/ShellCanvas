@@ -182,6 +182,25 @@ export interface TerminalSession {
   close(): Promise<void>;
 }
 export interface HostServices {
+  systemClipboardSequence(): Promise<number>;
+  pasteSystemFiles(
+    sessionId: number,
+    parent: string,
+  ): Promise<TransferTicket[] | null>;
+  cutToSystem(
+    sessionId: number,
+    path: string,
+    revision: string,
+  ): Promise<number>;
+  systemFileClipboard?: boolean;
+  copyToSystem(
+    sessionId: number,
+    files: { path: string; revision: string }[],
+  ): Promise<number>;
+  chooseDownloads(
+    sessionId: number,
+    files: { path: string; revision: string }[],
+  ): Promise<TransferTicket[]>;
   prepareCopy(
     sessionId: number,
     path: string,
@@ -262,6 +281,14 @@ export interface HostServices {
 }
 /** Apps receive a fixed session handle, never connection administration. */
 export interface SessionServices {
+  systemClipboardSequence(): Promise<number>;
+  pasteSystemFiles(parent: string): Promise<TransferTicket[] | null>;
+  cutToSystem(path: string, revision: string): Promise<number>;
+  systemFileClipboard?: boolean;
+  copyToSystem(files: { path: string; revision: string }[]): Promise<number>;
+  chooseDownloads(
+    files: { path: string; revision: string }[],
+  ): Promise<TransferTicket[]>;
   prepareCopy(
     path: string,
     revision: string,
