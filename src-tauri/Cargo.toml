@@ -20,6 +20,7 @@ serde_json = "1"
 tempfile = "3"
 uuid = { version = "1", features = ["v4"] }
 shellcanvas-core = { path = "../crates/ssh-core" }
+shellcanvas-services = { path = "../crates/service-contracts" }
 serde = { version = "1", features = ["derive"] }
 tokio = { version = "1", features = ["sync", "time", "fs", "io-util"] }
 

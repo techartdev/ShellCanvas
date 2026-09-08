@@ -4130,6 +4130,7 @@ dependencies = [
  "serde",
  "serde_json",
  "shellcanvas-core",
+ "shellcanvas-services",
  "tauri",
  "tauri-build",
  "tauri-plugin-clipboard-manager",

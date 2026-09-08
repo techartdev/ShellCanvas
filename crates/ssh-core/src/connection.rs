@@ -6,7 +6,7 @@ use russh::{
     Channel, ChannelMsg,
 };
 use russh_sftp::client::SftpSession;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use std::{
     path::{Path, PathBuf},
     sync::Arc,
@@ -239,46 +239,6 @@ async fn wait_for_acceptance(channel: &mut Channel<client::Msg>, request: &str) 
         }
     }
     bail!("SSH channel closed while requesting {request}")
-}
-
-#[derive(Clone, Serialize)]
-#[serde(tag = "type", content = "data", rename_all = "camelCase")]
-pub enum TerminalEvent {
-    Output(Vec<u8>),
-    Closed,
-    Error(String),
-}
-pub enum TerminalInput {
-    Data(Vec<u8>),
-    Resize(u32, u32),
-}
-
-pub async fn run_terminal(
-    mut channel: Channel<client::Msg>,
-    mut input: tokio::sync::mpsc::Receiver<TerminalInput>,
-    output: impl Fn(TerminalEvent) -> bool,
-) {
-    loop {
-        tokio::select! {
-            message = channel.wait() => match message {
-                Some(ChannelMsg::Data { data }) | Some(ChannelMsg::ExtendedData { data, .. }) => {
-                    if !output(TerminalEvent::Output(data.to_vec())) { break; }
-                }
-                Some(ChannelMsg::Close) | None => break,
-                _ => {}
-            },
-            message = input.recv() => {
-                let result = match message {
-                    Some(TerminalInput::Data(data)) => channel.data(&data[..]).await,
-                    Some(TerminalInput::Resize(cols, rows)) => channel.window_change(cols.clamp(2,500), rows.clamp(2,300), 0, 0).await,
-                    None => break,
-                };
-                if let Err(error) = result { output(TerminalEvent::Error(error.to_string())); break; }
-            }
-        }
-    }
-    let _ = channel.close().await;
-    output(TerminalEvent::Closed);
 }
 
 #[cfg(test)]

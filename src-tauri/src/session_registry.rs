@@ -1,12 +1,19 @@
 // SPDX-License-Identifier: MPL-2.0
-use shellcanvas_core::TerminalInput;
+use shellcanvas_services::TerminalInput;
 use std::collections::HashMap;
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, oneshot};
+
+struct TerminalOwner {
+    session: u64,
+    sender: mpsc::Sender<TerminalInput>,
+    // Dropping the owner cancels the pump even if an IPC call retains a sender.
+    _cancel: oneshot::Sender<()>,
+}
 
 /// Session IDs are never reused. Every terminal belongs to exactly one session.
 pub struct SessionRegistry<T> {
     pub sessions: HashMap<u64, T>,
-    terminals: HashMap<u64, (u64, mpsc::Sender<TerminalInput>)>,
+    terminals: HashMap<u64, TerminalOwner>,
 }
 impl<T> Default for SessionRegistry<T> {
     fn default() -> Self {
@@ -18,7 +25,7 @@ impl<T> Default for SessionRegistry<T> {
 }
 impl<T> SessionRegistry<T> {
     pub fn remove(&mut self, session: u64) -> Option<T> {
-        self.terminals.retain(|_, (owner, _)| *owner != session);
+        self.terminals.retain(|_, owner| owner.session != session);
         self.sessions.remove(&session)
     }
     pub fn add_terminal(
@@ -26,12 +33,23 @@ impl<T> SessionRegistry<T> {
         session: u64,
         id: u64,
         sender: mpsc::Sender<TerminalInput>,
-    ) -> Result<(), String> {
+    ) -> Result<oneshot::Receiver<()>, String> {
         if !self.sessions.contains_key(&session) {
             return Err("This host session is no longer connected".into());
         }
-        self.terminals.insert(id, (session, sender));
-        Ok(())
+        if self.terminals.contains_key(&id) {
+            return Err("Terminal identity already exists".into());
+        }
+        let (cancel, canceled) = oneshot::channel();
+        self.terminals.insert(
+            id,
+            TerminalOwner {
+                session,
+                sender,
+                _cancel: cancel,
+            },
+        );
+        Ok(canceled)
     }
     pub fn sender(
         &self,
@@ -40,15 +58,15 @@ impl<T> SessionRegistry<T> {
     ) -> Result<mpsc::Sender<TerminalInput>, String> {
         self.terminals
             .get(&terminal)
-            .filter(|(owner, _)| *owner == session && self.sessions.contains_key(owner))
-            .map(|(_, sender)| sender.clone())
+            .filter(|owner| owner.session == session && self.sessions.contains_key(&owner.session))
+            .map(|owner| owner.sender.clone())
             .ok_or("Terminal is closed or belongs to another host".into())
     }
     pub fn close_terminal(&mut self, session: u64, terminal: u64) {
         if self
             .terminals
             .get(&terminal)
-            .is_some_and(|(owner, _)| *owner == session)
+            .is_some_and(|owner| owner.session == session)
         {
             self.terminals.remove(&terminal);
         }
@@ -65,12 +83,22 @@ mod tests {
         registry.sessions.insert(2, "host-b");
         let (a, mut ar) = mpsc::channel(8);
         let (b, mut br) = mpsc::channel(8);
-        registry.add_terminal(1, 10, a).unwrap();
-        registry.add_terminal(2, 20, b).unwrap();
+        let mut canceled_a = registry.add_terminal(1, 10, a).unwrap();
+        let mut canceled_b = registry.add_terminal(2, 20, b).unwrap();
+        let retained = registry.sender(1, 10).unwrap();
         assert!(registry.sender(1, 20).is_err());
         registry.close_terminal(1, 20);
         assert!(registry.sender(2, 20).is_ok());
         registry.remove(1);
+        assert!(matches!(
+            canceled_a.try_recv(),
+            Err(oneshot::error::TryRecvError::Closed)
+        ));
+        assert!(matches!(
+            canceled_b.try_recv(),
+            Err(oneshot::error::TryRecvError::Empty)
+        ));
+        drop(retained);
         assert!(ar.is_closed());
         assert!(ar.try_recv().is_err());
         assert!(!br.is_closed());

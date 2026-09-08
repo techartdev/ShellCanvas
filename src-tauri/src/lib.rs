@@ -10,11 +10,13 @@ use tokio::sync::{mpsc, Mutex};
 mod connection_attempts;
 mod profile_store;
 mod session_registry;
+mod terminals;
 mod transfers;
 use session_registry::SessionRegistry;
 
 struct ActiveSession {
     connection: Arc<Connection>,
+    terminal: Option<Arc<dyn TerminalService>>,
     files: Option<Arc<dyn FileSystemProvider>>,
     text: Option<Arc<dyn TextFileService>>,
     mutations: Option<Arc<dyn FileMutationService>>,
@@ -146,6 +148,7 @@ async fn connect_session(
     state.registry.lock().await.sessions.insert(
         id,
         ActiveSession {
+            terminal: Some(connection.clone()),
             connection,
             files,
             text,
@@ -389,25 +392,28 @@ async fn open_terminal(
     on_event: Channel<TerminalEvent>,
     state: State<'_, DesktopState>,
 ) -> Result<u64, String> {
-    let connection = state
+    let terminal = state
         .registry
         .lock()
         .await
         .sessions
         .get(&session_id)
-        .map(|s| s.connection.clone())
-        .ok_or("This host session is no longer connected")?;
-    let channel = connection.terminal(cols, rows).await.map_err(error)?;
+        .and_then(|s| s.terminal.clone())
+        .ok_or("Terminal service is unavailable for this host session")?;
+    let stream = tokio::time::timeout(OP_TIMEOUT, terminal.open(TerminalSize::new(cols, rows)))
+        .await
+        .map_err(error)?
+        .map_err(error)?;
     let (send, recv) = mpsc::channel(128);
     let id = state.next_id.fetch_add(1, Ordering::Relaxed) + 1;
-    state
+    let canceled = state
         .registry
         .lock()
         .await
         .add_terminal(session_id, id, send)?;
     let registry = state.registry.clone();
     tauri::async_runtime::spawn(async move {
-        run_terminal(channel, recv, |event| on_event.send(event).is_ok()).await;
+        terminals::run_terminal(stream, recv, canceled, |event| on_event.send(event).is_ok()).await;
         registry.lock().await.close_terminal(session_id, id);
     });
     Ok(id)
@@ -427,7 +433,7 @@ async fn terminal_input(
     data: Vec<u8>,
     state: State<'_, DesktopState>,
 ) -> Result<(), String> {
-    if data.len() > 65536 {
+    if data.len() > TERMINAL_CHUNK {
         return Err("Terminal input chunk exceeds 64 KiB".into());
     }
     let sender = terminal_sender(&state, session_id, terminal_id).await?;

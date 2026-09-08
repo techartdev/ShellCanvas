@@ -1,10 +1,12 @@
 // SPDX-License-Identifier: MPL-2.0
-//! Transport-independent file, device inspection and host-settings services. Paths are nonempty provider-owned tokens;
+//! Transport-independent file, console, device inspection and host-settings services. Paths are nonempty provider-owned tokens;
 //! consumers display/pass them unchanged and never split, join or normalize them.
 use anyhow::Result;
 use async_trait::async_trait;
 pub mod device;
 pub use device::*;
+pub mod terminal;
+pub use terminal::*;
 pub mod settings;
 use serde::Serialize;
 pub use settings::*;
