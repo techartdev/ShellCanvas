@@ -1,6 +1,6 @@
 # Core completion work
 
-User-authorized overnight goal, started 2026-09-08. The goal remains active across checkpoints. This list does not replace the wider backlog or claim the base is complete.
+User-authorized overnight goal, started 2026-09-08. Work stopped at the user's request after the editor clipboard checkpoint below, pending discussion. This list does not replace the wider backlog or claim the base is complete.
 
 ## Priorities and acceptance
 
@@ -14,6 +14,8 @@ User-authorized overnight goal, started 2026-09-08. The goal remains active acro
 Additional protocols are optional until these core workflows work well. Connection-neutral service boundaries remain required; implement another protocol only when it proves the design and can be tested. AI, monetization, external-extension trust/runtime, credential-vault policy and other discussion-dependent decisions remain deferred.
 
 ## Evidence and outstanding work
+
+- Editor Cut/Paste now rejects stale asynchronous edits after document replacement, intervening edits/undo, Save, or a newer clipboard action. Stale failures are suppressed and caret restoration does not steal focus. The controlled browser fixture passed normal Cut/Paste/undo, CRLF normalization, identical-document replacement, edit/undo, Save, refusal and late failure after replacement/unmount. All 72 frontend tests and the standard Windows debug build passed. See [editor validation](text-editor.md#validation). Native delayed-clipboard failure injection remains unverified.
 
 - Files now exposes sort headers and a checked **Sort and view…** context menu using existing persistent preferences. Browser checks passed keyboard/pointer sorting, selection retention, unknown-date placement, two-window synchronization without extra provider reads, compact rows/right tiling and fresh-page persistence. Small floating windows now adapt independently, keeping the location field and name/size columns usable; the menu still sorts by the hidden Modified column. Shared menus support labeled radio groups and checkbox states. See [settings](settings.md). These are local view controls; no remote data is changed.
 

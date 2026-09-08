@@ -30,6 +30,7 @@ import {
   lineEnding,
   normaliseText,
   serialiseText,
+  type EditorAction,
 } from "../editor-state";
 import "./Editor.css";
 import { usePreferences } from "../preferences";
@@ -47,15 +48,25 @@ export function Editor({
 }: AppContext) {
   const { values: preferences, set: setPreference } = usePreferences();
   const [document, setDocument] = useState<TextDocument | null>(null);
-  const [buffer, edit] = useReducer(editBuffer, {
+  const clipboardRevision = useRef(0);
+  const clipboardOperation = useRef(0);
+  const clipboardScope = useRef({ sessionId: session?.id, connected, active });
+  clipboardScope.current = { sessionId: session?.id, connected, active };
+  const [buffer, dispatchEdit] = useReducer(editBuffer, {
     text: "",
     past: [],
     future: [],
   });
+  function edit(action: EditorAction) {
+    // Text equality misses edits followed by undo and identical replacement files.
+    ++clipboardRevision.current;
+    dispatchEdit(action);
+  }
   const [path, setPath] = useState(launch?.path ?? "");
   const [operationBusy, setOperationBusy] = useState(false);
   const busyRef = useRef(false);
   const setBusy = useCallback((value: boolean) => {
+    if (value) ++clipboardRevision.current;
     busyRef.current = value;
     setOperationBusy(value);
   }, []);
@@ -81,8 +92,6 @@ export function Editor({
       gutter.current.scrollTop = textarea.current.scrollTop;
   }, [wrap, preferences.editorLineNumbers, preferences.editorFontSize]);
   const request = useRef(0);
-  const currentText = useRef(buffer.text);
-  currentText.current = buffer.text;
   const locationState = useRef({ document, path, saveAs, pendingPath });
   locationState.current = { document, path, saveAs, pendingPath };
   useEffect(() => {
@@ -146,9 +155,10 @@ export function Editor({
       new TextEncoder().encode(text).length > 256 * 1024
     ) {
       setError("The editor is limited to 256 KiB of UTF-8 text.");
-      return;
+      return false;
     }
     edit({ type: "change", text });
+    return true;
   }
   const title = document ? `${document.name} — Editor` : "Text editor";
   useEffect(() => {
@@ -247,39 +257,67 @@ export function Editor({
   }
   async function copy(all = false, cut = false) {
     const el = textarea.current;
-    if (!el) return;
+    if (!el || (cut && (busyRef.current || relocatingRef.current))) return;
     const start = el.selectionStart,
       end = el.selectionEnd;
     const text = all ? buffer.text : buffer.text.slice(start, end);
     if (!text) return;
     const before = buffer.text;
+    const valid = clipboardGuard(el);
     try {
       await clipboard.writeText(text);
-      if (cut && !busy && currentText.current === before)
-        change(before.slice(0, start) + before.slice(end));
+      if (cut && valid()) {
+        if (change(before.slice(0, start) + before.slice(end)))
+          restoreClipboardCaret(el, start);
+      }
     } catch (error) {
-      setError(`Clipboard failed: ${error}`);
+      if (valid()) setError(`Clipboard failed: ${error}`);
     }
   }
   async function paste() {
-    if (busy) return;
+    if (busyRef.current || relocatingRef.current) return;
     const el = textarea.current;
     if (!el) return;
     const before = buffer.text,
       start = el.selectionStart,
-      end = el.selectionEnd,
-      current = request.current;
+      end = el.selectionEnd;
+    const valid = clipboardGuard(el);
     try {
       const text = normaliseText(await clipboard.readText());
-      if (current !== request.current || currentText.current !== before) return;
-      change(before.slice(0, start) + text + before.slice(end));
-      requestAnimationFrame(() => {
-        el.focus({ preventScroll: true });
-        el.setSelectionRange(start + text.length, start + text.length);
-      });
+      if (!valid()) return;
+      if (change(before.slice(0, start) + text + before.slice(end)))
+        restoreClipboardCaret(el, start + text.length);
     } catch (error) {
-      setError(`Paste failed: ${error}`);
+      if (valid()) setError(`Paste failed: ${error}`);
     }
+  }
+  function clipboardGuard(el: HTMLTextAreaElement) {
+    // Only the latest clipboard action may edit the document that initiated it.
+    const operation = ++clipboardOperation.current;
+    const revision = clipboardRevision.current;
+    const loadingRequest = request.current;
+    const scope = clipboardScope.current;
+    const originalDocument = locationState.current.document;
+    return () =>
+      operation === clipboardOperation.current &&
+      revision === clipboardRevision.current &&
+      loadingRequest === request.current &&
+      originalDocument === locationState.current.document &&
+      scope.sessionId === clipboardScope.current.sessionId &&
+      scope.connected === clipboardScope.current.connected &&
+      clipboardScope.current.active &&
+      !busyRef.current &&
+      !relocatingRef.current &&
+      textarea.current === el &&
+      el.isConnected;
+  }
+  function restoreClipboardCaret(el: HTMLTextAreaElement, position: number) {
+    const valid = clipboardGuard(el);
+    requestAnimationFrame(() => {
+      // A later edit, document switch or focus change must not move its caret.
+      if (valid() && el.ownerDocument.activeElement === el)
+        el.setSelectionRange(position, position);
+    });
   }
   function findNext() {
     if (!search || !textarea.current) return;
