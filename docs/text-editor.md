@@ -1,6 +1,16 @@
 # Remote text editor
 
-The bundled Editor opens from the dock or a file's context menu. Each window has an independent document, bounded undo/redo history, find, wrapping, clipboard menu and unsaved indicator. It reads regular UTF-8 files up to 256 KiB. Uniform CRLF line endings round-trip on save. Save updates an existing file; **Save as new file** creates a new name without overwriting another destination. See [file actions](file-actions.md) for new-file behavior and limits.
+The bundled Editor opens from the dock or a file's context menu. Each window has an independent document, bounded undo/redo history, find, wrapping, clipboard menu and unsaved indicator. It reads regular UTF-8 files up to 256 KiB. Uniform CRLF line endings round-trip on save. Save updates an existing file; **Save as** creates a new name or offers explicit replacement review for an existing regular text file. See [file actions](file-actions.md) for behavior and limits.
+
+## Save As replacement
+
+Save As lists the chosen folder and resolves an exact filename through provider-owned locations. New names use no-clobber creation; an item appearing after the listing is an error, never an automatic overwrite. Existing regular files are read before review, using the text service's UTF-8/size/readability limits. Folders, links, ambiguous names and unavailable replacement capability are refused. An unrecognized name alias may fail creation safely; the frontend does not invent provider-specific case or path rules.
+
+Review shows the destination name and exact canonical path. Cancel preserves the draft, and Back allows choosing another destination. Replace file uses the revision captured during review. Failure keeps that revision and the draft; Back followed by Save performs a fresh review before another confirmation. No conflict triggers automatic re-reading or overwriting. Other open editor drafts retain their own revisions and buffers. After success, this editor adopts the returned path/revision and keeps its undo history. Replacement writes the source draft's line-ending convention, as normal Save As does.
+
+A changed/lost session invalidates the review and suppresses late results. If a write was in progress, the dialog asks the user to inspect the destination before trying again; it does not claim the remote write was canceled. Native service ownership and the existing SFTP save limitations still apply.
+
+Five tests cover preparation without writes, canonical opaque locations, reviewed revision conflicts, safe creation races, unsupported kinds/capabilities and unreadable targets. Browser fixtures passed cancellation, explicit replacement, ordinary Save afterward, permission failure, conflict followed by a fresh review, new-file creation and disconnect after a simulated successful remote write without retargeting the draft. In the full desktop fixture, replacing from Editor 2 preserved Editor 1's unsaved buffer and its stale Save was rejected. These are synthetic provider checks; a native Save As replacement walkthrough remains open.
 
 `TextFileService` is a separate optional service contract. The SSH implementation uses a dedicated SFTP channel, with no shell commands or remote agent. Servers without atomic replacement support keep read/preview and new-file creation access; replacing an existing file with Save is unavailable. Per-file permission errors are reported when the operation is attempted.
 

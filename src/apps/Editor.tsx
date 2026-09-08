@@ -33,7 +33,7 @@ import {
 } from "../editor-state";
 import "./Editor.css";
 import { usePreferences } from "../preferences";
-import { FileActionDialog } from "../components/FileActionDialog";
+import { SaveAsDialog } from "../components/SaveAsDialog";
 import { watchFileLocations } from "../file-events";
 
 export function Editor({
@@ -552,7 +552,7 @@ export function Editor({
             },
             {
               id: "save-as",
-              label: "Save as new file",
+              label: "Save as…",
               shortcut: "Ctrl+Shift+S",
               disabled: !canCreate,
               run: () => void openSaveAs(),
@@ -613,21 +613,19 @@ export function Editor({
         />
       )}
       {saveAs !== null && (
-        <FileActionDialog
-          title="Save as new file"
-          description="Save a copy of this draft in an existing remote folder. Existing files are never replaced; choose a new name."
+        <SaveAsDialog
           initialName={document?.name ?? "untitled.txt"}
           initialParent={saveAs}
-          confirmLabel="Save new file"
+          services={services}
+          connected={connected}
+          canReplace={!!session?.info.capabilities.includes("files.edit")}
+          text={serialiseText(
+            buffer.text,
+            document ? lineEnding(document.text) : "LF",
+          )}
           close={() => setSaveAs(null)}
           setBusy={setBusy}
-          disabled={!connected}
-          execute={async (name, parent) => {
-            const text = serialiseText(
-              buffer.text,
-              document ? lineEnding(document.text) : "LF",
-            );
-            const saved = await services.createText(parent, name, text);
+          saved={(saved) => {
             locationState.current = {
               ...locationState.current,
               document: saved,
@@ -636,7 +634,7 @@ export function Editor({
             setDocument(saved);
             setPath(saved.path);
             setError("");
-            setStatus("Saved as a new remote file");
+            setStatus("Saved to remote host");
           }}
         />
       )}
