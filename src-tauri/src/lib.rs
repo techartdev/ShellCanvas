@@ -627,6 +627,7 @@ pub fn run() {
             transfers::choose_download_file,
             transfers::choose_download_files,
             transfers::copy_system_files,
+            transfers::cancel_clipboard_preparation,
             transfers::cut_system_file,
             transfers::paste_system_files,
             transfers::system_clipboard_sequence,

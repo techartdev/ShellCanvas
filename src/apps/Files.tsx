@@ -30,7 +30,12 @@ import {
   ClipboardPaste,
   Copy,
 } from "lucide-react";
-import type { AppContext, Directory, FileEntry } from "../sdk";
+import type {
+  AppContext,
+  ClipboardPreparation,
+  Directory,
+  FileEntry,
+} from "../sdk";
 import { ContextMenu, type MenuAction } from "../components/ContextMenu";
 import { clipboard } from "../clipboard";
 import { fileClipboard } from "../file-clipboard";
@@ -109,6 +114,49 @@ export function Files({
   }, [queue]);
   const [picking, setPicking] = useState(false);
   const copyEpoch = useRef(0);
+  const preparationRef = useRef<{
+    id: string;
+    services: typeof services;
+  } | null>(null);
+  const [preparingClipboard, setPreparingClipboard] = useState(false);
+  useEffect(() => {
+    setPicking(false);
+    setPreparingClipboard(false);
+    setSystemCopyNotice("");
+    return () => {
+      const pending = preparationRef.current;
+      if (pending?.services === services) {
+        preparationRef.current = null;
+        void services.cancelClipboardPreparation(pending.id).catch(() => {});
+      }
+    };
+  }, [services]);
+  function beginClipboardPreparation(): ClipboardPreparation {
+    const id = crypto.randomUUID();
+    preparationRef.current = { id, services };
+    setPreparingClipboard(true);
+    setSystemCopyNotice("Scanning for Explorer…");
+    return {
+      id,
+      onProgress: (progress) => {
+        if (preparationRef.current?.id === id)
+          setSystemCopyNotice(
+            `Scanning for Explorer · ${(progress.items ?? 0).toLocaleString()} items · ${size(progress.total)}`,
+          );
+      },
+    };
+  }
+  async function cancelClipboardPreparation() {
+    const pending = preparationRef.current;
+    if (!pending) return;
+    setSystemCopyNotice("Canceling preparation…");
+    try {
+      await pending.services.cancelClipboardPreparation(pending.id);
+    } catch (error) {
+      if (preparationRef.current?.id === pending.id) setError(String(error));
+    }
+  }
+
   const [systemCopyNotice, setSystemCopyNotice] = useState("");
   useEffect(() => {
     if (!services.systemFileClipboard || !connected) return;
@@ -428,6 +476,7 @@ export function Files({
             path: entry.path,
             revision: entry.revision!,
           })),
+          beginClipboardPreparation(),
         );
         if (
           epoch === copyEpoch.current &&
@@ -440,10 +489,16 @@ export function Files({
         }
       }
     } catch (error) {
-      if (epoch === copyEpoch.current && currentServices.current === services)
+      if (epoch === copyEpoch.current && currentServices.current === services) {
         setError(String(error));
+        setSystemCopyNotice("");
+      }
     } finally {
-      if (currentServices.current === services) setPicking(false);
+      if (currentServices.current === services) {
+        setPicking(false);
+        preparationRef.current = null;
+        setPreparingClipboard(false);
+      }
     }
   }
   async function cut(entry: FileEntry) {
@@ -455,7 +510,11 @@ export function Files({
     if (!services.systemFileClipboard) return;
     setPicking(true);
     try {
-      const sequence = await services.cutToSystem(entry.path, entry.revision);
+      const sequence = await services.cutToSystem(
+        entry.path,
+        entry.revision,
+        beginClipboardPreparation(),
+      );
       if (epoch === copyEpoch.current && currentServices.current === services) {
         cutClipboard.syncSystem(sequence);
         setSystemCopyNotice(
@@ -465,10 +524,16 @@ export function Files({
         );
       }
     } catch (error) {
-      if (epoch === copyEpoch.current && currentServices.current === services)
+      if (epoch === copyEpoch.current && currentServices.current === services) {
         setError(String(error));
+        setSystemCopyNotice("");
+      }
     } finally {
-      if (currentServices.current === services) setPicking(false);
+      if (currentServices.current === services) {
+        setPicking(false);
+        preparationRef.current = null;
+        setPreparingClipboard(false);
+      }
     }
   }
   function canRemotePasteInto(parent: string) {
@@ -546,7 +611,11 @@ export function Files({
       )
         setError(String(error));
     } finally {
-      if (currentServices.current === services) setPicking(false);
+      if (currentServices.current === services) {
+        setPicking(false);
+        preparationRef.current = null;
+        setPreparingClipboard(false);
+      }
     }
   }
   async function clipboardPath() {
@@ -1121,6 +1190,11 @@ export function Files({
           )
         )
           return;
+        if (event.key === "Escape" && preparationRef.current) {
+          event.preventDefault();
+          void cancelClipboardPreparation();
+          return;
+        }
         if (command && event.key.toLowerCase() === "c") {
           event.preventDefault();
           copySelection();
@@ -1365,7 +1439,7 @@ export function Files({
         </div>
         {(cutState.item || cutState.copies?.length || cutState.working) && (
           <div className="file-cut-bar" role="status">
-            {cutState.working ? (
+            {cutState.working || preparingClipboard ? (
               <LoaderCircle size={15} className="spin" />
             ) : cutState.copies?.length ? (
               <Copy size={15} />
@@ -1374,13 +1448,15 @@ export function Files({
             )}
             <div className="file-cut-description">
               <strong>
-                {cutState.working
-                  ? cutState.copies?.length
-                    ? "Preparing copies…"
-                    : "Moving item…"
-                  : cutState.copies?.length
-                    ? `Ready to copy · ${cutState.copies.length} ${cutState.copies.length === 1 ? "file" : "files"}`
-                    : `Ready to move · ${cutState.item!.entry.name}`}
+                {preparingClipboard
+                  ? "Preparing clipboard…"
+                  : cutState.working
+                    ? cutState.copies?.length
+                      ? "Preparing copies…"
+                      : "Moving item…"
+                    : cutState.copies?.length
+                      ? `Ready to copy · ${cutState.copies.length} ${cutState.copies.length === 1 ? "file" : "files"}`
+                      : `Ready to move · ${cutState.item!.entry.name}`}
               </strong>
               {cutState.item && (
                 <span title={cutState.item.entry.path}>
@@ -1389,6 +1465,11 @@ export function Files({
               )}
               {systemCopyNotice ? <span>{systemCopyNotice}</span> : null}
             </div>
+            {preparingClipboard && (
+              <button onClick={() => void cancelClipboardPreparation()}>
+                Cancel preparation
+              </button>
+            )}
             <button
               disabled={!canPasteInto(directory.path)}
               onClick={() => void pasteInto(directory.path)}
@@ -1401,7 +1482,7 @@ export function Files({
                 cutState.copies?.length ? "Clear copied files" : "Cancel cut"
               }
               title="Clear file clipboard · Esc"
-              disabled={cutState.working}
+              disabled={cutState.working || preparingClipboard}
               onClick={() => cutClipboard.clear()}
             >
               <X size={15} />

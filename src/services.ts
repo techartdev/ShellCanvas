@@ -9,17 +9,36 @@ import type {
 } from "./sdk";
 export const native = isTauri();
 export const nativeServices: HostServices = {
+  cancelClipboardPreparation: (sessionId, operation) =>
+    invoke("cancel_clipboard_preparation", { sessionId, operation }),
   systemClipboardSequence: () => invoke("system_clipboard_sequence"),
   pasteSystemFiles: (sessionId, parent) =>
     invoke("paste_system_files", { sessionId, parent }),
-  cutToSystem: (sessionId, path, revision) =>
-    invoke("cut_system_file", { sessionId, path, revision }),
+  cutToSystem: (sessionId, path, revision, preparation) => {
+    const onEvent = new Channel<TransferProgress>();
+    onEvent.onmessage = preparation?.onProgress ?? (() => {});
+    return invoke("cut_system_file", {
+      sessionId,
+      path,
+      revision,
+      operation: preparation?.id,
+      onEvent,
+    });
+  },
   systemFileClipboard:
     native &&
     typeof navigator !== "undefined" &&
     /Windows/.test(navigator.userAgent),
-  copyToSystem: (sessionId, files) =>
-    invoke("copy_system_files", { sessionId, files }),
+  copyToSystem: (sessionId, files, preparation) => {
+    const onEvent = new Channel<TransferProgress>();
+    onEvent.onmessage = preparation?.onProgress ?? (() => {});
+    return invoke("copy_system_files", {
+      sessionId,
+      files,
+      operation: preparation?.id,
+      onEvent,
+    });
+  },
   chooseDownloads: (sessionId, files) =>
     invoke("choose_download_files", { sessionId, files }),
   prepareCopy: (sessionId, path, revision, parent) =>

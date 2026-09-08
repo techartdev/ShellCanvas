@@ -74,11 +74,13 @@ export function TransferPanel({
                 : ArrowDownToLine;
           const label =
             row.status === "running"
-              ? row.phase === "finishing"
-                ? "Finishing…"
-                : row.direction === "copy"
-                  ? "Copying…"
-                  : "Transferring…"
+              ? row.phase === "preparing"
+                ? `Scanning${row.items ? ` · ${row.items.toLocaleString()} items` : ""}…`
+                : row.phase === "finishing"
+                  ? "Finishing…"
+                  : row.direction === "copy"
+                    ? "Copying…"
+                    : "Transferring…"
               : {
                   queued: "Queued",
                   canceling: "Canceling…",
@@ -99,9 +101,11 @@ export function TransferPanel({
                   aria-label={`${row.direction === "copy" ? "Copy" : row.direction === "upload" ? "Upload" : "Download"} ${row.name}`}
                   max={Math.max(1, row.total)}
                   value={
-                    row.status === "completed"
-                      ? Math.max(1, row.total)
-                      : row.bytes
+                    row.status === "running" && row.phase === "preparing"
+                      ? undefined
+                      : row.status === "completed"
+                        ? Math.max(1, row.total)
+                        : row.bytes
                   }
                 />
                 <small>

@@ -12,12 +12,21 @@ pub use device::*;
 pub mod terminal;
 pub use terminal::*;
 pub mod settings;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 pub use settings::*;
 use std::sync::Arc;
 
 /// Maximum bytes per transfer operation; consumers and providers both enforce it.
 pub const TRANSFER_CHUNK: usize = 32 * 1024;
+pub const TRANSFER_DIRECTORY_PAGE: usize = 128;
+/// A single open directory, read incrementally. Empty means EOF; implementations
+/// release their handle on finish/abort and when abandoned.
+#[async_trait]
+pub trait TransferDirectory: Send {
+    async fn next(&mut self) -> Result<Vec<FileEntry>>;
+    async fn finish(&mut self) -> Result<()>;
+    async fn abort(&mut self) -> Result<()>;
+}
 #[derive(Clone, Debug, Serialize)]
 pub struct TransferFile {
     pub location: FileLocation,
@@ -42,18 +51,31 @@ pub trait TransferWriter: Send {
 }
 #[async_trait]
 pub trait FileTransferService: Send + Sync {
+    /// Inspect one selected entry without materializing its parent directory.
+    async fn transfer_entry(self: Arc<Self>, path: &str, revision: &str) -> Result<FileEntry> {
+        let mut reader = self.download(path, revision).await?;
+        let file = reader.file();
+        reader.abort().await?;
+        Ok(FileEntry {
+            path: file.location.path,
+            name: file.location.name,
+            kind: "file".into(),
+            size: file.size,
+            modified: None,
+            revision: revision.into(),
+        })
+    }
     /// Optional recursive-transfer operations. Providers keep all path handling.
     fn supports_folders(&self) -> bool {
         false
     }
-    /// List a real directory with a matching revision; refuse links, special
-    /// files, and more than `limit` children. Returned paths remain opaque.
-    async fn transfer_children(
-        &self,
+    /// Open a real, revision-checked directory. Each next() returns at most
+    /// TRANSFER_DIRECTORY_PAGE children, independent of directory size.
+    async fn transfer_directory(
+        self: Arc<Self>,
         _path: &str,
         _revision: &str,
-        _limit: usize,
-    ) -> Result<Vec<FileEntry>> {
+    ) -> Result<Box<dyn TransferDirectory>> {
         anyhow::bail!("Folder transfers are unavailable on this device")
     }
     /// Create an absent directory, without merging or replacing anything.
@@ -100,7 +122,7 @@ pub struct FileRelocation {
     pub path: String,
     pub locations: Vec<RelocatedLocation>,
 }
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FileEntry {
     pub name: String,

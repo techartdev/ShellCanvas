@@ -172,52 +172,53 @@ impl TransferWriter for Writer {
 
 #[async_trait]
 impl FileTransferService for SftpTextFiles {
+    async fn transfer_entry(
+        self: Arc<Self>,
+        path: &str,
+        revision: &str,
+    ) -> Result<crate::FileEntry> {
+        let attrs = self.checked_entry(path, revision).await?;
+        let location = sftp_location(path.into());
+        Ok(crate::FileEntry {
+            path: location.path,
+            name: location.name,
+            kind: if attrs.is_dir() {
+                "directory"
+            } else if attrs.is_regular() {
+                "file"
+            } else {
+                "symlink"
+            }
+            .into(),
+            size: if attrs.is_regular() {
+                attrs.size.context("Missing file size")?
+            } else {
+                0
+            },
+            modified: attrs.mtime,
+            revision: revision.into(),
+        })
+    }
     fn supports_folders(&self) -> bool {
         true
     }
-    async fn transfer_children(
-        &self,
+    async fn transfer_directory(
+        self: Arc<Self>,
         path: &str,
         revision: &str,
-        limit: usize,
-    ) -> Result<Vec<crate::FileEntry>> {
+    ) -> Result<Box<dyn shellcanvas_services::TransferDirectory>> {
         if !self.checked_entry(path, revision).await?.is_dir() {
             bail!("Folder transfers do not follow symbolic links");
         }
         let handle = self.raw.opendir(path).await?.handle;
-        let work = async {
-            let mut entries = Vec::new();
-            loop {
-                let batch = match self.raw.readdir(&handle).await {
-                    Ok(batch) => batch.files,
-                    Err(SftpError::Status(status)) if status.status_code == StatusCode::Eof => break,
-                    Err(error) => return Err(error.into()),
-                };
-                if batch.is_empty() { bail!("The server returned an empty directory page without EOF"); }
-                for item in batch {
-                    if matches!(item.filename.as_str(), "." | "..") { continue; }
-                    crate::file_actions::validate_name(&item.filename)?;
-                    if entries.len() >= limit { bail!("Folder transfer exceeds the entry limit"); }
-                    if !item.attrs.is_regular() && !item.attrs.is_dir() {
-                        bail!("Folder contains a link or special file: {}. These are not followed or copied.", item.filename);
-                    }
-                    entries.push(crate::FileEntry {
-                        path: format!("{}/{}", path.trim_end_matches('/'), item.filename),
-                        name: item.filename,
-                        kind: if item.attrs.is_dir() { "directory" } else { "file" }.into(),
-                        size: if item.attrs.is_dir() { 0 } else { item.attrs.size.context("Missing file size")? },
-                        modified: item.attrs.mtime,
-                        revision: entry_revision(&item.attrs),
-                    });
-                }
-            }
-            self.checked_entry(path, revision).await?;
-            Ok(entries)
-        }.await;
-        let closed = self.raw.close(handle).await;
-        let entries = work?;
-        closed?;
-        Ok(entries)
+        Ok(Box::new(DirectoryReader {
+            service: self,
+            handle: Some(handle),
+            path: path.into(),
+            revision: revision.into(),
+            pending: std::collections::VecDeque::new(),
+            eof: false,
+        }))
     }
     async fn transfer_mkdir(&self, parent: &str, name: &str) -> Result<FileLocation> {
         let path = crate::FileMutationService::make_directory(self, parent, name).await?;
@@ -299,5 +300,97 @@ impl FileTransferService for SftpTextFiles {
             size,
             offset: 0,
         }))
+    }
+}
+
+struct DirectoryReader {
+    service: Arc<SftpTextFiles>,
+    handle: Option<String>,
+    path: String,
+    revision: String,
+    pending: std::collections::VecDeque<russh_sftp::protocol::File>,
+    eof: bool,
+}
+#[async_trait]
+impl shellcanvas_services::TransferDirectory for DirectoryReader {
+    async fn next(&mut self) -> Result<Vec<crate::FileEntry>> {
+        let mut entries = Vec::new();
+        while entries.len() < shellcanvas_services::TRANSFER_DIRECTORY_PAGE {
+            if let Some(item) = self.pending.pop_front() {
+                if matches!(item.filename.as_str(), "." | "..") {
+                    continue;
+                }
+                crate::file_actions::validate_name(&item.filename)?;
+                if !item.attrs.is_regular() && !item.attrs.is_dir() {
+                    bail!("Folder contains a link or special file: {}", item.filename);
+                }
+                entries.push(crate::FileEntry {
+                    path: format!("{}/{}", self.path.trim_end_matches('/'), item.filename),
+                    name: item.filename,
+                    kind: if item.attrs.is_dir() {
+                        "directory"
+                    } else {
+                        "file"
+                    }
+                    .into(),
+                    size: if item.attrs.is_dir() {
+                        0
+                    } else {
+                        item.attrs.size.context("Missing file size")?
+                    },
+                    modified: item.attrs.mtime,
+                    revision: entry_revision(&item.attrs),
+                });
+            } else if self.eof {
+                break;
+            } else {
+                match self
+                    .service
+                    .raw
+                    .readdir(self.handle.as_ref().context("Directory is closed")?)
+                    .await
+                {
+                    Ok(batch) => {
+                        if batch.files.is_empty() {
+                            bail!("Server returned an empty directory page without EOF");
+                        }
+                        self.pending = batch.files.into();
+                    }
+                    Err(SftpError::Status(status)) if status.status_code == StatusCode::Eof => {
+                        self.eof = true
+                    }
+                    Err(error) => return Err(error.into()),
+                }
+            }
+        }
+        Ok(entries)
+    }
+    async fn finish(&mut self) -> Result<()> {
+        if !self.eof || !self.pending.is_empty() {
+            bail!("Directory scan is incomplete");
+        }
+        self.service
+            .checked_entry(&self.path, &self.revision)
+            .await?;
+        self.abort().await
+    }
+    async fn abort(&mut self) -> Result<()> {
+        self.pending.clear();
+        if let Some(handle) = self.handle.take() {
+            self.service.raw.close(handle).await?;
+        }
+        Ok(())
+    }
+}
+impl Drop for DirectoryReader {
+    fn drop(&mut self) {
+        if let Some(handle) = self.handle.take() {
+            if let Ok(runtime) = tokio::runtime::Handle::try_current() {
+                let service = self.service.clone();
+                runtime.spawn(async move {
+                    let _ = service.raw.close(handle).await;
+                });
+            }
+        }
     }
 }

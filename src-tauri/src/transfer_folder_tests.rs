@@ -20,13 +20,40 @@ struct Folders {
     created: Mutex<HashSet<String>>,
     bad_child: Option<FileEntry>,
 }
+struct Page(Vec<FileEntry>);
+#[async_trait]
+impl shellcanvas_core::TransferDirectory for Page {
+    async fn next(&mut self) -> Result<Vec<FileEntry>> {
+        let count = self.0.len().min(shellcanvas_core::TRANSFER_DIRECTORY_PAGE);
+        Ok(self.0.drain(..count).collect())
+    }
+    async fn finish(&mut self) -> Result<()> {
+        Ok(())
+    }
+    async fn abort(&mut self) -> Result<()> {
+        Ok(())
+    }
+}
+async fn scanned(
+    service: Arc<dyn FileTransferService>,
+    root: FileEntry,
+    portable: bool,
+) -> Result<Arc<catalog::Catalog>> {
+    let plan = tree::remote(&service, root).await?;
+    let (_stop, cancel) = watch::channel(false);
+    tree::scan(plan, service, portable, &cancel, &mut |_| {}).await
+}
 #[async_trait]
 impl FileTransferService for Folders {
     fn supports_folders(&self) -> bool {
         true
     }
-    async fn transfer_children(&self, path: &str, _: &str, _: usize) -> Result<Vec<FileEntry>> {
-        Ok(if path == "root@opaque" {
+    async fn transfer_directory(
+        self: Arc<Self>,
+        path: &str,
+        _: &str,
+    ) -> Result<Box<dyn shellcanvas_core::TransferDirectory>> {
+        Ok(Box::new(Page(if path == "root@opaque" {
             match &self.bad_child {
                 Some(child) => vec![child.clone()],
                 None => vec![
@@ -41,7 +68,7 @@ impl FileTransferService for Folders {
             }
         } else {
             vec![]
-        })
+        })))
     }
     async fn transfer_mkdir(&self, parent: &str, name: &str) -> Result<FileLocation> {
         // Deliberately non-path identifiers expose accidental path construction.
@@ -78,21 +105,26 @@ fn provider(bad_child: Option<FileEntry>) -> Arc<dyn FileTransferService> {
         bad_child,
     })
 }
-#[test]
-fn local_folder_plan_retains_files_empty_directories_and_parent_links() {
+#[tokio::test]
+async fn local_folder_plan_keeps_metadata_and_empty_directories_without_open_files() {
     let temp = tempfile::tempdir().unwrap();
     let root = temp.path().join("Folder");
     std::fs::create_dir_all(root.join("Nested/Empty")).unwrap();
     std::fs::write(root.join("Nested/data.bin"), b"test bytes").unwrap();
-    let tree = tree::local(root).unwrap();
-    assert_eq!(tree.nodes.len(), 4);
-    assert_eq!(tree.size, 10);
-    let paths = tree.local_names().unwrap();
-    assert!(paths.contains(&PathBuf::from("Folder/Nested/Empty")));
-    assert!(tree
-        .nodes
-        .iter()
-        .any(|n| n.local.is_some() && n.entry.name == "data.bin"));
+    let plan = tree::local(root).unwrap();
+    let (_stop, cancel) = watch::channel(false);
+    let catalog = tree::scan(plan, provider(None), true, &cancel, &mut |_| {})
+        .await
+        .unwrap();
+    assert_eq!(catalog.len(), 4);
+    assert_eq!(catalog.size(), 10);
+    let paths: Vec<_> = (1..=catalog.len())
+        .map(|id| catalog.get(id).unwrap().display)
+        .collect();
+    assert!(paths.contains(&"Folder\\Nested\\Empty".to_string()));
+    let scratch = catalog.scratch_path().to_path_buf();
+    drop(catalog);
+    assert!(!scratch.exists());
 }
 #[tokio::test]
 async fn remote_folder_plan_rejects_cycles_links_escapes_and_local_case_aliases() {
@@ -104,22 +136,24 @@ async fn remote_folder_plan_rejects_cycles_links_escapes_and_local_case_aliases(
             ..entry("link", "link", false, 1)
         },
     ] {
-        assert!(tree::remote(
-            &provider(Some(child)),
-            entry("root@opaque", "Root", true, 0)
+        assert!(scanned(
+            provider(Some(child)),
+            entry("root@opaque", "Root", true, 0),
+            true
         )
         .await
         .is_err());
     }
-    let mut tree = tree::remote(&provider(None), entry("root@opaque", "Root", true, 0))
+    let catalog = scanned(provider(None), entry("root@opaque", "Root", true, 0), true)
         .await
         .unwrap();
-    tree.nodes.push(tree::Node {
-        parent: Some(0),
-        entry: entry("another", "BINARY.BIN", false, 1),
-        local: None,
-    });
-    assert!(tree.local_names().is_err());
+    let root = catalog.get(1).unwrap();
+    assert!(catalog
+        .add(
+            Some(&root),
+            vec![(entry("another", "BINARY.BIN", false, 1), None)]
+        )
+        .is_err());
 }
 #[tokio::test]
 async fn folder_download_preserves_empty_directories_refuses_merging_and_reports_partial_cancel() {
@@ -251,20 +285,26 @@ async fn live_folder_roundtrip() -> Result<()> {
         .map(|paths| paths[0].clone())
         .unwrap_or(input);
     let plan = tree::local(input.clone())?;
-    let name = plan.nodes[0].entry.name.clone();
-    let total = plan.size;
-    let relative = plan.local_names()?;
-    let expected: Vec<_> = plan
-        .nodes
-        .iter()
-        .zip(relative)
-        .map(|(node, path)| {
+    let name = plan.root.entry.name.clone();
+    let (_stop, scanning) = watch::channel(false);
+    let metadata = tree::scan(
+        tree::local(input.clone())?,
+        transfer.clone(),
+        true,
+        &scanning,
+        &mut |_| {},
+    )
+    .await?;
+    let total = metadata.size();
+    let expected: Vec<_> = (1..=metadata.len())
+        .map(|id| {
+            let node = metadata.get(id).unwrap();
             let bytes = if node.entry.kind == "file" {
                 Some(std::fs::read(&node.entry.path).unwrap())
             } else {
                 None
             };
-            (path, bytes)
+            (node.display.split('\\').collect::<PathBuf>(), bytes)
         })
         .collect();
     let upload = if let Some(paths) = clipboard_paths {
@@ -295,7 +335,8 @@ async fn live_folder_roundtrip() -> Result<()> {
         let uploaded = execute(upload, transfer.clone(), &cancel, &mut |_| {}).await?;
         let selected = fs.list(Some(&remote_root)).await?.entries.into_iter().find(|e| e.path == uploaded).context("Uploaded folder missing")?;
         let plan = tree::remote(&transfer, selected.clone()).await?;
-        anyhow::ensure!(plan.nodes.len() == expected.len() && plan.size == total, "Manifest mismatch");
+        let metadata = scanned(transfer.clone(), selected.clone(), true).await?;
+        anyhow::ensure!(metadata.len() as usize == expected.len() && metadata.size() == total, "Manifest mismatch");
         let out = local.path().join("download"); std::fs::create_dir(&out)?;
         execute(Job::Tree { tree: plan, target: tree::Target::Local(out.join(&name)) }, transfer.clone(), &cancel, &mut |_| {}).await?;
         verify(&out)?;

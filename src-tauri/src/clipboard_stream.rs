@@ -167,3 +167,71 @@ impl Drop for RemoteStream {
         self.abort();
     }
 }
+
+/// Catalog-backed descriptors for production; the small in-memory variant is
+/// useful for generated interoperability fixtures. Both open content lazily.
+#[derive(Clone)]
+pub enum Sources {
+    Memory(Vec<Source>),
+    Catalogs {
+        catalogs: Vec<Arc<crate::transfers::catalog::Catalog>>,
+        service: Arc<dyn FileTransferService>,
+        runtime: tokio::runtime::Handle,
+    },
+}
+impl From<Vec<Source>> for Sources {
+    fn from(value: Vec<Source>) -> Self {
+        Self::Memory(value)
+    }
+}
+impl Sources {
+    pub fn catalogs(
+        catalogs: Vec<Arc<crate::transfers::catalog::Catalog>>,
+        service: Arc<dyn FileTransferService>,
+        runtime: tokio::runtime::Handle,
+    ) -> Self {
+        Self::Catalogs {
+            catalogs,
+            service,
+            runtime,
+        }
+    }
+    pub fn len(&self) -> usize {
+        match self {
+            Self::Memory(items) => items.len(),
+            Self::Catalogs { catalogs, .. } => {
+                catalogs.iter().map(|catalog| catalog.len() as usize).sum()
+            }
+        }
+    }
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+    pub fn get(&self, mut index: usize) -> Result<Source> {
+        match self {
+            Self::Memory(items) => items
+                .get(index)
+                .cloned()
+                .context("Invalid clipboard file index"),
+            Self::Catalogs {
+                catalogs,
+                service,
+                runtime,
+            } => {
+                for catalog in catalogs {
+                    if index < catalog.len() as usize {
+                        let node = catalog.get(index as u64 + 1)?;
+                        return Ok(Source {
+                            entry: node.entry,
+                            display_path: node.display,
+                            service: service.clone(),
+                            runtime: runtime.clone(),
+                        });
+                    }
+                    index -= catalog.len() as usize;
+                }
+                bail!("Invalid clipboard file index")
+            }
+        }
+    }
+}

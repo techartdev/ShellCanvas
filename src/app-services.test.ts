@@ -49,6 +49,46 @@ const capableSession = {
   },
 };
 
+it("only the owning app can cancel its clipboard preparation", async () => {
+  let finish!: (sequence: number) => void;
+  const cancel = vi.fn(async () => {});
+  const binding = bindSession(
+    {
+      ...previewServices,
+      cancelClipboardPreparation: cancel,
+      copyToSystem: async () =>
+        new Promise<number>((resolve) => {
+          finish = resolve;
+        }),
+    },
+    capableSession,
+  );
+  const first = scopeAppServices(
+    binding.services,
+    manifest("first-copy", ["files.read", "files.download"]),
+  );
+  const second = scopeAppServices(
+    binding.services,
+    manifest("second-copy", ["files.read", "files.download"]),
+  );
+  const pending = first.copyToSystem(
+    [{ path: "folder@source", revision: "v1" }],
+    { id: "copy-123" },
+  );
+  await expect(second.cancelClipboardPreparation("copy-123")).rejects.toThrow(
+    "does not belong",
+  );
+  expect(cancel).not.toHaveBeenCalled();
+  await first.cancelClipboardPreparation("copy-123");
+  expect(cancel).toHaveBeenCalledWith(capableSession.id, "copy-123");
+  finish(7);
+  await expect(pending).resolves.toBe(7);
+  await expect(first.cancelClipboardPreparation("copy-123")).rejects.toThrow(
+    "does not belong",
+  );
+  binding.dispose();
+});
+
 it("rejects every undeclared service before invoking a capable host", async () => {
   const calls = new Map<string, ReturnType<typeof vi.fn>>();
   const binding = bindSession(previewServices, capableSession);

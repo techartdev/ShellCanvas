@@ -432,18 +432,33 @@ impl TransferWriter for Upload {
 }
 #[async_trait]
 impl FileTransferService for Bound<dyn FileTransferService> {
+    async fn transfer_entry(self: Arc<Self>, path: &str, revision: &str) -> Result<FileEntry> {
+        self.binding
+            .run(false, self.service.clone().transfer_entry(path, revision))
+            .await
+    }
     fn supports_folders(&self) -> bool {
         self.service.supports_folders()
     }
-    async fn transfer_children(
-        &self,
+    async fn transfer_directory(
+        self: Arc<Self>,
         path: &str,
         revision: &str,
-        limit: usize,
-    ) -> Result<Vec<FileEntry>> {
-        self.binding
-            .run(false, self.service.transfer_children(path, revision, limit))
-            .await
+    ) -> Result<Box<dyn TransferDirectory>> {
+        self.binding.check()?;
+        let mut inner = self
+            .service
+            .clone()
+            .transfer_directory(path, revision)
+            .await?;
+        if let Err(error) = self.binding.after(false) {
+            let _ = tokio::time::timeout(Duration::from_secs(3), inner.abort()).await;
+            return Err(error);
+        }
+        Ok(Box::new(BoundDirectory {
+            binding: self.binding.clone(),
+            inner,
+        }))
     }
     async fn transfer_mkdir(&self, parent: &str, name: &str) -> Result<FileLocation> {
         self.binding
@@ -488,3 +503,20 @@ impl FileTransferService for Bound<dyn FileTransferService> {
 #[cfg(test)]
 #[path = "workspace_services_tests.rs"]
 mod tests;
+
+struct BoundDirectory {
+    binding: Binding,
+    inner: Box<dyn TransferDirectory>,
+}
+#[async_trait]
+impl TransferDirectory for BoundDirectory {
+    async fn next(&mut self) -> Result<Vec<FileEntry>> {
+        self.binding.run(false, self.inner.next()).await
+    }
+    async fn finish(&mut self) -> Result<()> {
+        self.binding.run(false, self.inner.finish()).await
+    }
+    async fn abort(&mut self) -> Result<()> {
+        self.inner.abort().await
+    }
+}

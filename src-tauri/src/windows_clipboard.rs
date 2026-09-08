@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 //! Windows virtual-file clipboard. No local file staging or protocol-specific paths.
 #![allow(non_snake_case)]
-use crate::clipboard_stream::{RemoteStream, Source};
+use crate::clipboard_stream::{RemoteStream, Sources};
 use std::{
     ffi::c_void,
     mem::{size_of, ManuallyDrop},
@@ -54,9 +54,33 @@ fn global(bytes: &[u8]) -> Result<STGMEDIUM> {
     }
 }
 
+fn global_fill(length: usize, fill: impl FnOnce(*mut u8) -> Result<()>) -> Result<STGMEDIUM> {
+    unsafe {
+        let allocation = GlobalAlloc(GMEM_MOVEABLE | GMEM_ZEROINIT, length)?;
+        let bytes = GlobalLock(allocation).cast::<u8>();
+        if bytes.is_null() {
+            let _ = GlobalFree(Some(allocation));
+            return Err(Error::from_win32());
+        }
+        let result = fill(bytes);
+        let _ = GlobalUnlock(allocation);
+        if let Err(error) = result {
+            let _ = GlobalFree(Some(allocation));
+            return Err(error);
+        }
+        Ok(STGMEDIUM {
+            tymed: TYMED_HGLOBAL.0 as u32,
+            u: STGMEDIUM_0 {
+                hGlobal: allocation,
+            },
+            ..Default::default()
+        })
+    }
+}
+
 #[implement(IDataObject, IDataObjectAsyncCapability)]
 struct VirtualFiles {
-    sources: Vec<Source>,
+    sources: Sources,
     descriptors: u16,
     contents: u16,
     effect: u16,
@@ -65,7 +89,8 @@ struct VirtualFiles {
     operation: AtomicBool,
 }
 impl VirtualFiles {
-    fn new(sources: Vec<Source>) -> Self {
+    fn new(sources: impl Into<Sources>) -> Self {
+        let sources = sources.into();
         unsafe {
             Self {
                 sources,
@@ -94,7 +119,10 @@ impl VirtualFiles {
             && value.tymed & TYMED_ISTREAM.0 as u32 != 0
             && value.lindex >= 0
             && (value.lindex as usize) < self.sources.len()
-            && self.sources[value.lindex as usize].entry.kind == "file"
+            && self
+                .sources
+                .get(value.lindex as usize)
+                .is_ok_and(|source| source.entry.kind == "file")
         {
             return S_OK;
         }
@@ -112,45 +140,57 @@ impl IDataObject_Impl for VirtualFiles_Impl {
             return global(&1u32.to_le_bytes());
         }
         if request.cfFormat == self.descriptors {
-            let mut bytes = vec![0u8; 4 + self.sources.len() * size_of::<FILEDESCRIPTORW>()];
-            bytes[..4].copy_from_slice(&(self.sources.len() as u32).to_le_bytes());
-            for (index, source) in self.sources.iter().enumerate() {
-                let mut descriptor = FILEDESCRIPTORW {
-                    dwFlags: (FD_FILESIZE.0 | FD_ATTRIBUTES.0 | FD_PROGRESSUI.0 | FD_UNICODE.0)
-                        as u32,
-                    dwFileAttributes: if source.entry.kind == "directory" {
-                        0x10
-                    } else {
-                        0x80
-                    },
-                    nFileSizeHigh: (source.entry.size >> 32) as u32,
-                    nFileSizeLow: source.entry.size as u32,
-                    ..Default::default()
-                };
-                if source.entry.kind == "directory" {
-                    descriptor.dwFlags &= !(FD_FILESIZE.0 as u32);
-                }
-                let name: Vec<_> = source.display_path.encode_utf16().collect();
-                let mut filename = [0u16; 260];
-                if name.len() >= filename.len() {
-                    return Err(failure("Filename is too long for Explorer"));
-                }
-                filename[..name.len()].copy_from_slice(&name);
-                descriptor.cFileName = filename;
-                // FILEGROUPDESCRIPTOR has a DWORD count followed by packed descriptors.
+            let length = self
+                .sources
+                .len()
+                .checked_mul(size_of::<FILEDESCRIPTORW>())
+                .and_then(|size| size.checked_add(4))
+                .ok_or_else(|| failure("Clipboard descriptor size overflow"))?;
+            // Windows requires one contiguous HGLOBAL. Fill it directly from
+            // the disk catalog, avoiding a second full-sized Rust byte vector.
+            return global_fill(length, |bytes| {
                 unsafe {
-                    ptr::copy_nonoverlapping(
-                        (&descriptor as *const FILEDESCRIPTORW).cast::<u8>(),
-                        bytes
-                            .as_mut_ptr()
-                            .add(4 + index * size_of::<FILEDESCRIPTORW>()),
-                        size_of::<FILEDESCRIPTORW>(),
-                    );
+                    ptr::write_unaligned(bytes.cast::<u32>(), self.sources.len() as u32);
                 }
-            }
-            return global(&bytes);
+                for index in 0..self.sources.len() {
+                    let source = self.sources.get(index).map_err(failure)?;
+                    let mut descriptor = FILEDESCRIPTORW {
+                        dwFlags: (FD_FILESIZE.0 | FD_ATTRIBUTES.0 | FD_PROGRESSUI.0 | FD_UNICODE.0)
+                            as u32,
+                        dwFileAttributes: if source.entry.kind == "directory" {
+                            0x10
+                        } else {
+                            0x80
+                        },
+                        nFileSizeHigh: (source.entry.size >> 32) as u32,
+                        nFileSizeLow: source.entry.size as u32,
+                        ..Default::default()
+                    };
+                    if source.entry.kind == "directory" {
+                        descriptor.dwFlags &= !(FD_FILESIZE.0 as u32);
+                    }
+                    let name: Vec<_> = source.display_path.encode_utf16().collect();
+                    let mut filename = [0u16; 260];
+                    if name.len() >= filename.len() {
+                        return Err(failure("Filename is too long for Explorer"));
+                    }
+                    filename[..name.len()].copy_from_slice(&name);
+                    descriptor.cFileName = filename;
+
+                    unsafe {
+                        ptr::write_unaligned(
+                            bytes
+                                .add(4 + index * size_of::<FILEDESCRIPTORW>())
+                                .cast::<FILEDESCRIPTORW>(),
+                            descriptor,
+                        );
+                    }
+                }
+                Ok(())
+            });
         }
-        let mut stream = RemoteStream::new(self.sources[request.lindex as usize].clone());
+        let mut stream =
+            RemoteStream::new(self.sources.get(request.lindex as usize).map_err(failure)?);
         // Explorer may never Read an empty file; validate it at Paste/GetData.
         if stream.source.entry.size == 0 {
             stream.read(&mut [0u8; 1]).map_err(failure)?;
@@ -391,7 +431,7 @@ impl IStream_Impl for FileStream_Impl {
 }
 
 struct Offer {
-    sources: Vec<Source>,
+    sources: Sources,
     sequence: u32,
     reply: tokio::sync::oneshot::Sender<std::result::Result<u32, String>>,
 }
@@ -449,7 +489,14 @@ pub async fn current_sequence() -> std::result::Result<u32, String> {
         .await
         .map_err(|_| "Clipboard worker stopped".to_string())
 }
-pub async fn publish(sources: Vec<Source>, sequence: u32) -> std::result::Result<u32, String> {
+pub async fn publish(
+    sources: impl Into<Sources>,
+    sequence: u32,
+) -> std::result::Result<u32, String> {
+    let sources = sources.into();
+    if sources.len() > i32::MAX as usize {
+        return Err("Clipboard exceeds the Windows file-index range".into());
+    }
     let (reply, result) = tokio::sync::oneshot::channel();
     sender()?
         .try_send(Request::Publish(Offer {

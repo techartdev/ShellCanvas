@@ -84,6 +84,8 @@ export function bindSession(
     notifyFileChanges(session!.id, relocate ? "relocation" : "content");
   }
   const services: SessionServices = {
+    cancelClipboardPreparation: (operation) =>
+      backend.cancelClipboardPreparation(check("files.read"), operation),
     systemClipboardSequence: async () => {
       const expected = generation;
       check("files.read");
@@ -100,22 +102,24 @@ export function bindSession(
       const adopted = await adopt(result ?? [], expected, "files.upload");
       return result === null ? null : adopted;
     },
-    cutToSystem: async (path, revision) => {
+    cutToSystem: async (path, revision, preparation) => {
       const expected = generation;
       const result = await backend.cutToSystem(
         check("files.move"),
         path,
         revision,
+        preparation,
       );
       check("files.move", expected);
       return result;
     },
     systemFileClipboard: backend.systemFileClipboard,
-    copyToSystem: async (files) => {
+    copyToSystem: async (files, preparation) => {
       const expected = generation;
       const result = await backend.copyToSystem(
         check("files.download"),
         files.map((file) => ({ ...file })),
+        preparation,
       );
       check("files.download", expected);
       return result;

@@ -16,6 +16,8 @@ use tokio::{
     sync::{watch, Semaphore},
 };
 
+#[path = "transfer_catalog.rs"]
+pub(crate) mod catalog;
 #[cfg(test)]
 #[path = "transfer_folder_tests.rs"]
 mod folder_tests;
@@ -38,6 +40,8 @@ pub struct Ticket {
 pub struct Progress {
     pub bytes: u64,
     pub total: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub items: Option<u64>,
     pub phase: &'static str,
 }
 #[derive(Serialize)]
@@ -82,6 +86,7 @@ pub struct TransferRegistry {
     next: u64,
     jobs: HashMap<u64, Pending>,
     slots: Arc<Semaphore>,
+    preparations: HashMap<String, (u64, watch::Sender<bool>)>,
 }
 impl Default for TransferRegistry {
     fn default() -> Self {
@@ -89,6 +94,7 @@ impl Default for TransferRegistry {
             next: 0,
             jobs: HashMap::new(),
             slots: Arc::new(Semaphore::new(4)),
+            preparations: HashMap::new(),
         }
     }
 }
@@ -150,6 +156,14 @@ impl TransferRegistry {
         Ok(())
     }
     pub fn close_session(&mut self, owner: u64) {
+        self.preparations.retain(|_, (session, cancel)| {
+            if *session == owner {
+                cancel.send_replace(true);
+                false
+            } else {
+                true
+            }
+        });
         self.jobs.retain(|_, p| {
             if p.owner != owner {
                 return true;
@@ -372,8 +386,8 @@ pub async fn choose_download_files(
     let mut trees = Vec::new();
     for file in &files {
         let tree = remote_tree(&state, session_id, file).await?;
-        tree.local_names().map_err(error)?;
-        names.push(tree.nodes[0].entry.name.clone());
+        download_name(&tree.root.entry.name)?;
+        names.push(tree.root.entry.name.clone());
         trees.push(tree);
     }
     let destination = tauri::async_runtime::spawn_blocking(move || {
@@ -394,14 +408,14 @@ pub async fn choose_download_files(
         .zip(names)
         .zip(destinations)
         .map(|((tree, name), destination)| {
-            let size = tree.size;
-            let job = if tree.nodes[0].entry.kind == "directory" {
+            let size = tree.root.entry.size;
+            let job = if tree.root.entry.kind == "directory" {
                 Job::Tree {
                     tree,
                     target: tree::Target::Local(destination),
                 }
             } else {
-                let entry = &tree.nodes[0].entry;
+                let entry = &tree.root.entry;
                 Job::Download {
                     destination,
                     path: entry.path.clone(),
@@ -424,76 +438,112 @@ async fn remote_tree(
     file: &DownloadSource,
 ) -> Result<tree::Tree, String> {
     let service = provider(state, session).await?;
-    let fs = crate::filesystem(state, session).await?;
-    let location = fs.locate(&file.path).await.map_err(error)?;
-    let parent = location
-        .parent
-        .ok_or("Select a file or folder, not a filesystem root")?;
-    let entry = fs
-        .list(Some(&parent))
+    let entry = service
+        .clone()
+        .transfer_entry(&file.path, &file.revision)
         .await
-        .map_err(error)?
-        .entries
-        .into_iter()
-        .find(|entry| {
-            entry.path == file.path && !file.revision.is_empty() && entry.revision == file.revision
-        })
-        .ok_or("The selected item changed. Refresh and select it again.")?;
+        .map_err(error)?;
     tree::remote(&service, entry).await.map_err(error)
 }
+#[tauri::command]
+pub async fn cancel_clipboard_preparation(
+    session_id: u64,
+    operation: String,
+    state: State<'_, DesktopState>,
+) -> Result<(), String> {
+    let registry = state.transfers.lock().await;
+    let (owner, cancel) = registry
+        .preparations
+        .get(&operation)
+        .ok_or("Clipboard preparation is no longer active")?;
+    if *owner != session_id {
+        return Err("Clipboard preparation belongs to another host".into());
+    }
+    cancel.send_replace(true);
+    Ok(())
+}
 #[cfg(windows)]
-fn clipboard_sources(
-    tree: tree::Tree,
-    service: Arc<dyn FileTransferService>,
-) -> Result<Vec<crate::clipboard_stream::Source>, String> {
-    let names = tree.local_names().map_err(error)?;
-    tree.nodes.into_iter().zip(names).map(|(node, name)| {
-        let display_path = name.to_string_lossy().replace('/', "\\");
-        if display_path.encode_utf16().count() >= 260 { return Err("A folder path is too long for Explorer's file clipboard (259 characters). Use Download instead.".into()); }
-        Ok(crate::clipboard_stream::Source { entry: node.entry, display_path, service: service.clone(), runtime: tokio::runtime::Handle::current() })
-    }).collect()
+async fn prepare_clipboard(
+    state: &DesktopState,
+    session: u64,
+    files: Vec<DownloadSource>,
+    operation: String,
+    on_event: Channel<Progress>,
+) -> Result<u32, String> {
+    let sequence = crate::windows_file_input::sequence();
+    let (stop, cancel) = watch::channel(false);
+    let slots = {
+        let mut registry = state.transfers.lock().await;
+        if operation.is_empty()
+            || operation.len() > 128
+            || registry.preparations.contains_key(&operation)
+        {
+            return Err("Invalid clipboard preparation identity".into());
+        }
+        if registry.preparations.len() >= 4 {
+            return Err(
+                "Clipboard preparation is busy. Finish or cancel another preparation.".into(),
+            );
+        }
+        registry
+            .preparations
+            .insert(operation.clone(), (session, stop));
+        registry.slots.clone()
+    };
+    let work: Result<u32> = async {
+        checkpoint(&cancel)?;
+        let _permit = tokio::select! { permit = slots.acquire() => permit?, _ = wait_for_cancel(cancel.clone()) => bail!("Transfer canceled") };
+        let service = provider(state, session).await.map_err(anyhow::Error::msg)?;
+        let mut catalogs = Vec::new(); let mut names = std::collections::HashSet::new();
+        let mut last = Instant::now();
+        for file in files {
+            checkpoint(&cancel)?;
+            let tree = remote_tree(state, session, &file).await.map_err(anyhow::Error::msg)?;
+            if !names.insert(tree.root.entry.name.to_lowercase()) { bail!("Selected names conflict in Explorer"); }
+            let catalog = tree::scan(tree, service.clone(), true, &cancel, &mut |event| {
+                if last.elapsed().as_millis() >= 100 { let _ = on_event.send(event); last = Instant::now(); }
+            }).await?;
+            // The descriptor format itself has a fixed-size path field.
+            for id in 1..=catalog.len() {
+                checkpoint(&cancel)?;
+                if catalog.get(id)?.display.encode_utf16().count() >= 260 { bail!("A folder path is too long for Explorer's clipboard (259 characters). Use Download instead."); }
+                if id % shellcanvas_core::TRANSFER_DIRECTORY_PAGE as u64 == 0 { tokio::task::yield_now().await; }
+            }
+            catalogs.push(catalog);
+        }
+        checkpoint(&cancel)?;
+        if !state.registry.lock().await.sessions.contains_key(&session) { bail!("Host disconnected while preparing clipboard"); }
+        let sources = crate::clipboard_stream::Sources::catalogs(catalogs, service, tokio::runtime::Handle::current());
+        crate::windows_clipboard::publish(sources, sequence).await.map_err(anyhow::Error::msg)
+    }.await;
+    state.transfers.lock().await.preparations.remove(&operation);
+    work.map_err(error)
 }
 #[tauri::command]
 pub async fn copy_system_files(
     session_id: u64,
     files: Vec<DownloadSource>,
+    operation: Option<String>,
+    on_event: Channel<Progress>,
     state: State<'_, DesktopState>,
 ) -> Result<u32, String> {
+    if files.is_empty() || files.len() > 16 {
+        return Err("Select up to 16 files or folders.".into());
+    }
     #[cfg(not(windows))]
     {
-        let _ = (session_id, files, state);
+        let _ = (session_id, files, operation, on_event, state);
         Err("File clipboard integration is currently available on Windows.".into())
     }
     #[cfg(windows)]
-    {
-        let sequence = crate::windows_file_input::sequence();
-        if files.is_empty() || files.len() > 16 {
-            return Err("Select up to 16 files or folders.".into());
-        }
-        let service = provider(&state, session_id).await?;
-        let mut names = std::collections::HashSet::new();
-        let mut sources = Vec::new();
-        for file in files {
-            let tree = remote_tree(&state, session_id, &file).await?;
-            if !names.insert(tree.nodes[0].entry.name.to_lowercase()) {
-                return Err("Selected names conflict in Explorer".into());
-            }
-            if sources.len() + tree.nodes.len() > tree::MAX_ENTRIES {
-                return Err("Copy up to 1024 files and folders at a time".into());
-            }
-            sources.extend(clipboard_sources(tree, service.clone())?);
-        }
-        if !state
-            .registry
-            .lock()
-            .await
-            .sessions
-            .contains_key(&session_id)
-        {
-            return Err("The host disconnected while copying".into());
-        }
-        crate::windows_clipboard::publish(sources, sequence).await
-    }
+    prepare_clipboard(
+        &state,
+        session_id,
+        files,
+        operation.unwrap_or_else(|| uuid::Uuid::new_v4().to_string()),
+        on_event,
+    )
+    .await
 }
 #[tauri::command]
 pub async fn system_clipboard_sequence() -> Result<u32, String> {
@@ -516,25 +566,20 @@ fn clipboard_uploads(
         return Err("Copy up to 16 files or folders at a time.".into());
     }
     let mut names = std::collections::HashSet::new();
-    let mut count = 0;
     paths
         .into_iter()
         .map(|path| {
             if !path.is_absolute() {
                 return Err("Clipboard paths must be absolute".into());
             }
-            let mut tree = tree::local(path).map_err(error)?;
-            count += tree.nodes.len();
-            if count > tree::MAX_ENTRIES {
-                return Err("Copy up to 1024 files and folders at a time".into());
-            }
-            let name = tree.nodes[0].entry.name.clone();
-            let size = tree.size;
+            let tree = tree::local(path.clone()).map_err(error)?;
+            let name = tree.root.entry.name.clone();
+            let size = tree.root.entry.size;
             if !names.insert(name.clone()) {
                 return Err("Copied items have duplicate names. Paste them separately.".into());
             }
-            let job = if tree.nodes[0].entry.kind == "file" {
-                let (file, modified) = tree.nodes[0].local.take().unwrap();
+            let job = if tree.root.entry.kind == "file" {
+                let (file, _, modified) = source(&path).map_err(error)?;
                 Job::Upload {
                     file,
                     parent: parent.clone(),
@@ -593,48 +638,48 @@ pub async fn cut_system_file(
     session_id: u64,
     path: String,
     revision: String,
+    operation: Option<String>,
+    on_event: Channel<Progress>,
     state: State<'_, DesktopState>,
 ) -> Result<u32, String> {
     #[cfg(not(windows))]
     {
-        let _ = (session_id, path, revision, state);
-        Err("File clipboard integration is currently available on Windows.".into())
+        let _ = (session_id, path, revision, operation, on_event, state);
+        Err("File clipboard integration is currently available on Windows".into())
     }
     #[cfg(windows)]
     {
+        if let Ok(service) = provider(&state, session_id).await {
+            let entry = service
+                .transfer_entry(&path, &revision)
+                .await
+                .map_err(error)?;
+            if matches!(entry.kind.as_str(), "file" | "directory") {
+                return prepare_clipboard(
+                    &state,
+                    session_id,
+                    vec![DownloadSource { path, revision }],
+                    operation.unwrap_or_else(|| uuid::Uuid::new_v4().to_string()),
+                    on_event,
+                )
+                .await;
+            }
+        }
         let sequence = crate::windows_file_input::sequence();
         let fs = crate::filesystem(&state, session_id).await?;
         let location = fs.locate(&path).await.map_err(error)?;
         let parent = location.parent.ok_or("Cannot cut a filesystem root")?;
-        let entry = fs
+        if !fs
             .list(Some(&parent))
             .await
             .map_err(error)?
             .entries
-            .into_iter()
-            .find(|entry| {
-                entry.path == location.path && !revision.is_empty() && entry.revision == revision
-            })
-            .ok_or("The selected item changed. Refresh and cut again.")?;
-        let mut sources = Vec::new();
-        if matches!(entry.kind.as_str(), "file" | "directory") {
-            if let Ok(service) = provider(&state, session_id).await {
-                sources = clipboard_sources(
-                    tree::remote(&service, entry).await.map_err(error)?,
-                    service,
-                )?;
-            }
-        }
-        if !state
-            .registry
-            .lock()
-            .await
-            .sessions
-            .contains_key(&session_id)
+            .iter()
+            .any(|entry| entry.path == path && !revision.is_empty() && entry.revision == revision)
         {
-            return Err("The host disconnected while cutting.".into());
+            return Err("Selected item changed. Refresh and cut again".into());
         }
-        crate::windows_clipboard::publish(sources, sequence).await
+        crate::windows_clipboard::publish(Vec::new(), sequence).await
     }
 }
 #[tauri::command]
@@ -681,15 +726,8 @@ pub async fn prepare_file_copy(
         .await
         .map_err(error)?
         .path;
-    if tree
-        .nodes
-        .iter()
-        .any(|node| node.entry.kind == "directory" && node.entry.path == destination)
-    {
-        return Err("A folder cannot be copied into itself or a descendant".into());
-    }
-    let size = tree.size;
-    let job = if tree.nodes[0].entry.kind == "directory" {
+    let size = tree.root.entry.size;
+    let job = if tree.root.entry.kind == "directory" {
         Job::Tree {
             tree,
             target: tree::Target::Remote(destination),
@@ -713,6 +751,11 @@ pub async fn prepare_file_copy(
         .await
         .add(session_id, vec![(job, name, size, "copy")])?;
     tickets.pop().ok_or("Copy preparation failed".into())
+}
+async fn wait_for_cancel(mut cancel: watch::Receiver<bool>) {
+    if cancel.wait_for(|value| *value).await.is_err() {
+        std::future::pending::<()>().await;
+    }
 }
 fn checkpoint(cancel: &watch::Receiver<bool>) -> Result<()> {
     if *cancel.borrow() {
@@ -751,6 +794,7 @@ async fn execute(
             || *cancel.borrow(),
             &mut |event| {
                 progress(Progress {
+                    items: None,
                     bytes: event.bytes,
                     total: event.total,
                     phase: if event.finishing {
@@ -785,12 +829,12 @@ async fn execute(
                     if count == 0 { break; }
                     remote.write(&bytes[..count]).await?;
                     offset += count as u64;
-                    progress(Progress { bytes: offset, total: size, phase: "running" });
+                    progress(Progress { items: None, bytes: offset, total: size, phase: "running" });
                 }
                 let after = file.metadata().await?;
                 if offset != size || after.len() != size || after.modified().ok() != modified { bail!("The local file changed during upload. The remote destination was not published."); }
                 checkpoint(cancel)?;
-                progress(Progress { bytes: offset,total: size,phase: "finishing" });
+                progress(Progress { items: None, bytes: offset,total: size,phase: "finishing" });
                 // Publication is not interrupted: a late cancellation cannot turn a confirmed commit into "canceled".
                 Ok(remote.finish().await?.path)
             }.await;
@@ -832,6 +876,7 @@ async fn execute(
             let work: Result<()> = async {
                 let mut offset = 0;
                 progress(Progress {
+                    items: None,
                     bytes: 0,
                     total: size,
                     phase: "running",
@@ -848,6 +893,7 @@ async fn execute(
                     output.write_all(&bytes).await?;
                     offset += bytes.len() as u64;
                     progress(Progress {
+                        items: None,
                         bytes: offset,
                         total: size,
                         phase: "running",
@@ -861,6 +907,7 @@ async fn execute(
                 output.sync_all().await?;
                 checkpoint(cancel)?;
                 progress(Progress {
+                    items: None,
                     bytes: offset,
                     total: size,
                     phase: "finishing",
@@ -901,6 +948,7 @@ pub async fn run_transfer(
         .await
         .claim(session_id, transfer_id)?;
     let mut last = Progress {
+        items: None,
         bytes: 0,
         total: 0,
         phase: "preparing",

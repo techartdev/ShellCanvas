@@ -12,6 +12,7 @@ export interface TransferRow extends TransferTicket {
     | "canceling"
     | "cancel-failed"
     | TransferOutcome["status"];
+  items?: number;
   bytes: number;
   total: number;
   phase: TransferProgress["phase"];

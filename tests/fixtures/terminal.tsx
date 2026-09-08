@@ -20,6 +20,7 @@ function Fixture() {
   const [services] = useState<SessionServices>(() => ({
     systemClipboardSequence: async () => 0,
     pasteSystemFiles: async () => null,
+    cancelClipboardPreparation: async () => {},
     cutToSystem: async () => 0,
     copyToSystem: async () => {
       throw new Error("Unavailable");

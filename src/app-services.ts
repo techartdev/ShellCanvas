@@ -29,6 +29,7 @@ export function scopeAppServices(
     app.scope === "host" ? [...app.requires, ...(app.optional ?? [])] : [],
   );
   const tickets = new Map<number, Readonly<TransferTicket>>();
+  const preparations = new Set<string>();
   function check(capability: Capability) {
     if (!declared.has(capability))
       throw new Error(
@@ -49,6 +50,11 @@ export function scopeAppServices(
     return { ...ticket };
   }
   const services: SessionServices = {
+    cancelClipboardPreparation: async (operation) => {
+      if (!preparations.has(operation))
+        throw new Error("Clipboard preparation does not belong to this app");
+      await base.cancelClipboardPreparation(operation);
+    },
     systemClipboardSequence: guard(
       "files.read",
       base.systemClipboardSequence.bind(base),
@@ -57,13 +63,35 @@ export function scopeAppServices(
       const result = await base.pasteSystemFiles(parent);
       return result === null ? null : result.map(adopt);
     }),
-    cutToSystem: guard("files.move", base.cutToSystem.bind(base)),
+    cutToSystem: guard(
+      "files.move",
+      async (...args: Parameters<SessionServices["cutToSystem"]>) => {
+        const id = args[2]?.id;
+        if (id) preparations.add(id);
+        try {
+          return await base.cutToSystem(...args);
+        } finally {
+          if (id) preparations.delete(id);
+        }
+      },
+    ),
     systemFileClipboard:
       (declared.has("files.download") ||
         declared.has("files.upload") ||
         declared.has("files.move")) &&
       base.systemFileClipboard,
-    copyToSystem: guard("files.download", base.copyToSystem.bind(base)),
+    copyToSystem: guard(
+      "files.download",
+      async (...args: Parameters<SessionServices["copyToSystem"]>) => {
+        const id = args[1]?.id;
+        if (id) preparations.add(id);
+        try {
+          return await base.copyToSystem(...args);
+        } finally {
+          if (id) preparations.delete(id);
+        }
+      },
+    ),
     chooseDownloads: guard(
       "files.download",
       async (files: { path: string; revision: string }[]) =>

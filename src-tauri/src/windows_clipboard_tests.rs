@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 use super::*;
+use crate::clipboard_stream::Source;
 use async_trait::async_trait;
 use shellcanvas_core::{
     FileEntry, FileLocation, FileTransferService, TransferFile, TransferReader, TransferWriter,
@@ -99,6 +100,58 @@ fn fixture(size: usize) -> (tokio::runtime::Runtime, Arc<Memory>, Source) {
         runtime: runtime.handle().clone(),
     };
     (runtime, memory, source)
+}
+#[test]
+fn ten_thousand_catalog_descriptors_open_only_the_requested_file() {
+    use crate::transfers::catalog::Catalog;
+    let (runtime, memory, source) = fixture(37);
+    let catalog = Arc::new(Catalog::new(true).unwrap());
+    for batch in 0..100 {
+        catalog
+            .add(
+                None,
+                (0..100)
+                    .map(|offset| {
+                        let id = batch * 100 + offset;
+                        let mut entry = source.entry.clone();
+                        entry.path = format!("opaque@{id}");
+                        entry.name = format!("file-{id}.bin");
+                        (entry, None)
+                    })
+                    .collect(),
+            )
+            .unwrap();
+    }
+    unsafe {
+        OleInitialize(None).unwrap();
+        let sources = Sources::catalogs(vec![catalog], memory.clone(), runtime.handle().clone());
+        let object = VirtualFiles::new(sources);
+        let descriptors = object.descriptors;
+        let contents = object.contents;
+        let object: IDataObject = object.into();
+        let mut medium = object
+            .GetData(&format(descriptors, TYMED_HGLOBAL, -1))
+            .unwrap();
+        let bytes = GlobalLock(medium.u.hGlobal).cast::<u8>();
+        assert_eq!(ptr::read_unaligned(bytes.cast::<u32>()), 10_000);
+        let _ = GlobalUnlock(medium.u.hGlobal);
+        ReleaseStgMedium(&mut medium);
+        assert_eq!(memory.opens.load(Ordering::SeqCst), 0);
+        let mut medium = object
+            .GetData(&format(contents, TYMED_ISTREAM, 9999))
+            .unwrap();
+        let stream = medium.u.pstm.as_ref().unwrap();
+        let mut data = [0u8; 37];
+        let mut read = 0;
+        stream
+            .Read(data.as_mut_ptr().cast(), 37, Some(&mut read))
+            .ok()
+            .unwrap();
+        assert_eq!(memory.opens.load(Ordering::SeqCst), 1);
+        assert_eq!(data.as_slice(), memory.bytes);
+        ReleaseStgMedium(&mut medium);
+        OleUninitialize();
+    }
 }
 #[test]
 fn folder_descriptors_keep_empty_directories_and_nested_stream_indices() {
@@ -284,6 +337,22 @@ fn explorer_clipboard_probe() {
     } else {
         vec![first, second]
     };
+    // Exercise the same disk-backed catalog used by production clipboard Copy.
+    let catalog = Arc::new(crate::transfers::catalog::Catalog::new(true).unwrap());
+    let mut parents = std::collections::HashMap::new();
+    for (index, source) in sources.into_iter().enumerate() {
+        let (parent, name) = source
+            .display_path
+            .rsplit_once('\\')
+            .map(|(parent, name)| (parents.get(parent).cloned(), name.to_string()))
+            .unwrap_or((None, source.display_path.clone()));
+        let mut entry = source.entry;
+        entry.name = name;
+        entry.path = format!("probe@{index}");
+        catalog.add(parent.as_ref(), vec![(entry, None)]).unwrap();
+        parents.insert(source.display_path, catalog.get(catalog.len()).unwrap());
+    }
+    let sources = Sources::catalogs(vec![catalog], memory.clone(), runtime.handle().clone());
     runtime
         .block_on(publish(sources, unsafe {
             windows::Win32::System::DataExchange::GetClipboardSequenceNumber()

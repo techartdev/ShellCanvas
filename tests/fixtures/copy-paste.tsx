@@ -10,6 +10,8 @@ import "../../src/styles.css";
 function Fixture() {
   const [events, setEvents] = useState<string[]>([]);
   const [pending, setPending] = useState(false);
+  const slowClipboard = new URLSearchParams(location.search).has("slow");
+  const clipboardReject = useRef<((reason: Error) => void) | null>(null);
   const release = useRef<(fail: boolean) => void>(() => {});
   const entries = useRef<FileEntry[]>(
     ["alpha.txt", "beta.txt"].map((name, i) => ({
@@ -55,7 +57,7 @@ function Fixture() {
       ],
     },
   }));
-  const [services] = useState(
+  const [services, setServices] = useState(
     () =>
       bindSession(
         {
@@ -77,11 +79,27 @@ function Fixture() {
               return { id, name, size: 8, direction: "upload" as const };
             });
           },
-          copyToSystem: async (_, files) => {
+          cancelClipboardPreparation: async (_, id) => {
+            record(`Canceled clipboard scan: ${id}`);
+            clipboardReject.current?.(new Error("Transfer canceled"));
+            clipboardReject.current = null;
+          },
+          copyToSystem: async (_, files, preparation) => {
             localCopied.current = false;
             record(
               `System clipboard descriptors: ${files.map((file) => file.path).join(", ")} · no file reads`,
             );
+            if (slowClipboard) {
+              preparation?.onProgress?.({
+                bytes: 0,
+                total: 150000000,
+                items: 50000,
+                phase: "preparing",
+              });
+              return new Promise<number>((_, reject) => {
+                clipboardReject.current = reject;
+              });
+            }
             return ++systemSequence.current;
           },
           list: async (_, path) => ({
@@ -170,6 +188,11 @@ function Fixture() {
   return (
     <>
       <div style={{ display: "flex", padding: 12, gap: 12 }}>
+        {slowClipboard && (
+          <button onClick={() => setServices((old) => ({ ...old }))}>
+            Replace service binding
+          </button>
+        )}
         <button disabled={!pending} onClick={() => release.current(false)}>
           Complete transfer
         </button>

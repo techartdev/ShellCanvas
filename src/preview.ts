@@ -47,6 +47,7 @@ export const previewServices: HostServices = {
   pasteSystemFiles: async () => {
     throw new Error("Use the Windows desktop app to paste local files.");
   },
+  cancelClipboardPreparation: async () => {},
   cutToSystem: async () => {
     throw new Error("System file clipboard is unavailable in the preview.");
   },

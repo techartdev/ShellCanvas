@@ -54,6 +54,7 @@ export function transferCapability(
 export interface TransferProgress {
   bytes: number;
   total: number;
+  items?: number;
   phase: "preparing" | "running" | "finishing";
 }
 export interface TransferOutcome {
@@ -183,7 +184,15 @@ export interface TerminalSession {
   resize(cols: number, rows: number): Promise<void>;
   close(): Promise<void>;
 }
+export interface ClipboardPreparation {
+  id: string;
+  onProgress?: (progress: TransferProgress) => void;
+}
 export interface HostServices {
+  cancelClipboardPreparation(
+    sessionId: number,
+    operation: string,
+  ): Promise<void>;
   systemClipboardSequence(): Promise<number>;
   pasteSystemFiles(
     sessionId: number,
@@ -193,11 +202,13 @@ export interface HostServices {
     sessionId: number,
     path: string,
     revision: string,
+    preparation?: ClipboardPreparation,
   ): Promise<number>;
   systemFileClipboard?: boolean;
   copyToSystem(
     sessionId: number,
     files: { path: string; revision: string }[],
+    preparation?: ClipboardPreparation,
   ): Promise<number>;
   chooseDownloads(
     sessionId: number,
@@ -287,11 +298,19 @@ export interface HostServices {
 }
 /** Apps receive a fixed session handle, never connection administration. */
 export interface SessionServices {
+  cancelClipboardPreparation(operation: string): Promise<void>;
   systemClipboardSequence(): Promise<number>;
   pasteSystemFiles(parent: string): Promise<TransferTicket[] | null>;
-  cutToSystem(path: string, revision: string): Promise<number>;
+  cutToSystem(
+    path: string,
+    revision: string,
+    preparation?: ClipboardPreparation,
+  ): Promise<number>;
   systemFileClipboard?: boolean;
-  copyToSystem(files: { path: string; revision: string }[]): Promise<number>;
+  copyToSystem(
+    files: { path: string; revision: string }[],
+    preparation?: ClipboardPreparation,
+  ): Promise<number>;
   chooseDownloads(
     files: { path: string; revision: string }[],
   ): Promise<TransferTicket[]>;
