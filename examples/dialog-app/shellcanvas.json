@@ -4,5 +4,10 @@
   "id": "org.shellcanvas.dialog-example",
   "version": "0.1.0",
   "title": "Field Notes",
-  "permissions": ["system.dialogs", "files.read", "files.create"]
+  "permissions": [
+    "system.dialogs",
+    "files.read",
+    "files.create",
+    "system.storage"
+  ]
 }

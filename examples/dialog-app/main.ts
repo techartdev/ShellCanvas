@@ -4,6 +4,11 @@ import { connectToShellCanvas } from "../../src/extensions/client";
 const root = document.querySelector<HTMLDivElement>("#root")!;
 root.innerHTML = `<main><p class="eyebrow">SHELLCANVAS · SAMPLE APP</p><h1>Field Notes</h1><p class="intro">A separately built app, using the desktop’s shared dialogs.</p><textarea aria-label="Notes" placeholder="Write a note for this workspace…"></textarea><div class="actions"><button id="message">Message box</button><button id="open">Browse files</button><button id="save">Save note as…</button><button id="denied">Check unavailable service</button></div><output aria-live="polite">Connecting to the desktop…</output></main>`;
 const status = root.querySelector("output")!;
+const localActions = document.createElement("div");
+localActions.className = "actions";
+localActions.innerHTML =
+  '<button id="remember">Remember locally</button><button id="restore">Restore local note</button>';
+status.before(localActions);
 const buttons = [...root.querySelectorAll("button")];
 buttons.forEach((button) => {
   button.disabled = true;
@@ -11,6 +16,14 @@ buttons.forEach((button) => {
 async function start() {
   try {
     const client = await connectToShellCanvas();
+    let localRevision: string | null = null;
+    let localAvailable = false;
+    try {
+      localRevision = (await client.storage.get("note"))?.revision ?? null;
+      localAvailable = true;
+    } catch {
+      /* Older workbenches may only offer dialog services. */
+    }
     let dirty = false;
     let busy = false;
     const publish = () => client.window.setDocumentState({ dirty, busy });
@@ -23,7 +36,8 @@ async function start() {
     status.textContent =
       "Connected through the app API. No direct host or native access.";
     buttons.forEach((button) => {
-      button.disabled = false;
+      button.disabled =
+        !localAvailable && ["remember", "restore"].includes(button.id);
     });
     const run = async (operation: () => Promise<unknown>) => {
       busy = true;
@@ -40,7 +54,8 @@ async function start() {
         busy = false;
         await publish().catch(() => {});
         buttons.forEach((button) => {
-          button.disabled = false;
+          button.disabled =
+            !localAvailable && ["remember", "restore"].includes(button.id);
         });
       }
     };
@@ -90,8 +105,63 @@ async function start() {
         "click",
         () => void run(() => client.call("system.private.credentials")),
       );
+    root.querySelector("#remember")!.addEventListener(
+      "click",
+      () =>
+        void run(async () => {
+          const saved = await client.storage.put(
+            "note",
+            { format: 1, text: root.querySelector("textarea")!.value },
+            localRevision,
+          );
+          localRevision = saved.revision;
+          return "Remembered on this device. The remote file has not changed.";
+        }),
+    );
+    root.querySelector("#restore")!.addEventListener(
+      "click",
+      () =>
+        void run(async () => {
+          const saved = await client.storage.get("note");
+          if (!saved) {
+            localRevision = null;
+            return "No local note has been remembered yet.";
+          }
+          const value = saved.value;
+          if (
+            !value ||
+            typeof value !== "object" ||
+            Array.isArray(value) ||
+            value.format !== 1 ||
+            typeof value.text !== "string"
+          )
+            throw new Error(
+              "This saved note uses a different format. It has been preserved.",
+            );
+          if (
+            dirty &&
+            (await client.system.dialogs.messageBox({
+              title: "Restore local note?",
+              message:
+                "Replace the note you are editing with the remembered copy?",
+              buttons: [
+                { id: "cancel", label: "Keep editing" },
+                { id: "restore", label: "Restore note" },
+              ],
+              cancelId: "cancel",
+              defaultId: "cancel",
+            })) !== "restore"
+          )
+            return "Kept the current note.";
+          root.querySelector("textarea")!.value = value.text;
+          localRevision = saved.revision;
+          dirty = true;
+          return "Restored the note remembered on this device.";
+        }),
+    );
+    return client;
   } catch (error) {
     status.textContent = String(error);
   }
 }
-void start();
+export const connection = start();

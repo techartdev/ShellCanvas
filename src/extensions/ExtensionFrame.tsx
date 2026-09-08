@@ -7,6 +7,8 @@ import { systemMethods } from "./system-bridge";
 import type { AppLease } from "./catalog";
 import { documentStateMethod, type AppDocumentState } from "./window-api";
 import { isFrameHandshake, mountAppDocument } from "./frame-document";
+import { appStorageMethods } from "./app-storage";
+import type { AppStorageBackend } from "./storage-api";
 
 /** Isolated app document shared by the desktop and development workbenches.
  * One effect owns one document, port and system handle. A prop change retires that instance.
@@ -17,12 +19,14 @@ export function ExtensionFrame({
   grants,
   lease,
   onDocumentState,
+  storage,
 }: {
   app: AppPackage;
   system: SystemAPI;
   grants: readonly string[];
   lease?: AppLease;
   onDocumentState?: (state: AppDocumentState) => void;
+  storage?: AppStorageBackend;
 }) {
   const ref = useRef<HTMLIFrameElement>(null);
   const [error, setError] = useState("");
@@ -53,6 +57,9 @@ export function ExtensionFrame({
         app.permissions.includes(grant),
       );
       const methods = new Map(systemMethods(system, approved));
+      if (storage)
+        for (const [name, method] of appStorageMethods(app.id, storage))
+          methods.set(name, method);
       methods.set(
         "system.window.setDocumentState",
         documentStateMethod((state) => documentState.current?.(state)),
@@ -82,7 +89,7 @@ export function ExtensionFrame({
       stop?.();
       retire();
     };
-  }, [app, system, grants, lease]);
+  }, [app, system, grants, lease, storage]);
   return (
     <>
       {error && (

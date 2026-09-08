@@ -11,6 +11,8 @@ import {
   indexedCatalogStorage,
 } from "../../src/extensions/catalog";
 import { DesktopRuntime } from "../../src/extensions/desktop-runtime";
+import { indexedAppStorage } from "../../src/extensions/app-storage";
+import { storageProbe } from "./storage-probe";
 import { previewServices, previewSession } from "../../src/preview";
 import source from "../../.local/native-extension-probe/desktop-client.js?raw";
 import style from "../../examples/dialog-app/style.css?raw";
@@ -18,7 +20,8 @@ import "../../src/styles.css";
 const catalog = new AppCatalog(
   indexedCatalogStorage("shellcanvas-native-desktop-probe"),
 );
-const runtime = new DesktopRuntime(catalog, apps);
+const localData = indexedAppStorage("shellcanvas-desktop-probe-data");
+const runtime = new DesktopRuntime(catalog, apps, localData);
 let sessionSerial = 100;
 const services = {
   ...previewServices,
@@ -44,30 +47,33 @@ function button(text: string, scope: ParentNode = document) {
 }
 function ask(frame: HTMLIFrameElement, action = "snapshot") {
   const request = crypto.randomUUID();
-  return new Promise<{ text: string; status: string; ready: boolean }>(
-    (resolve, reject) => {
-      const timer = setTimeout(() => {
-        window.removeEventListener("message", receive);
-        reject(new Error("Frame did not answer"));
-      }, 500);
-      const receive = (event: MessageEvent) => {
-        if (
-          event.source !== frame.contentWindow ||
-          event.data?.type !== "desktop-probe-result" ||
-          event.data.request !== request
-        )
-          return;
-        clearTimeout(timer);
-        window.removeEventListener("message", receive);
-        resolve(event.data);
-      };
-      window.addEventListener("message", receive);
-      frame.contentWindow!.postMessage(
-        { type: "desktop-probe", request, action },
-        "*",
-      );
-    },
-  );
+  return new Promise<{
+    text: string;
+    status: string;
+    ready: boolean;
+    storage?: Record<string, unknown>;
+  }>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      window.removeEventListener("message", receive);
+      reject(new Error("Frame did not answer"));
+    }, 3000);
+    const receive = (event: MessageEvent) => {
+      if (
+        event.source !== frame.contentWindow ||
+        event.data?.type !== "desktop-probe-result" ||
+        event.data.request !== request
+      )
+        return;
+      clearTimeout(timer);
+      window.removeEventListener("message", receive);
+      resolve(event.data);
+    };
+    window.addEventListener("message", receive);
+    frame.contentWindow!.postMessage(
+      { type: "desktop-probe", request, action },
+      "*",
+    );
+  });
 }
 async function frameState(
   frame: HTMLIFrameElement,
@@ -103,7 +109,7 @@ async function install(version: string) {
           id: "org.shellcanvas.native-fixture",
           title: "Native Notes",
           version,
-          permissions: ["system.dialogs", "files.read"],
+          permissions: ["system.dialogs", "files.read", "system.storage"],
           script: source,
           style,
         }),
@@ -136,6 +142,27 @@ async function install(version: string) {
   await report(`installed-${version}`);
 }
 async function run() {
+  const persistence = !isTauri()
+    ? new URL(location.href).searchParams.get("persistence")
+    : null;
+  Object.assign(checks, await storageProbe());
+  for (const bucket of ["data", "settings"] as const) {
+    const signal = new AbortController().signal;
+    const previous = await localData.get(
+      "org.shellcanvas.native-fixture",
+      bucket,
+      "sdk-note",
+      signal,
+    );
+    if (previous)
+      await localData.remove(
+        "org.shellcanvas.native-fixture",
+        bucket,
+        "sdk-note",
+        previous.revision,
+        signal,
+      );
+  }
   await catalog.load();
   for (const entry of catalog.snapshot())
     await catalog.remove(entry.package.id, entry.generation);
@@ -177,12 +204,41 @@ async function run() {
     "frame document",
   );
   await frameState(first, (state) => state.ready);
+  if (persistence === "read") {
+    await ask(first, "restore");
+    checks.storageSurvivesPageClose =
+      (
+        await frameState(
+          first,
+          (state) => state.ready && state.status.includes("Restored the note"),
+        )
+      ).text === "A draft kept across package updates.";
+  }
   await ask(first, "edit");
   await until(
     () => first.closest(".app-window")?.querySelector(".unsaved-dot"),
     "dirty window state",
   );
   checks.sdkDocumentState = true;
+  const appStorage = (await ask(first, "storage")).storage;
+  checks.sdkStorage =
+    !!appStorage &&
+    !appStorage.error &&
+    Object.values(appStorage).every((value) => value === true);
+  await ask(first, "remember");
+  await frameState(
+    first,
+    (state) =>
+      state.ready && state.status.includes("Remembered on this device"),
+  );
+  if (persistence === "write") {
+    document.body.dataset.probeResult = JSON.stringify({
+      success: Object.values(checks).every(Boolean),
+      phase: "remembered-for-page-close",
+      checks,
+    });
+    return;
+  }
   if (isTauri()) {
     await getCurrentWindow().close();
     (await until(() => button("Keep working"), "native quit review")).click();
@@ -242,6 +298,14 @@ async function run() {
     "second runtime window",
   );
   await frameState(second, (state) => state.ready);
+  await ask(second, "restore");
+  checks.storageSurvivesUpdate =
+    (
+      await frameState(
+        second,
+        (state) => state.ready && state.status.includes("Restored the note"),
+      )
+    ).text === "A draft kept across package updates.";
   checks.twoVersions =
     document.body.textContent!.includes("Version 1.0.0") &&
     document.body.textContent!.includes("Version 2.0.0");
@@ -287,10 +351,14 @@ async function run() {
     .querySelector<HTMLButtonElement>('button[aria-label^="Close "]')!
     .click();
   (await until(() => button("Discard and close"), "discard choice")).click();
+  await until(() => !first.isConnected, "old app window retired");
   second
     .closest(".app-window")!
     .querySelector<HTMLButtonElement>('button[aria-label^="Close "]')!
     .click();
+  (
+    await until(() => button("Discard and close"), "updated app dirty close")
+  ).click();
   await until(
     () => !document.querySelector('iframe[title="Native Notes"]'),
     "runtime windows retired",
@@ -298,6 +366,21 @@ async function run() {
   button("Remove").click();
   await until(() => !catalog.snapshot().length, "package removed");
   checks.removedAfterClose = true;
+  const remembered = await localData.get(
+    "org.shellcanvas.native-fixture",
+    "data",
+    "note",
+    new AbortController().signal,
+  );
+  checks.storageSurvivesUninstall = remembered !== null;
+  if (remembered)
+    await localData.remove(
+      "org.shellcanvas.native-fixture",
+      "data",
+      "note",
+      remembered.revision,
+      new AbortController().signal,
+    );
   const result = {
     success: Object.values(checks).every(Boolean),
     checks,

@@ -2,9 +2,12 @@
 import type { SystemAPI } from "../system-api";
 import { RpcPeer, messagePortTransport, type Json } from "./rpc";
 import type { AppDocumentState } from "./window-api";
+import type { AppStorageAPI, AppValue, StoragePage } from "./storage-api";
 export interface ExtensionClient {
   readonly system: SystemAPI;
   readonly window: { setDocumentState(state: AppDocumentState): Promise<void> };
+  readonly storage: AppStorageAPI;
+  readonly settings: AppStorageAPI;
   /** Namespaced services use the same broker; method availability never implies permission. */
   call(method: string, params?: Json, signal?: AbortSignal): Promise<Json>;
   dispose(): void;
@@ -116,8 +119,38 @@ export function connectToShellCanvas(
         } satisfies SystemAPI["files"]),
       });
       window.addEventListener("pagehide", dispose, { once: true });
+      const storage = (namespace: "storage" | "settings"): AppStorageAPI =>
+        Object.freeze({
+          get: async (key, signal) =>
+            (await peer.call(
+              `system.${namespace}.get`,
+              { key },
+              signal,
+            )) as unknown as AppValue | null,
+          put: async (key, value, expectedRevision, signal) =>
+            (await peer.call(
+              `system.${namespace}.put`,
+              { key, value, expectedRevision },
+              signal,
+            )) as unknown as AppValue,
+          remove: async (key, expectedRevision, signal) => {
+            await peer.call(
+              `system.${namespace}.remove`,
+              { key, expectedRevision },
+              signal,
+            );
+          },
+          list: async (options = {}, signal) =>
+            (await peer.call(
+              `system.${namespace}.list`,
+              JSON.parse(JSON.stringify(options)) as Json,
+              signal,
+            )) as unknown as StoragePage,
+        } satisfies AppStorageAPI);
       resolve({
         system,
+        storage: storage("storage"),
+        settings: storage("settings"),
         window: Object.freeze({
           setDocumentState: async (state: AppDocumentState) => {
             await peer.call(

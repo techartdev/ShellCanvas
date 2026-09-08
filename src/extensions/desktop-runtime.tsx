@@ -12,6 +12,8 @@ import type { SystemAPI } from "../system-api";
 import { AppCatalog, type AppLease, type InstalledApp } from "./catalog";
 import { ExtensionManager } from "./ExtensionManager";
 import { ExtensionFrame } from "./ExtensionFrame";
+import { indexedAppStorage } from "./app-storage";
+import type { AppStorageBackend } from "./storage-api";
 
 function descriptor(
   entry: InstalledApp,
@@ -39,10 +41,12 @@ function RuntimeDocument({
   lease,
   retain,
   context,
+  storage,
 }: {
   lease: AppLease;
   retain(): () => void;
   context: AppContext;
+  storage: AppStorageBackend;
 }) {
   const [accepted, accept] = useState(context.system);
   const target = useRef(accepted);
@@ -82,6 +86,7 @@ function RuntimeDocument({
           lease={lease}
           system={system}
           onDocumentState={context.setDocumentState}
+          storage={storage}
         />
       </div>
     </div>
@@ -100,6 +105,7 @@ export class DesktopRuntime {
   constructor(
     readonly catalog: AppCatalog,
     private bundled: readonly DesktopApp[],
+    private storage: AppStorageBackend = indexedAppStorage(),
   ) {
     this.manager = {
       apiVersion: 1,
@@ -180,7 +186,12 @@ export class DesktopRuntime {
       };
     };
     const app = descriptor(lease.installed, (context) => (
-      <RuntimeDocument lease={lease} retain={retain} context={context} />
+      <RuntimeDocument
+        lease={lease}
+        retain={retain}
+        context={context}
+        storage={this.storage}
+      />
     ));
     this.live.set(lease.id, { lease, app, mounts: 0 });
     return { type: "new", id: action.id, extension: lease.id };

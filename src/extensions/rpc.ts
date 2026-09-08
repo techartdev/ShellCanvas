@@ -51,7 +51,7 @@ const maxMessage = 4 * 1024 * 1024;
 const maxPending = 64;
 const methodName = /^[a-z][a-z0-9-]*(?:\.[a-zA-Z][a-zA-Z0-9-]*)+$/;
 
-function json(value: unknown): value is Json {
+export function isJsonValue(value: unknown): value is Json {
   // Iterative validation keeps malformed/deep extension input off the recursive stack.
   const pending: { value: unknown; depth: number }[] = [{ value, depth: 0 }];
   while (pending.length) {
@@ -76,7 +76,7 @@ function json(value: unknown): value is Json {
   return true;
 }
 function encode(value: Envelope): string {
-  if (!json(value))
+  if (!isJsonValue(value))
     throw new RpcError(
       "invalid",
       "Only finite JSON values with at most 64 nesting levels are supported.",
@@ -94,7 +94,7 @@ function decode(raw: unknown): Envelope {
     throw new RpcError("invalid", "Invalid RPC message.");
   const value: unknown = JSON.parse(raw);
   if (
-    !json(value) ||
+    !isJsonValue(value) ||
     !value ||
     typeof value !== "object" ||
     Array.isArray(value) ||

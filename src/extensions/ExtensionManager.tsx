@@ -6,6 +6,7 @@ import { AppCatalog, type AppLease, type InstallReview } from "./catalog";
 import "./ExtensionManager.css";
 
 function permissionName(name: string) {
+  if (name === "system.storage") return "This app’s local data and settings";
   return name === "system.dialogs"
     ? "Shared desktop dialogs"
     : (capabilityLabels[name as Capability] ?? name);
@@ -287,7 +288,7 @@ export function ExtensionManager({
       )}
       <p className="extension-footnote">
         Disabling stops new launches. Close an app’s running windows before
-        removing it.
+        removing it. Removing an app keeps its local data.
       </p>
     </section>
   );
