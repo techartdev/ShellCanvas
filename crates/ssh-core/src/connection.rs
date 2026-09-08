@@ -35,20 +35,7 @@ pub struct VerifiedHost {
 }
 
 pub fn verify_host_key(host: &str, port: u16, key: &keys::PublicKey, path: &Path) -> Result<()> {
-    let contents = std::fs::read_to_string(path)
-        .context("Cannot read ~/.ssh/known_hosts. Verify this host with OpenSSH first.")?;
-    // russh's simple known_hosts parser does not enforce revocation/CA markers.
-    // Fail closed rather than silently ignoring these security directives.
-    if contents
-        .lines()
-        .any(|line| line.trim_start().starts_with('@'))
-    {
-        bail!("This known_hosts file uses certificate or revocation markers, which this prototype does not yet support.");
-    }
-    let matched = keys::check_known_hosts_path(host, port, key, path).context(
-        "HOST KEY MISMATCH: the server identity differs from known_hosts. Connection refused.",
-    )?;
-    if !matched {
+    if crate::assess_host_key(host, port, key, path)? == crate::HostKeyStatus::Unknown {
         bail!("Unknown host key for {host}:{port}. Verify the host with OpenSSH before connecting. No key was accepted or saved.");
     }
     Ok(())
@@ -71,13 +58,19 @@ pub struct Connection {
 
 impl Connection {
     pub async fn connect(options: ConnectOptions) -> Result<Self> {
+        let known_hosts = dirs::home_dir()
+            .context("Cannot locate your home directory")?
+            .join(".ssh/known_hosts");
+        Self::connect_at(options, known_hosts).await
+    }
+
+    // Private seam for isolated handshake tests; never supplied by frontend IPC.
+    async fn connect_at(options: ConnectOptions, known_hosts: PathBuf) -> Result<Self> {
+        crate::validate_ssh_endpoint(&options.host, options.port)?;
         if options.host.trim().is_empty() || options.username.trim().is_empty() || options.port == 0
         {
             bail!("A host, username, and valid port are required.");
         }
-        let known_hosts = dirs::home_dir()
-            .context("Cannot locate your home directory")?
-            .join(".ssh/known_hosts");
         let handler = VerifiedHost {
             host: options.host.clone(),
             port: options.port,
@@ -265,5 +258,122 @@ mod tests {
         )
         .unwrap();
         assert!(verify_host_key("server", 22, &key, file.path()).is_err());
+    }
+
+    #[tokio::test]
+    async fn host_verification_precedes_authentication_over_real_ssh() {
+        use russh::server;
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        use tokio::net::TcpListener;
+
+        struct CountAuth(Arc<AtomicUsize>);
+        impl server::Handler for CountAuth {
+            type Error = russh::Error;
+            async fn auth_none(
+                &mut self,
+                _: &str,
+            ) -> std::result::Result<server::Auth, Self::Error> {
+                self.0.fetch_add(1, Ordering::SeqCst);
+                Ok(server::Auth::reject())
+            }
+            async fn auth_password(
+                &mut self,
+                user: &str,
+                password: &str,
+            ) -> std::result::Result<server::Auth, Self::Error> {
+                self.0.fetch_add(1, Ordering::SeqCst);
+                assert_eq!(user, "fixture");
+                assert_eq!(password, "local-test-only");
+                Ok(server::Auth::Accept)
+            }
+        }
+        let key = keys::PrivateKey::random(&mut rand::rng(), keys::Algorithm::Ed25519).unwrap();
+        let public = key.public_key().to_openssh().unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("known_hosts");
+        for case in [
+            "unknown",
+            "changed",
+            "revoked",
+            "malformed",
+            "trusted",
+            "unrelated-markers",
+        ] {
+            let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let port = listener.local_addr().unwrap().port();
+            let record = format!("[127.0.0.1]:{port} {public}\n");
+            let content = match case {
+                "unknown" => String::new(),
+                "changed" => format!("[127.0.0.1]:{port} ssh-ed25519 {KEY}\n"),
+                "revoked" => format!("{record}@revoked [127.0.0.1]:{port} {public}\n"),
+                "malformed" => format!("{record}not-a-key\n"),
+                "unrelated-markers" => format!(
+                    "@revoked another-host {public}\n@cert-authority *.example {public}\n{record}"
+                ),
+                _ => record,
+            };
+            std::fs::write(&path, content).unwrap();
+            let calls = Arc::new(AtomicUsize::new(0));
+            let handler = CountAuth(calls.clone());
+            let config = Arc::new(server::Config {
+                keys: vec![key.clone()],
+                auth_rejection_time: Duration::ZERO,
+                auth_rejection_time_initial: Some(Duration::ZERO),
+                inactivity_timeout: Some(Duration::from_secs(5)),
+                ..Default::default()
+            });
+            let task = tokio::spawn(async move {
+                let (stream, _) = listener.accept().await.unwrap();
+                if let Ok(session) = server::run_stream(config, stream, handler).await {
+                    let _ = session.await; // Peer closure is expected for rejected keys.
+                }
+            });
+            let result = timeout(
+                Duration::from_secs(8),
+                Connection::connect_at(
+                    ConnectOptions {
+                        host: "127.0.0.1".into(),
+                        port,
+                        username: "fixture".into(),
+                        key_path: String::new(),
+                        password: Some("local-test-only".into()),
+                        passphrase: None,
+                    },
+                    path.clone(),
+                ),
+            )
+            .await
+            .expect("SSH fixture timed out");
+            if matches!(case, "trusted" | "unrelated-markers") {
+                let connection = result.unwrap_or_else(|e| panic!("{case}: {e:#}"));
+                assert!(
+                    calls.load(Ordering::SeqCst) > 0,
+                    "Trusted connection did not authenticate"
+                );
+                connection.disconnect().await.unwrap();
+            } else {
+                let error = match result {
+                    Ok(_) => panic!("{case} unexpectedly authenticated"),
+                    Err(error) => error,
+                };
+                let text = format!("{error:#}");
+                let expected = match case {
+                    "unknown" => "Unknown host key",
+                    "changed" => "MISMATCH",
+                    "revoked" => "REVOKED",
+                    _ => "Malformed",
+                };
+                assert!(text.contains(expected), "{case}: {text}");
+                assert_eq!(
+                    calls.load(Ordering::SeqCst),
+                    0,
+                    "{case} sent authentication before key verification"
+                );
+            }
+            timeout(Duration::from_secs(8), task)
+                .await
+                .expect("SSH fixture did not close")
+                .unwrap();
+        }
     }
 }
