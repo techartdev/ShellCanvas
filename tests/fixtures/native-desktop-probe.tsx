@@ -13,6 +13,10 @@ import {
 import { DesktopRuntime } from "../../src/extensions/desktop-runtime";
 import { indexedAppStorage } from "../../src/extensions/app-storage";
 import { storageProbe } from "./storage-probe";
+import type {
+  AppEnvironment,
+  ServiceMethodInfo,
+} from "../../src/extensions/environment-api";
 import { previewServices, previewSession } from "../../src/preview";
 import source from "../../.local/native-extension-probe/desktop-client.js?raw";
 import style from "../../examples/dialog-app/style.css?raw";
@@ -52,6 +56,9 @@ function ask(frame: HTMLIFrameElement, action = "snapshot") {
     status: string;
     ready: boolean;
     storage?: Record<string, unknown>;
+    environment?: AppEnvironment;
+    services?: readonly ServiceMethodInfo[];
+    environmentEvents?: AppEnvironment[];
   }>((resolve, reject) => {
     const timer = setTimeout(() => {
       window.removeEventListener("message", receive);
@@ -204,6 +211,40 @@ async function run() {
     "frame document",
   );
   await frameState(first, (state) => state.ready);
+  const initialEnvironment = await ask(first, "watch");
+  checks.discovery =
+    initialEnvironment.services?.some(
+      (method) =>
+        method.name === "system.dialogs.openFile" &&
+        method.granted &&
+        method.available,
+    ) === true &&
+    !initialEnvironment.services.some((method) =>
+      method.name.includes("publish_app_frame"),
+    );
+  await frameState(
+    first,
+    (state) =>
+      state.environmentEvents?.some(
+        (event) => event.connection === "connected",
+      ) === true,
+  );
+  first
+    .closest(".app-window")!
+    .querySelector<HTMLButtonElement>('button[aria-label^="Minimize "]')!
+    .click();
+  await frameState(
+    first,
+    (state) => state.environmentEvents?.at(-1)?.visible === false,
+  );
+  document
+    .querySelector<HTMLButtonElement>('button[aria-label="Open Native Notes"]')!
+    .click();
+  await frameState(
+    first,
+    (state) => state.environmentEvents?.at(-1)?.visible === true,
+  );
+  checks.visibilityEvents = true;
   if (persistence === "read") {
     await ask(first, "restore");
     checks.storageSurvivesPageClose =
@@ -265,10 +306,27 @@ async function run() {
   );
   checks.reconnectPreservesDraft =
     (await ask(first)).text === "A draft kept across package updates.";
+  const reviewEnvironment = await ask(first, "environment");
+  checks.discoveryRetired =
+    reviewEnvironment.environment?.connection === "review-required" &&
+    reviewEnvironment.services?.find(
+      (method) => method.name === "system.dialogs.openFile",
+    )?.available === false;
+  await frameState(
+    first,
+    (state) =>
+      state.environmentEvents?.some(
+        (event) => event.connection === "disconnected",
+      ) === true &&
+      state.environmentEvents.some(
+        (event) => event.connection === "review-required",
+      ),
+  );
+  checks.connectionEvents = true;
   await ask(first, "browse");
   await frameState(
     first,
-    (state) => state.ready && state.status.includes("no longer active"),
+    (state) => state.ready && state.status.includes("currently unavailable"),
   );
   checks.oldConnectionRetired = !document.querySelector("dialog[open]");
   acceptConnection.click();
@@ -281,6 +339,11 @@ async function run() {
     "rebound file dialog",
   );
   checks.explicitReconnectWorks = true;
+  const acceptedEnvironment = await ask(first, "environment");
+  checks.explicitBindingGeneration =
+    acceptedEnvironment.environment?.connection === "connected" &&
+    acceptedEnvironment.environment.binding !==
+      initialEnvironment.environment?.binding;
   button("Cancel", fileDialog).click();
   await frameState(first, (state) => state.ready);
   document
@@ -298,6 +361,11 @@ async function run() {
     "second runtime window",
   );
   await frameState(second, (state) => state.ready);
+  const secondEnvironment = await ask(second, "environment");
+  checks.discoveryGrantDenied =
+    secondEnvironment.services?.find(
+      (method) => method.name === "system.dialogs.openFile",
+    )?.granted === false;
   await ask(second, "restore");
   checks.storageSurvivesUpdate =
     (

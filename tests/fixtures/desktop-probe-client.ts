@@ -1,6 +1,12 @@
 // SPDX-License-Identifier: MPL-2.0
 // The real SDK example, with test-only controls for the opaque frame's DOM.
 import { connection } from "../../examples/dialog-app/main";
+import type {
+  AppEnvironment,
+  ServiceMethodInfo,
+} from "../../src/extensions/environment-api";
+const environmentEvents: AppEnvironment[] = [];
+let watching = false;
 window.addEventListener("message", async (event) => {
   if (event.source !== parent || event.data?.type !== "desktop-probe") return;
   const note = document.querySelector<HTMLTextAreaElement>("textarea")!;
@@ -15,6 +21,21 @@ window.addEventListener("message", async (event) => {
   if (event.data.action === "remember" || event.data.action === "restore")
     document.querySelector<HTMLButtonElement>(`#${event.data.action}`)!.click();
   let storage: unknown;
+  let environment: AppEnvironment | undefined,
+    services: readonly ServiceMethodInfo[] | undefined;
+  if (event.data.action === "environment" || event.data.action === "watch") {
+    const client = (await connection)!;
+    if (event.data.action === "watch" && !watching) {
+      watching = true;
+      client.events.subscribe((batch) => {
+        for (const event of batch.events)
+          if (event.topic === "system.environment")
+            environmentEvents.push(event.value as unknown as AppEnvironment);
+      });
+    }
+    environment = await client.environment.get();
+    services = await client.services.list();
+  }
   if (event.data.action === "storage") {
     try {
       const client = (await connection)!;
@@ -61,6 +82,9 @@ window.addEventListener("message", async (event) => {
       status: document.querySelector("output")!.textContent,
       ready: !document.querySelector<HTMLButtonElement>("#message")!.disabled,
       storage,
+      environment,
+      services,
+      environmentEvents,
     },
     "*",
   );

@@ -30,6 +30,8 @@ export interface RpcTransport {
 export interface RpcMethod {
   /** All grants must be held. Empty grants are reserved for harmless lifecycle queries. */
   grants: readonly string[];
+  /** Live availability may change; the operation handler and its owner remain pinned. */
+  available?(): boolean;
   invoke(params: Json, signal: AbortSignal): Promise<Json> | Json;
 }
 type Envelope =
@@ -154,6 +156,7 @@ export class RpcPeer {
   private running = new Map<number, AbortController>();
   private methods: ReadonlyMap<string, RpcMethod>;
   private grants: Set<string>;
+  private closeListeners = new Set<() => void>();
   constructor(
     private transport: RpcTransport,
     methods: ReadonlyMap<string, RpcMethod> = new Map(),
@@ -163,7 +166,14 @@ export class RpcPeer {
       [...methods].map(([name, method]) => {
         if (!methodName.test(name))
           throw new RpcError("invalid", `Invalid method name: ${name}`);
-        return [name, { grants: [...method.grants], invoke: method.invoke }];
+        return [
+          name,
+          {
+            grants: [...method.grants],
+            invoke: method.invoke,
+            available: method.available,
+          },
+        ];
       }),
     );
     this.grants = new Set(grants);
@@ -175,6 +185,16 @@ export class RpcPeer {
   }
   get isClosed() {
     return this.closed;
+  }
+  onClose(listener: () => void) {
+    if (this.closed) {
+      listener();
+      return () => {};
+    }
+    this.closeListeners.add(listener);
+    return () => {
+      this.closeListeners.delete(listener);
+    };
   }
   call(
     method: string,
@@ -251,6 +271,14 @@ export class RpcPeer {
     this.pending.clear();
     for (const controller of this.running.values()) controller.abort();
     this.running.clear();
+    for (const listener of this.closeListeners) {
+      try {
+        listener();
+      } catch {
+        /* One owner cannot prevent other cleanup. */
+      }
+    }
+    this.closeListeners.clear();
     this.transport.close();
   }
   private send(value: Envelope) {
@@ -313,6 +341,11 @@ export class RpcPeer {
     const controller = new AbortController();
     this.running.set(request.id, controller);
     try {
+      if (method.available && !method.available())
+        throw new RpcError(
+          "unavailable",
+          "This service is currently unavailable.",
+        );
       const result = await method.invoke(request.params, controller.signal);
       if (!this.closed && !controller.signal.aborted) {
         // A non-JSON provider result fails only this call, instead of dropping unrelated requests.

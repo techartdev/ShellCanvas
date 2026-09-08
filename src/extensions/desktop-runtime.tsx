@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: MPL-2.0
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Package, PanelsTopLeft } from "lucide-react";
 import type { DesktopAction, DesktopState } from "../desktop";
 import {
   capabilityLabels,
+  capabilityReason,
   type AppContext,
   type Capability,
   type DesktopApp,
@@ -14,6 +15,8 @@ import { ExtensionManager } from "./ExtensionManager";
 import { ExtensionFrame } from "./ExtensionFrame";
 import { indexedAppStorage } from "./app-storage";
 import type { AppStorageBackend } from "./storage-api";
+import { RuntimeEnvironment } from "./environment";
+import type { AppEnvironment } from "./environment-api";
 
 function descriptor(
   entry: InstalledApp,
@@ -51,6 +54,35 @@ function RuntimeDocument({
   const [accepted, accept] = useState(context.system);
   const target = useRef(accepted);
   target.current = accepted;
+  const identities = useRef(new WeakMap<SystemAPI, string>());
+  const currentBinding = () => {
+    if (!accepted || !context.session) return null;
+    let id = identities.current.get(accepted);
+    if (!id) {
+      id = crypto.randomUUID();
+      identities.current.set(accepted, id);
+    }
+    return id;
+  };
+  const state: AppEnvironment = {
+    apiVersion: 1,
+    connection: !context.session
+      ? "local"
+      : !context.connected
+        ? "disconnected"
+        : accepted !== context.system
+          ? "review-required"
+          : "connected",
+    binding: currentBinding(),
+    visible: context.visible !== false,
+    capabilities: context.session
+      ? (Object.keys(capabilityLabels) as Capability[]).filter(
+          (capability) => !capabilityReason(context.session!, capability),
+        )
+      : [],
+  };
+  const [environment] = useState(() => new RuntimeEnvironment(state));
+  useLayoutEffect(() => environment.update(state));
   const system = useMemo<SystemAPI>(
     () => ({
       apiVersion: 1,
@@ -87,6 +119,7 @@ function RuntimeDocument({
           system={system}
           onDocumentState={context.setDocumentState}
           storage={storage}
+          environment={environment}
         />
       </div>
     </div>

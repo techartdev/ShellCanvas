@@ -3,11 +3,22 @@ import type { SystemAPI } from "../system-api";
 import { RpcPeer, messagePortTransport, type Json } from "./rpc";
 import type { AppDocumentState } from "./window-api";
 import type { AppStorageAPI, AppValue, StoragePage } from "./storage-api";
+import type {
+  AppEnvironment,
+  ServiceMethodInfo,
+  AppEventsAPI,
+} from "./environment-api";
+import { appEventClient } from "./app-events";
 export interface ExtensionClient {
   readonly system: SystemAPI;
   readonly window: { setDocumentState(state: AppDocumentState): Promise<void> };
   readonly storage: AppStorageAPI;
   readonly settings: AppStorageAPI;
+  readonly environment: { get(signal?: AbortSignal): Promise<AppEnvironment> };
+  readonly services: {
+    list(signal?: AbortSignal): Promise<readonly ServiceMethodInfo[]>;
+  };
+  readonly events: AppEventsAPI;
   /** Namespaced services use the same broker; method availability never implies permission. */
   call(method: string, params?: Json, signal?: AbortSignal): Promise<Json>;
   dispose(): void;
@@ -151,6 +162,23 @@ export function connectToShellCanvas(
         system,
         storage: storage("storage"),
         settings: storage("settings"),
+        environment: Object.freeze({
+          get: async (signal?: AbortSignal) =>
+            (await peer.call(
+              "system.environment.get",
+              null,
+              signal,
+            )) as unknown as AppEnvironment,
+        }),
+        services: Object.freeze({
+          list: async (signal?: AbortSignal) =>
+            (await peer.call(
+              "system.services.list",
+              null,
+              signal,
+            )) as unknown as readonly ServiceMethodInfo[],
+        }),
+        events: appEventClient(peer),
         window: Object.freeze({
           setDocumentState: async (state: AppDocumentState) => {
             await peer.call(

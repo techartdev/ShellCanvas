@@ -361,6 +361,8 @@ export interface SessionServices {
   ): Promise<TerminalSession>;
 }
 export interface AppContext {
+  /** True only when this window is visible in the current workspace. */
+  visible?: boolean;
   /** Supplied by the desktop window. Optional only for legacy standalone embeds. */
   system?: SystemAPI;
   unavailableReason?: string;

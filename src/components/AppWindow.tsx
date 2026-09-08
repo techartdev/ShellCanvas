@@ -487,6 +487,7 @@ export function AppWindow({
               {...context}
               services={appServices}
               system={systemScope.api}
+              visible={visible}
               connected={context.connected !== false && !reason}
               unavailableReason={reason ?? undefined}
             />

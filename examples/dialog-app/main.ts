@@ -16,6 +16,23 @@ buttons.forEach((button) => {
 async function start() {
   try {
     const client = await connectToShellCanvas();
+    const connectionState = document.createElement("p");
+    connectionState.className = "intro";
+    root.querySelector("textarea")!.before(connectionState);
+    client.events.subscribe((batch) => {
+      for (const event of batch.events) {
+        if (event.topic !== "system.environment") continue;
+        const state = event.value as { connection: string };
+        connectionState.textContent =
+          state.connection === "review-required"
+            ? "A new connection is waiting for your approval."
+            : state.connection === "disconnected"
+              ? "Host disconnected. Your note is still here."
+              : state.connection === "connected"
+                ? "Workspace connected"
+                : "Local workspace";
+      }
+    });
     let localRevision: string | null = null;
     let localAvailable = false;
     try {
