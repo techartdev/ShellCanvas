@@ -1,8 +1,10 @@
 // SPDX-License-Identifier: MPL-2.0
 import type { SystemAPI } from "../system-api";
 import { RpcPeer, messagePortTransport, type Json } from "./rpc";
+import type { AppDocumentState } from "./window-api";
 export interface ExtensionClient {
   readonly system: SystemAPI;
+  readonly window: { setDocumentState(state: AppDocumentState): Promise<void> };
   /** Namespaced services use the same broker; method availability never implies permission. */
   call(method: string, params?: Json, signal?: AbortSignal): Promise<Json>;
   dispose(): void;
@@ -108,6 +110,14 @@ export function connectToShellCanvas(
       window.addEventListener("pagehide", dispose, { once: true });
       resolve({
         system,
+        window: Object.freeze({
+          setDocumentState: async (state: AppDocumentState) => {
+            await peer.call(
+              "system.window.setDocumentState",
+              JSON.parse(JSON.stringify(state)) as Json,
+            );
+          },
+        }),
         call: (method, params, signal) => peer.call(method, params, signal),
         dispose,
       });

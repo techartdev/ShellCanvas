@@ -7,6 +7,11 @@ const directory = resolve(process.argv[2] ?? "examples/dialog-app");
 const manifest = JSON.parse(
   await readFile(join(directory, "shellcanvas.json"), "utf8"),
 );
+if (process.argv[3] === "--version") {
+  if (!/^\d+\.\d+\.\d+(?:-[a-zA-Z0-9.-]+)?$/.test(process.argv[4] ?? ""))
+    throw new Error("Provide a valid package version.");
+  manifest.version = process.argv[4];
+}
 const result = await build({
   entryPoints: [join(directory, "main.ts")],
   bundle: true,

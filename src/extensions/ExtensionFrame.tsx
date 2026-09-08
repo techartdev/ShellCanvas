@@ -4,6 +4,8 @@ import type { SystemAPI } from "../system-api";
 import { appDocument, type AppPackage } from "./package";
 import { RpcPeer, messagePortTransport } from "./rpc";
 import { systemMethods } from "./system-bridge";
+import type { AppLease } from "./catalog";
+import { documentStateMethod, type AppDocumentState } from "./window-api";
 
 /** Experimental host, currently exercised only by the development fixture.
  * One effect owns one document, port and system handle. A prop change retires that instance.
@@ -12,18 +14,27 @@ export function ExtensionFrame({
   app,
   system,
   grants,
+  lease,
+  onDocumentState,
 }: {
   app: AppPackage;
   system: SystemAPI;
   grants: readonly string[];
+  lease?: AppLease;
+  onDocumentState?: (state: AppDocumentState) => void;
 }) {
   const ref = useRef<HTMLIFrameElement>(null);
+  const documentState = useRef(onDocumentState);
+  documentState.current = onDocumentState;
   useEffect(() => {
     const frame = ref.current!;
+    if (lease?.closed) return;
     let peer: RpcPeer | undefined;
     let connected = false;
+    let retired = false;
     const receive = (event: MessageEvent) => {
       if (
+        retired ||
         event.source !== frame.contentWindow ||
         event.data !== "shellcanvas:ready:v1"
       )
@@ -38,9 +49,14 @@ export function ExtensionFrame({
       const approved = grants.filter((grant) =>
         app.permissions.includes(grant),
       );
+      const methods = new Map(systemMethods(system, approved));
+      methods.set(
+        "system.window.setDocumentState",
+        documentStateMethod((state) => documentState.current?.(state)),
+      );
       peer = new RpcPeer(
         messagePortTransport(channel.port1),
-        systemMethods(system, approved),
+        methods,
         approved,
       );
       frame.contentWindow!.postMessage("shellcanvas:connect:v1", "*", [
@@ -49,12 +65,18 @@ export function ExtensionFrame({
     };
     window.addEventListener("message", receive);
     frame.srcdoc = appDocument(app, crypto.randomUUID());
-    return () => {
+    const retire = () => {
+      retired = true;
       window.removeEventListener("message", receive);
       peer?.close();
       frame.srcdoc = "";
     };
-  }, [app, system, grants]);
+    const stop = lease?.onClose(retire);
+    return () => {
+      stop?.();
+      retire();
+    };
+  }, [app, system, grants, lease]);
   return (
     <iframe
       ref={ref}

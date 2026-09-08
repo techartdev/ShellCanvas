@@ -11,21 +11,34 @@ buttons.forEach((button) => {
 async function start() {
   try {
     const client = await connectToShellCanvas();
+    let dirty = false;
+    let busy = false;
+    const publish = () => client.window.setDocumentState({ dirty, busy });
+    root.querySelector("textarea")!.addEventListener("input", () => {
+      dirty = true;
+      void publish().catch((error) => {
+        status.textContent = String(error);
+      });
+    });
     status.textContent =
       "Connected through the app API. No direct host or native access.";
     buttons.forEach((button) => {
       button.disabled = false;
     });
     const run = async (operation: () => Promise<unknown>) => {
+      busy = true;
       buttons.forEach((button) => {
         button.disabled = true;
       });
       try {
+        await publish();
         status.textContent = JSON.stringify(await operation());
       } catch (error) {
         status.textContent =
           error instanceof Error ? error.message : String(error);
       } finally {
+        busy = false;
+        await publish().catch(() => {});
         buttons.forEach((button) => {
           button.disabled = false;
         });
@@ -61,12 +74,15 @@ async function start() {
     root.querySelector("#save")!.addEventListener(
       "click",
       () =>
-        void run(() =>
-          client.system.files.saveTextAs({
+        void run(async () => {
+          const saved = await client.system.files.saveTextAs({
             name: "field-notes.txt",
             text: root.querySelector("textarea")!.value,
-          }),
-        ),
+          });
+          if (saved && saved.text === root.querySelector("textarea")!.value)
+            dirty = false;
+          return saved;
+        }),
     );
     root
       .querySelector("#denied")!

@@ -1,0 +1,204 @@
+.extension-manager {
+  color: var(--text, #dce7ec);
+  padding: 28px;
+  overflow: auto;
+}
+.extension-manager header,
+.extension-review-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+}
+.extension-manager h2 {
+  font-size: 28px;
+  font-weight: 500;
+  margin: 4px 0 8px;
+}
+.extension-manager h3 {
+  font-size: 15px;
+  font-weight: 600;
+  margin: 0 0 7px;
+}
+.extension-manager p {
+  color: #9cb2bd;
+  font-size: 13px;
+  line-height: 1.65;
+  margin: 6px 0;
+}
+.extension-manager .extension-eyebrow {
+  color: #a0cbbb;
+  font-size: 9px;
+  letter-spacing: 0.17em;
+  font-weight: 700;
+}
+.extension-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.extension-actions button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 9px 12px;
+  border-radius: 8px;
+  border: 1px solid #49606b;
+  background: #2a404c;
+  font: inherit;
+  font-size: 12px;
+  color: #e0ebf0;
+  cursor: pointer;
+}
+.extension-actions button:hover {
+  background: #355461;
+}
+.extension-actions button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+.extension-actions button:focus-visible,
+.extension-manager input:focus-visible {
+  outline: 2px solid #b0ddcb;
+  outline-offset: 3px;
+}
+.extension-actions .extension-primary {
+  background: #a0cbbb;
+  border-color: #a0cbbb;
+  color: #102e2d;
+  font-weight: 600;
+}
+.extension-review {
+  padding: 22px;
+  border: 1px solid #658a87;
+  border-radius: 14px;
+  background: #233a43;
+  margin: 22px 0;
+}
+.extension-review-heading {
+  justify-content: flex-start;
+  color: #c4e6d9;
+}
+.extension-review fieldset {
+  border: 0;
+  margin: 14px 0;
+  padding: 0;
+}
+.extension-review legend {
+  font-size: 12px;
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+.extension-review label {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  padding: 8px 0;
+  font-size: 13px;
+}
+.extension-review input {
+  accent-color: #a0cbbb;
+}
+.extension-review small {
+  display: inline-block;
+  margin-left: 10px;
+  color: #edce91;
+  font-size: 11px;
+}
+.extension-review details {
+  font-size: 11px;
+  color: #9cb2bd;
+  margin: 14px 0;
+}
+.extension-review code {
+  display: block;
+  overflow-wrap: anywhere;
+  margin: 10px 0;
+}
+.extension-review > .extension-actions {
+  justify-content: flex-end;
+}
+.extension-list {
+  display: grid;
+  gap: 12px;
+  margin-top: 24px;
+}
+.extension-list article {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 18px;
+  border-radius: 12px;
+  border: 1px solid #354e5b;
+  background: #1c303c;
+}
+.extension-icon {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 44px;
+  height: 44px;
+  color: #b5d7c9;
+  background: #324d55;
+  border-radius: 12px;
+}
+.extension-description {
+  flex: 1;
+  min-width: 0;
+}
+.extension-description p {
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
+.extension-description h3 span {
+  font-size: 9px;
+  font-weight: 400;
+  color: #acd2c3;
+  margin-left: 10px;
+}
+.extension-description small {
+  color: #92acba;
+  font-size: 10px;
+}
+.extension-empty {
+  display: grid;
+  place-items: center;
+  padding: 60px 20px;
+  color: #9cb2bd;
+  border: 1px dashed #395460;
+  border-radius: 14px;
+  margin-top: 24px;
+  text-align: center;
+}
+.extension-empty h3 {
+  margin-top: 16px;
+  color: #dce7ec;
+}
+.extension-manager .extension-error {
+  padding: 12px 16px;
+  color: #f2c5bd;
+  background: #533a3f;
+  border-radius: 8px;
+}
+.extension-manager .extension-footnote {
+  font-size: 11px;
+  margin-top: 20px;
+}
+@media (max-width: 700px) {
+  .extension-manager {
+    padding: 18px;
+  }
+  .extension-manager header {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+  .extension-list article {
+    flex-wrap: wrap;
+  }
+  .extension-list article > .extension-actions {
+    width: 100%;
+    margin-left: 60px;
+  }
+}
