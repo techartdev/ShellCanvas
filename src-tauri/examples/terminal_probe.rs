@@ -2,6 +2,9 @@
 // Authorized read-only integration: only temporary shell variables and stty queries.
 #[path = "../src/connection_resource.rs"]
 mod connection_resource;
+#[allow(dead_code)]
+#[path = "../src/custom_binding.rs"]
+mod custom_binding;
 #[path = "../src/session_registry.rs"]
 mod session_registry;
 #[path = "../src/terminals.rs"]

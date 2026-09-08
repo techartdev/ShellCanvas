@@ -81,7 +81,7 @@ pub struct WorkspaceServices {
     file_source: Option<Arc<ConnectionResource>>,
     sources: HashMap<&'static str, Arc<ConnectionResource>>,
     advertised: Option<HashSet<String>>,
-    custom: Vec<Arc<crate::custom_services::CustomBinding>>,
+    custom: Vec<Arc<crate::custom_binding::CustomBinding>>,
     pub terminal: Option<Arc<dyn TerminalService>>,
     pub files: Option<Arc<dyn FileSystemProvider>>,
     pub text: Option<Arc<dyn TextFileService>>,
@@ -175,11 +175,8 @@ impl WorkspaceServices {
         {
             return Err("Custom service source is not owned by this workspace".into());
         }
-        let binding = crate::custom_services::CustomBinding::new(
-            self.alive.clone(),
-            source.clone(),
-            service,
-        )?;
+        let binding =
+            crate::custom_binding::CustomBinding::new(self.alive.clone(), source.clone(), service)?;
         let methods = binding.methods();
         if self.custom_methods().iter().any(|old| {
             methods
@@ -191,7 +188,7 @@ impl WorkspaceServices {
         self.custom.push(Arc::new(binding));
         Ok(())
     }
-    pub fn custom_methods(&self) -> Vec<crate::custom_services::CustomMethodInfo> {
+    pub fn custom_methods(&self) -> Vec<crate::custom_binding::CustomMethodInfo> {
         self.custom
             .iter()
             .flat_map(|binding| binding.methods())
@@ -201,7 +198,7 @@ impl WorkspaceServices {
         &self,
         method: &str,
         binding: &str,
-    ) -> Option<Arc<crate::custom_services::CustomBinding>> {
+    ) -> Option<Arc<crate::custom_binding::CustomBinding>> {
         self.custom
             .iter()
             .find(|item| item.owns(method, binding))

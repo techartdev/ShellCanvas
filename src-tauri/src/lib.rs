@@ -12,6 +12,7 @@ mod adapters;
 mod clipboard_stream;
 mod connection_attempts;
 mod connection_resource;
+mod custom_binding;
 mod custom_services;
 mod extension_frames;
 #[cfg(debug_assertions)]
