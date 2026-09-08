@@ -15,6 +15,8 @@ Additional protocols are optional until these core workflows work well. Connecti
 
 ## Evidence and outstanding work
 
+- Per-capability snapshots now reach native connect/poll, stable frontend service handles, launcher/window controls and Host details. Browser checks passed file loss with surviving console input, file recovery, console loss with surviving folder navigation, and source/status display. All 70 frontend tests, 54 Rust tests, Clippy and the Windows build passed. See [service availability](service-availability.md). Native push events, independent-leg reconnect and richer provider state reporting remain.
+
 - Native service bindings now route every production role through an explicit connection source and workspace lifetime. Shared connection leases close on last workspace release; late reads/handles are rejected or cleaned up and late writes report uncertainty. Mixed files/console and shared-owner fixtures passed, along with all 53 Rust tests, Clippy and the live bound SFTP/two-console probe. See [workspace bindings](workspace-bindings.md). Per-binding UI/status, service generations and independent-leg reconnect remain.
 
 - Connection-neutral identity and lifecycle now drive the native workspace's health/disconnect path. One shared resource coordinates cancellation-safe, bounded, once-only teardown and retains failures. Workspace IDs and established connection instances are separate. All 46 Rust tests, 65 frontend tests, all-target Clippy and the live two-console lifecycle probe passed. See [connection lifecycle](connection-lifecycle.md). Mixed-adapter routing, per-binding status/generations and last-workspace leases remain before the composition gate is complete.

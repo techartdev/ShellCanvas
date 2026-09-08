@@ -4,7 +4,11 @@ import { Terminal as XTerminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import { Circle, RotateCcw } from "lucide-react";
 import "@xterm/xterm/css/xterm.css";
-import type { AppContext, TerminalSession } from "../sdk";
+import {
+  capabilityStatus,
+  type AppContext,
+  type TerminalSession,
+} from "../sdk";
 import { ContextMenu } from "../components/ContextMenu";
 import { clipboard } from "../clipboard";
 import { usePreferences } from "../preferences";
@@ -195,7 +199,7 @@ export function Terminal({
           setStatus(
             preview
               ? "Design preview · no commands executed"
-              : "Live SSH shell",
+              : "Live remote console",
           );
         await handle.resize(terminal.cols, terminal.rows);
       })
@@ -221,7 +225,12 @@ export function Terminal({
           <Circle size={7} fill="currentColor" /> {session?.info.hostname}{" "}
           <span className="terminal-tab-path">~</span>
         </span>
-        <span>SSH</span>
+        <span>
+          {session
+            ? (capabilityStatus(session, "terminal").source?.adapter ??
+              "Console")
+            : "Console"}
+        </span>
       </div>
       <div
         className="terminal-container"

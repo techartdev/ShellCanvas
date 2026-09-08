@@ -4,6 +4,7 @@ use anyhow::{bail, Result};
 use async_trait::async_trait;
 use shellcanvas_services::*;
 use std::{
+    collections::{HashMap, HashSet},
     future::Future,
     sync::{
         atomic::{AtomicBool, Ordering},
@@ -11,6 +12,21 @@ use std::{
     },
     time::Duration,
 };
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ServiceStatus {
+    capability: &'static str,
+    state: &'static str,
+    reason: Option<String>,
+    source: Option<ConnectionIdentity>,
+}
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkspaceStatus {
+    pub connected: bool,
+    pub services: Vec<ServiceStatus>,
+}
 
 #[derive(Clone)]
 struct Binding {
@@ -63,6 +79,8 @@ pub struct WorkspaceServices {
     alive: Arc<AtomicBool>,
     connections: Vec<ConnectionLease>,
     file_source: Option<Arc<ConnectionResource>>,
+    sources: HashMap<&'static str, Arc<ConnectionResource>>,
+    advertised: Option<HashSet<String>>,
     pub terminal: Option<Arc<dyn TerminalService>>,
     pub files: Option<Arc<dyn FileSystemProvider>>,
     pub text: Option<Arc<dyn TextFileService>>,
@@ -102,6 +120,7 @@ macro_rules! bind_role {
                 },
                 service,
             }));
+            self.sources.insert(stringify!($field), source.clone());
             Ok(())
         }
     };
@@ -125,6 +144,8 @@ impl WorkspaceServices {
             alive: Arc::new(AtomicBool::new(true)),
             connections,
             file_source: None,
+            sources: HashMap::new(),
+            advertised: None,
             terminal: None,
             files: None,
             text: None,
@@ -139,6 +160,59 @@ impl WorkspaceServices {
             .iter()
             .map(|lease| lease.resource().identity().clone())
             .collect()
+    }
+    pub fn status(&self) -> WorkspaceStatus {
+        let services = [
+            ("terminal", "terminal"),
+            ("files.read", "files"),
+            ("files.edit", "text"),
+            ("files.create", "text"),
+            ("files.manage", "mutations"),
+            ("files.move", "moves"),
+            ("files.upload", "transfers"),
+            ("files.download", "transfers"),
+            ("host.settings", "settings"),
+        ]
+        .into_iter()
+        .map(|(capability, role)| {
+            let source = self.sources.get(role);
+            let supported = source.is_some()
+                && self
+                    .advertised
+                    .as_ref()
+                    .is_none_or(|caps| caps.contains(capability));
+            let available = self.alive.load(Ordering::Acquire)
+                && source.is_some_and(|source| source.is_connected());
+            ServiceStatus {
+                capability,
+                state: if !supported {
+                    "unsupported"
+                } else if available {
+                    "available"
+                } else {
+                    "disconnected"
+                },
+                reason: if !supported {
+                    Some("This capability is not provided by the selected service".into())
+                } else if !available {
+                    Some("The connection providing this service is closed".into())
+                } else {
+                    None
+                },
+                source: source.map(|source| source.identity().clone()),
+            }
+        })
+        .collect();
+        WorkspaceStatus {
+            connected: self.is_connected(),
+            services,
+        }
+    }
+    /// Discovery can narrow an interface's operation support (for example,
+    /// reading/creating text without atomic replacement). This advertisement
+    /// does not replace the provider's operation-level validation.
+    pub fn advertise_capabilities(&mut self, capabilities: &[String]) {
+        self.advertised = Some(capabilities.iter().cloned().collect());
     }
     pub fn is_connected(&self) -> bool {
         self.alive.load(Ordering::Acquire)

@@ -6,6 +6,7 @@ import {
   type DesktopState,
 } from "./desktop";
 import type { ConnectOptions, DesktopApp, HostProfile, Session } from "./sdk";
+import type { WorkspaceStatus } from "./sdk";
 export function connectionProfile(
   options: ConnectOptions,
   name: string,
@@ -55,6 +56,7 @@ export type WorkspaceAction =
   | { type: "select"; key: string }
   | { type: "remove"; sessionId: number }
   | { type: "lost"; sessionId: number }
+  | { type: "status"; sessionId: number; status: WorkspaceStatus }
   | { type: "desktop"; key: string; action: DesktopAction };
 export function initialWorkspaces(
   apps: readonly DesktopApp[],
@@ -87,6 +89,40 @@ export function updateWorkspaces(
   apps: readonly DesktopApp[],
 ): Workspaces {
   switch (action.type) {
+    case "status": {
+      const target = state.items.find(
+        (w) => w.session?.id === action.sessionId,
+      );
+      // A late poll must never revive a closed or replaced workspace.
+      if (!target?.session || target.connected === false) return state;
+      if (
+        target.connected === action.status.connected &&
+        JSON.stringify(target.session.services) ===
+          JSON.stringify(action.status.services)
+      )
+        return state;
+      return {
+        ...state,
+        items: state.items.map((w) =>
+          w !== target
+            ? w
+            : {
+                ...w,
+                connected: action.status.connected,
+                session: {
+                  ...target.session!,
+                  services: action.status.services,
+                  info: {
+                    ...target.session!.info,
+                    capabilities: action.status.services
+                      .filter((item) => item.state === "available")
+                      .map((item) => item.capability),
+                  },
+                },
+              },
+        ),
+      };
+    }
     case "connected": {
       const key = `session-${action.session.id}`;
       if (

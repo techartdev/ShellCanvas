@@ -31,6 +31,7 @@ struct SessionInfo {
     id: u64,
     info: HostInfo,
     connections: Vec<ConnectionIdentity>,
+    services: Vec<workspace_services::ServiceStatus>,
 }
 fn error(e: impl std::fmt::Display) -> String {
     e.to_string()
@@ -215,11 +216,14 @@ async fn connect_session(
         active.bind_settings(&resource, service)?;
     }
     let connections = active.identities();
+    active.advertise_capabilities(&info.capabilities);
+    let services = active.status().services;
     state.registry.lock().await.sessions.insert(id, active);
     Ok(SessionInfo {
         id,
         info,
         connections,
+        services,
     })
 }
 
@@ -255,6 +259,20 @@ async fn session_alive(session_id: u64, state: State<'_, DesktopState>) -> Resul
         .sessions
         .get(&session_id)
         .is_some_and(|s| s.is_connected()))
+}
+
+#[tauri::command]
+async fn session_status(
+    session_id: u64,
+    state: State<'_, DesktopState>,
+) -> Result<Option<workspace_services::WorkspaceStatus>, String> {
+    Ok(state
+        .registry
+        .lock()
+        .await
+        .sessions
+        .get(&session_id)
+        .map(|session| session.status()))
 }
 
 async fn filesystem(
@@ -582,6 +600,7 @@ pub fn run() {
             save_profile,
             remove_profile,
             session_alive,
+            session_status,
             connect,
             begin_connect,
             cancel_connect,

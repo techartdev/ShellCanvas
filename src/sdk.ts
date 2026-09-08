@@ -104,6 +104,41 @@ export interface Session {
     generation: number;
     adapter: string;
   }[];
+  /** Complete capability snapshot when supplied by the backend. */
+  services?: readonly ServiceStatus[];
+}
+export interface ServiceStatus {
+  capability: Capability;
+  state: "available" | "unsupported" | "checking" | "disconnected" | "denied";
+  reason?: string | null;
+  source?: { instance: number; generation: number; adapter: string } | null;
+}
+export interface WorkspaceStatus {
+  connected: boolean;
+  services: readonly ServiceStatus[];
+}
+export function capabilityStatus(
+  session: Session,
+  capability: Capability,
+): ServiceStatus {
+  return (
+    session.services?.find((item) => item.capability === capability) ?? {
+      capability,
+      state:
+        !session.services && session.info.capabilities.includes(capability)
+          ? "available"
+          : "unsupported",
+    }
+  );
+}
+export function capabilityReason(
+  session: Session,
+  capability: Capability,
+): string | null {
+  const status = capabilityStatus(session, capability);
+  return status.state === "available"
+    ? null
+    : `Unavailable ${capabilityLabels[capability].toLowerCase()}: ${status.reason || status.state}`;
 }
 export interface FileEntry {
   revision?: string;
@@ -191,6 +226,7 @@ export interface HostServices {
   ): Promise<Session>;
   disconnect(sessionId: number): Promise<void>;
   alive(sessionId: number): Promise<boolean>;
+  status?(sessionId: number): Promise<WorkspaceStatus | null>;
   list(sessionId: number, path?: string): Promise<Directory>;
   preview(sessionId: number, path: string): Promise<string>;
   readText(sessionId: number, path: string): Promise<TextDocument>;
@@ -333,10 +369,10 @@ export function unavailableReason(
   session: Session | null,
 ): string | null {
   if (app.scope === "host" && !session) return "Connect a host to get started";
-  const missing = app.requires.filter(
-    (cap) => !session?.info.capabilities.includes(cap),
-  );
-  return missing.length
-    ? `Unavailable on this device: ${missing.map((cap) => capabilityLabels[cap].toLowerCase()).join(", ")}`
+  return session
+    ? app.requires
+        .map((cap) => capabilityReason(session, cap))
+        .filter(Boolean)
+        .join("; ") || null
     : null;
 }

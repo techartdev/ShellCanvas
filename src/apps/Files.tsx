@@ -872,7 +872,7 @@ export function Files({
             <p>
               {preview
                 ? "A little room for everything."
-                : "Your files, directly over SSH."}
+                : "Your files, directly on your host."}
             </p>
           </div>
           <label className="file-search">

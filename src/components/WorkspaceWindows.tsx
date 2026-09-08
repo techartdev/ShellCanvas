@@ -30,6 +30,9 @@ export function WorkspaceWindows({
     [backend, workspace.session?.id],
   );
   useLayoutEffect(() => {
+    binding.updateAvailability(workspace.session);
+  }, [binding, workspace.session]);
+  useLayoutEffect(() => {
     if (workspace.connected !== false) binding.activate();
     else binding.dispose();
     return binding.dispose;

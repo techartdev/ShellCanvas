@@ -6,6 +6,7 @@ import type {
   SessionServices,
   TransferTicket,
 } from "./sdk";
+import { capabilityStatus, capabilityReason, capabilityLabels } from "./sdk";
 import { notifyFileChanges, beginFileRelocation } from "./file-events";
 import { fileClipboard } from "./file-clipboard";
 
@@ -17,6 +18,9 @@ export function bindSession(
 ) {
   let closed = false;
   let generation = 0;
+  let lifetimeEpoch = 0;
+  let currentSession = session;
+  const changedAt = new Map<Capability, number>();
   const tickets = new Map<number, TransferTicket>();
   async function adopt(
     result: TransferTicket[],
@@ -35,11 +39,29 @@ export function bindSession(
     return result;
   }
   function check(capability: Capability, expected = generation) {
-    if (closed || !session || expected !== generation)
+    if (
+      closed ||
+      !session ||
+      expected < lifetimeEpoch ||
+      expected < (changedAt.get(capability) ?? 0)
+    )
       throw new Error("This host session is no longer connected");
-    if (!session.info.capabilities.includes(capability))
-      throw new Error(`Unavailable on this device: ${capability}`);
+    if (
+      !currentSession ||
+      capabilityStatus(currentSession, capability).state !== "available"
+    )
+      throw new Error(
+        `Unavailable on this device: ${capability}. ${currentSession ? capabilityReason(currentSession, capability) : ""}`,
+      );
     return session.id;
+  }
+  function valid(capability: Capability, expected: number) {
+    try {
+      check(capability, expected);
+      return true;
+    } catch {
+      return false;
+    }
   }
   function mutationCompleted(
     capability: Capability,
@@ -109,10 +131,24 @@ export function bindSession(
       );
       try {
         const result = await backend.runTransfer(id, ticket.id, (event) => {
-          if (!closed && generation === expected) onProgress(event);
+          if (
+            valid(
+              owned.direction === "upload" ? "files.upload" : "files.download",
+              expected,
+            )
+          )
+            onProgress(event);
         });
         if (result.status === "completed" && owned.direction === "upload")
           mutationCompleted("files.upload", expected);
+        if (
+          result.status === "completed" &&
+          owned.direction === "download" &&
+          !valid("files.download", expected)
+        )
+          throw new Error(
+            "The file service changed before the download was confirmed. Check the local destination before retrying.",
+          );
         return result;
       } finally {
         tickets.delete(ticket.id);
@@ -234,10 +270,10 @@ export function bindSession(
         cols,
         rows,
         (event) => {
-          if (!closed && expected === generation) onEvent(event);
+          if (valid("terminal", expected)) onEvent(event);
         },
       );
-      if (closed || expected !== generation) {
+      if (!valid("terminal", expected)) {
         await handle.close();
         throw new Error("This host session is no longer connected");
       }
@@ -256,6 +292,38 @@ export function bindSession(
   };
   return {
     services,
+    updateAvailability: (next: Session | null) => {
+      if (!next || next.id !== session?.id) return;
+      const changes = (Object.keys(capabilityLabels) as Capability[]).filter(
+        (cap) => {
+          const before =
+            currentSession && capabilityStatus(currentSession, cap);
+          const after = capabilityStatus(next, cap);
+          return (
+            before?.state !== after.state ||
+            JSON.stringify(before?.source ?? null) !==
+              JSON.stringify(after.source ?? null)
+          );
+        },
+      );
+      currentSession = next;
+      if (!changes.length) return;
+      ++generation;
+      changes.forEach((cap) => changedAt.set(cap, generation));
+      if (changes.includes("files.move") || changes.includes("files.read")) {
+        fileClipboard(services).dispose();
+        if (valid("files.move", generation)) fileClipboard(services).activate();
+      }
+      for (const [id, ticket] of tickets) {
+        const capability =
+          ticket.direction === "upload" ? "files.upload" : "files.download";
+        if (!changes.includes(capability)) continue;
+        void backend
+          .cancelTransfer(next.id, id)
+          .catch((error) => reportError(`Transfer cleanup failed: ${error}`));
+        tickets.delete(id);
+      }
+    },
     activate: () => {
       closed = false;
       fileClipboard(services).activate();
@@ -263,6 +331,7 @@ export function bindSession(
     dispose: () => {
       closed = true;
       ++generation;
+      lifetimeEpoch = generation;
       fileClipboard(services).dispose();
       for (const id of tickets.keys())
         void backend

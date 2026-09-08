@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
-import type { AppContext } from "../sdk";
-import { capabilityLabels } from "../sdk";
+import type { AppContext, Capability } from "../sdk";
+import { capabilityLabels, capabilityStatus } from "../sdk";
 import { useState } from "react";
 import { RemoteSettings } from "../components/RemoteSettings";
 
@@ -71,13 +71,35 @@ function HostOverview({ session, preview, connected = true }: AppContext) {
         </div>
       </dl>
       <p className="eyebrow">WORKSPACE TOOLS</p>
-      <div className="capability-list">
-        {info.capabilities.map((capability) => (
-          <span key={capability}>
-            {capabilityLabels[capability] ?? capability}
-          </span>
-        ))}
-      </div>
+      <ul
+        className="service-status-list"
+        aria-label="Workspace service availability"
+      >
+        {(Object.keys(capabilityLabels) as Capability[]).map((capability) => {
+          const status = capabilityStatus(session, capability);
+          const state =
+            !connected && status.state === "available"
+              ? "disconnected"
+              : status.state;
+          return (
+            <li key={capability} data-state={state}>
+              <div>
+                <strong>{capabilityLabels[capability]}</strong>
+                <small>
+                  {status.source?.adapter ? `${status.source.adapter} · ` : ""}
+                  {state === "available"
+                    ? "Ready to use"
+                    : status.reason ||
+                      (state === "unsupported"
+                        ? "Not provided by this device"
+                        : state)}
+                </small>
+              </div>
+              <span>{state}</span>
+            </li>
+          );
+        })}
+      </ul>
       {info.capabilities.includes("terminal") && (
         <p>Terminal support is confirmed when a session opens.</p>
       )}

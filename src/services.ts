@@ -94,6 +94,7 @@ export const nativeServices: HostServices = {
   },
   disconnect: (sessionId) => invoke("disconnect", { sessionId }),
   alive: (sessionId) => invoke("session_alive", { sessionId }),
+  status: (sessionId) => invoke("session_status", { sessionId }),
   list: (sessionId, path) => invoke("list_directory", { sessionId, path }),
   preview: (sessionId, path) => invoke("preview_file", { sessionId, path }),
   readText: (sessionId, path) => invoke("read_text", { sessionId, path }),

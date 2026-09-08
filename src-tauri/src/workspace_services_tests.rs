@@ -33,6 +33,44 @@ fn source(id: u64, adapter: &str) -> (Arc<ConnectionResource>, Arc<Transport>) {
         transport,
     )
 }
+
+#[tokio::test]
+async fn status_identifies_each_service_source_and_preserves_partial_availability() {
+    let (files, _) = source(51, "fixture.files");
+    let (console, _) = source(52, "fixture.console");
+    let mut workspace = WorkspaceServices::new(vec![files.clone(), console.clone()]).unwrap();
+    workspace
+        .bind_files(&files, Arc::new(Files::default()))
+        .unwrap();
+    workspace
+        .bind_terminal(&console, Arc::new(Console::default()))
+        .unwrap();
+    let snapshot = serde_json::to_value(workspace.status()).unwrap();
+    assert_eq!(snapshot["services"][0]["state"], "available");
+    assert_eq!(snapshot["services"][0]["source"]["instance"], 52);
+    assert_eq!(snapshot["services"][1]["state"], "available");
+    assert_eq!(snapshot["services"][1]["source"]["instance"], 51);
+    assert_eq!(snapshot["services"][2]["state"], "unsupported");
+    assert!(snapshot["services"][2]["source"].is_null());
+    // A concrete interface must not invent capabilities rejected by discovery.
+    workspace.advertise_capabilities(&["files.read".into()]);
+    let narrowed = serde_json::to_value(workspace.status()).unwrap();
+    assert_eq!(narrowed["services"][0]["state"], "unsupported");
+    assert_eq!(narrowed["services"][1]["state"], "available");
+    workspace.advertise_capabilities(&["terminal".into(), "files.read".into()]);
+    files.disconnect().await.unwrap();
+    let snapshot = serde_json::to_value(workspace.status()).unwrap();
+    assert_eq!(snapshot["connected"], true);
+    assert_eq!(snapshot["services"][0]["state"], "available");
+    assert_eq!(snapshot["services"][1]["state"], "disconnected");
+    assert!(snapshot["services"][1]["reason"]
+        .as_str()
+        .unwrap()
+        .contains("closed"));
+    console.disconnect().await.unwrap();
+    assert!(!workspace.status().connected);
+    workspace.disconnect().await.unwrap();
+}
 #[derive(Default)]
 struct Files {
     calls: AtomicUsize,

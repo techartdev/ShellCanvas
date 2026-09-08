@@ -492,6 +492,53 @@ button:active:not(:disabled) {
   margin: 0;
   overflow-wrap: anywhere;
 }
+.service-status-list {
+  padding: 0;
+  margin: 12px 0 20px;
+  list-style: none;
+  border: 1px solid #a1c5d218;
+  border-radius: 10px;
+  overflow: hidden;
+}
+.bottom-status.partial-status {
+  color: #e7c993;
+}
+.service-status-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  background: #10202a35;
+}
+.service-status-list li + li {
+  border-top: 1px solid #a1c5d210;
+}
+.service-status-list strong {
+  display: block;
+  font-size: 12px;
+  font-weight: 500;
+}
+.service-status-list small {
+  display: block;
+  color: #8da8b9;
+  font-size: 10px;
+  margin-top: 3px;
+  overflow-wrap: anywhere;
+}
+.service-status-list li > span {
+  color: #9caeba;
+  font-size: 10px;
+  text-transform: capitalize;
+  flex-shrink: 0;
+}
+.service-status-list li[data-state="available"] > span {
+  color: #a3ddc5;
+}
+.service-status-list li[data-state="disconnected"] > span,
+.service-status-list li[data-state="denied"] > span {
+  color: #e7c993;
+}
 .capability-list {
   display: flex;
   gap: 8px;

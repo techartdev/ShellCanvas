@@ -66,6 +66,17 @@ export default function App({
   const workspace = workspaces.items.find((w) => w.key === workspaces.active)!;
   const { session, label, desktop } = workspace;
   const connected = !!session && workspace.connected !== false;
+  const sshWorkspace =
+    !!session?.connections?.length &&
+    session.connections.every((source) => source.adapter === "ssh");
+  const partiallyAvailable =
+    connected &&
+    session?.services?.some(
+      (service) =>
+        service.state === "disconnected" ||
+        service.state === "denied" ||
+        service.state === "checking",
+    );
   const [closeWorkspace, setCloseWorkspace] = useState<number | null>(null);
   const [closeApp, setCloseApp] = useState(false);
   const [hostKeyReview, setHostKeyReview] = useState<{
@@ -182,7 +193,15 @@ export default function App({
           .filter((w) => w.session && w.connected !== false)
           .map(async (w) => {
             try {
-              const alive = await services.alive(w.session!.id);
+              const status = services.status
+                ? await services.status(w.session!.id)
+                : undefined;
+              const alive =
+                status === undefined
+                  ? await services.alive(w.session!.id)
+                  : !!status?.connected;
+              if (status && !disposed)
+                update({ type: "status", sessionId: w.session!.id, status });
               if (!alive && !disposed) {
                 update({ type: "lost", sessionId: w.session!.id });
                 setToast(
@@ -525,7 +544,9 @@ export default function App({
             {!isNative
               ? "Design preview · sample data"
               : connected
-                ? "SSH workspace"
+                ? sshWorkspace
+                  ? "SSH workspace"
+                  : "Remote workspace"
                 : session
                   ? "Disconnected workspace"
                   : "Local workspace"}
@@ -601,7 +622,9 @@ export default function App({
             <ShieldCheck size={13} />
             {session
               ? connected && isNative
-                ? "Known host verified"
+                ? sshWorkspace
+                  ? "Known host verified"
+                  : "Workspace connected"
                 : "No remote connection"
               : "SSH. Nothing extra on your host."}
           </span>
@@ -701,13 +724,19 @@ export default function App({
         />
       )}
       <footer className="bottom-bar">
-        <span className="bottom-status">
+        <span
+          className={`bottom-status ${partiallyAvailable ? "partial-status" : ""}`}
+        >
           <Circle size={6} fill="currentColor" />
           {session
             ? !isNative
               ? "Preview mode"
               : connected
-                ? "Connected over SSH"
+                ? partiallyAvailable
+                  ? "Some services unavailable"
+                  : sshWorkspace
+                    ? "Connected over SSH"
+                    : "Workspace connected"
                 : "Disconnected · drafts preserved"
             : "Ready when you are"}
         </span>
