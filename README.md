@@ -32,7 +32,7 @@ Windows output: `target/debug/shellcanvas.exe`. This debug build is for local ev
 - Provider-defined remote settings in Host details: static hostname and timezone on supported Linux/systemd hosts, review before apply, read-only reasons, revision checks and verified readback. [Remote settings and validation limits](docs/remote-settings.md).
 - Move, resize, maximize, minimize, and reopen windows across the full desktop between the top toolbar and bottom dock. Windows can cover desktop widgets, which remain clickable when uncovered. Narrow displays use stacked layouts.
 - Real SSH connections with private-key/passphrase or password authentication.
-- Multiple simultaneous host workspaces. Use the host pill in the top bar to switch; each workspace keeps its Files navigation, terminal buffer and window layout. Add host opens another connection; Disconnect closes only the selected host.
+- Multiple simultaneous host workspaces. Use the host pill in the top bar to switch; each workspace keeps its Files navigation, terminal buffer and window layout. Add host opens another connection; Disconnect releases the selected connection and retains its windows/drafts. Close workspace removes that workspace with an unsaved-work guard.
 - Cancel pending connections and reconnect a lost host in its existing workspace, preserving folders, windows and editor drafts. Reconnection opens fresh shells. [Recovery behavior and limits](docs/connection-recovery.md).
 - Strict verification against the user's `~/.ssh/known_hosts` and ShellCanvas's own trust store. New hosts require explicit fingerprint review; changed/revoked keys remain blocked before authentication. No automatic trust enrollment or security downgrade.
 - Import of basic, explicit `Host` blocks from `~/.ssh/config`. Select the profile and supply any missing username.
@@ -40,7 +40,7 @@ Windows output: `target/debug/shellcanvas.exe`. This debug build is for local ev
 - An xterm.js terminal with binary output streaming, input, PTY resize, and independent SSH channels.
 - Terminal right-click menu: Copy, Paste, Select all, Clear scrollback and New shell. Ctrl+Shift+C/V (or Cmd+C/V on macOS) handles clipboard actions; Ctrl+C remains the remote interrupt. Shift+F10 opens the menu. The terminal viewport stays contained above its footer while resizing.
 - SFTP directory browsing, filtering, parent/back navigation, UTF-8 previews, new folders, rename, **Move to folder…** with destination browsing and no replacement, and confirmed deletion of files/links/empty folders. [File-action behavior and limits](docs/file-actions.md).
-- Native upload/download dialogs, per-window transfer queues, bounded streaming, progress and cancellation. Existing destinations are preserved. [Transfer behavior and limits](docs/transfers.md).
+- Native upload/download dialogs, **Copy to folder…** for regular remote files, per-window transfer queues, bounded streaming, progress and cancellation. Existing destinations are preserved. [Transfer behavior and limits](docs/transfers.md).
 - A remote text editor with independent windows, undo/redo, find, word wrap, clipboard actions and saving existing UTF-8 files up to 256 KiB. Open editors follow workspace file/folder renames and moves while keeping drafts. Atomic SFTP replacement and revision checks detect conflicts; unsupported servers keep preview/draft access. [Save behavior and limits](docs/text-editor.md).
 - Files context menus for open/preview, open folder in a new window, copy name/path/text, navigation and clipboard-path access. Shift+F10 opens menus; Ctrl+C copies a selected path, Ctrl+L focuses the path field, F5 refreshes, and Alt+Left/Up navigates. A folder-actions button provides pointer/touch access.
 - Cut (Ctrl+X) and Paste here (Ctrl+V) move an item between Files windows in the same workspace. A shared banner shows the pending item; Escape cancels the cut. Existing destinations are never replaced. [File clipboard behavior](docs/file-clipboard.md).
@@ -56,8 +56,8 @@ Windows output: `target/debug/shellcanvas.exe`. This debug build is for local ev
 Files and Editor now consume [provider-owned navigation metadata](docs/filesystem-contract.md), including opaque paths and multiple roots. The production adapter still uses POSIX SFTP conventions; other path models are verified through synthetic providers.
 
 - Files and Terminal support multiple instances; other apps opt in through their manifest. Workspace state survives switching during this app run; it is not restored after closing the workspace or restarting the app. Reconnecting starts a new session and shell; it does not restore remote processes.
-- Transfers support regular files; directory transfer, resume and overwrite are not implemented. Files can move items within the current host's file service; recursive deletion, remote copy and cross-host moves remain pending. New text files can be created through the Editor's Save As form; existing destinations are refused. **The terminal is a real shell with all permissions of the authenticated account**, including root when selected.
-- Editor drafts survive workspace switches and connection loss. Deliberate window/workspace/app closure guards unsaved work; forced termination can still lose in-memory drafts. Save As supports new names; replacing an existing destination through Save As and crash recovery are not implemented yet.
+- Transfers support regular files; directory transfer, resume and overwrite are not implemented. Files can move items and copy regular files within the current host's file service; recursive deletion, directory copy, remote Copy/Paste and cross-host operations remain pending. **The terminal is a real shell with all permissions of the authenticated account**, including root when selected.
+- Editor drafts survive workspace switches and connection loss. Deliberate window/workspace/app closure guards unsaved work; forced termination can still lose in-memory drafts. Save As supports new names and explicit replacement review with revision checks. Crash recovery is not implemented yet.
 - Passwords and key passphrases are not persisted. Key files remain in their existing location. Named SSH profiles are stored as versioned `hosts.json` in Tauri's app data directory (Windows: `%APPDATA%/dev.shellcanvas.client`), with atomic replacement and a cross-process lock. Unrecognized/corrupt files are reported and preserved. Secure credential-vault integration remains future work. Non-secret desktop/app preferences use versioned local WebView storage; they are separate from host profiles and editor drafts.
 - The importer is not a full OpenSSH configuration interpreter: `Include`, `Match`, wildcard defaults, `ProxyCommand`, `ProxyJump`, SSH agents, hardware keys, and host certificates are unsupported. Imported fields are editable before connecting.
 - Host-key checks support ordinary/hashed entries, wildcard and negated patterns, ports, aliases and revocation. Unrelated markers do not block known hosts; certificate verification remains unsupported. Malformed trust files fail closed. [SSH trust behavior and limits](docs/ssh-host-trust.md).
@@ -68,10 +68,11 @@ Files and Editor now consume [provider-owned navigation metadata](docs/filesyste
 ## Verify
 
 ```sh
-npm run build
-npm test
-cargo test --workspace
+npm run verify
+npm run verify -- --native
 ```
+
+The second command also builds the current platform's debug executable. Both stop on failure and write a local report; neither launches UI walkthroughs or remote probes. See [verification scope and release checklist](docs/verification.md).
 
 For an explicitly authorized host already present in `known_hosts`:
 

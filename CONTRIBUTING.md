@@ -8,7 +8,7 @@ Use [the roadmap](ROADMAP.md) for priorities and [the backlog](BACKLOG.md) for t
 
 1. Install the prerequisites in the README.
 2. Run `npm ci` and `npm run desktop`.
-3. Run `npm run build`, `npm test`, and `cargo test --workspace` before submitting a change.
+3. Run `npm run verify` before submitting a change; use `npm run verify -- --native` for a desktop build. See the [verification guide](docs/verification.md) for reports, failure handling and manual gates.
 4. Keep credentials, host addresses, terminal transcripts, and remote files out of commits and screenshots intended for publication.
 
 Use `npm run dev` for visual work with synthetic data. Tests against a real SSH host require its owner's authorization. Keep automated integration checks read-only unless a disposable fixture directory is explicitly designated.

@@ -8,6 +8,7 @@
     "dev": "vite --host 127.0.0.1",
     "build": "tsc -b && vite build",
     "test": "vitest run",
+    "verify": "node scripts/verify.mjs",
     "tauri": "tauri",
     "desktop": "tauri dev",
     "format": "prettier --write src vite.config.ts *.json *.md docs/*.md src-tauri/*.json src-tauri/capabilities/*.json"
