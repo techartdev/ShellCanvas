@@ -20,7 +20,19 @@ Workspace disconnect releases all connections concurrently and collects failures
 
 ## Evidence and remaining work
 
-Seven focused tests cover independent FTP-like files and serial-like console sources, failure of the file leg with continued console byte I/O, shared leases across workspaces, last-owner release, duplicate/foreign binding refusal, file-source isolation, delayed reads, uncertain writes, late console cleanup, transfer I/O refusal and abort after closure. They use fake adapters through real neutral service interfaces; they do not implement FTP or serial protocols.
+### Prepared source replacement
+
+The native owner now gives each selected connection its own workspace-local lifetime. `replace_source(expectedIdentity, preparedWorkspace)` commits a prepared, single-source replacement synchronously. The expected identity must still match; the replacement must be connected, use a fresh identity or higher generation, and preserve exactly the selected service families. Retired generations remain recorded so switching A → B → A cannot revive an old approval. It cannot take over an unrelated source or collide with its custom methods. Validation failure drops the candidate and leaves current bindings untouched.
+
+File, console, settings and custom-service selections are tracked independently of actual support. A selected Files source may provide no file capabilities now and gain them after replacement. Its identity still appears on unsupported status entries. Replacing Files can lose editing/transfer capabilities without retaining old implementations. Discovery restrictions on other sources remain unchanged.
+
+Commit retires the replaced source's old handles immediately, including retained console/transfer/custom handles, while preserving the other sources' handle identities. In-flight reads cannot return stale results; dispatched writes/custom calls report an uncertain outcome after retirement. The prepared services retain their own lifetime after ownership moves into the live workspace. Another workspace sharing the retired connection keeps its independent lease and handles.
+
+The transaction returns the old connection lease. Close it outside the registry lock; teardown failure is a post-commit cleanup failure, not permission to retry or roll back the replacement. Dropping that lease still triggers final-owner cleanup.
+
+This is a native construction API, **not yet an exposed desktop replacement feature**. The remaining IPC and UI work must capture and validate source generations before dispatch. Looking up the latest service through an unchanged session ID would silently retarget queued calls and provider-owned paths. The desktop also needs per-source acceptance, affected-operation cancellation and a replacement flow that preserves unaffected terminals and windows. The API is intentionally not exposed until those callers are generation-aware.
+
+The ownership regression suite covers independent FTP-like files and serial-like console sources, failure of the file leg with continued console byte I/O, shared leases across workspaces, last-owner release, duplicate/foreign binding refusal, file-source isolation, delayed reads, uncertain writes, late console cleanup, transfer I/O refusal and abort after closure. Replacement cases additionally cover a surviving open console, abandoned/rejected/competing proposals, retired-generation reuse, capability loss/recovery, post-commit cleanup failure and preserved custom bindings. They use fake adapters through real neutral service interfaces; they do not implement FTP or serial protocols.
 
 All 53 Rust tests, all-target Clippy and the standard Windows debug build passed. The authorized evtinsait probe exercised the production owner with read-only SFTP, two independent terminals, resizing, surviving-console input, closed-workspace file refusal and teardown. It changed no remote files. The existing terminal layout was rechecked at 500px and 260px: unused row space matches the theme and stays above the footer; no further terminal source change was needed.
 

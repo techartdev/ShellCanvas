@@ -30,14 +30,14 @@ pub struct WorkspaceStatus {
 
 #[derive(Clone)]
 struct Binding {
-    workspace: Arc<AtomicBool>,
+    alive: Arc<AtomicBool>,
     source: Arc<ConnectionResource>,
     role: &'static str,
 }
 impl Binding {
     fn check(&self) -> Result<()> {
-        if !self.workspace.load(Ordering::Acquire) {
-            bail!("The workspace owning this service is closed");
+        if !self.alive.load(Ordering::Acquire) {
+            bail!("The workspace service binding is closed");
         }
         if !self.source.is_connected() {
             bail!(
@@ -75,10 +75,39 @@ struct Bound<T: ?Sized> {
     service: Arc<T>,
 }
 
+struct OwnedSource {
+    lease: ConnectionLease,
+    alive: Arc<AtomicBool>,
+}
+impl OwnedSource {
+    fn resource(&self) -> &Arc<ConnectionResource> {
+        self.lease.resource()
+    }
+}
+
+/// A selected service family, including families the source cannot currently supply.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub enum ServiceRole {
+    Files,
+    Console,
+    HostSettings,
+    Custom(String),
+}
+impl ServiceRole {
+    fn standard(field: &str) -> Self {
+        match field {
+            "terminal" => Self::Console,
+            "settings" => Self::HostSettings,
+            _ => Self::Files,
+        }
+    }
+}
+
 pub struct WorkspaceServices {
     alive: Arc<AtomicBool>,
-    connections: Vec<ConnectionLease>,
-    file_source: Option<Arc<ConnectionResource>>,
+    connections: Vec<OwnedSource>,
+    generations: HashMap<u64, u64>,
+    selected: HashMap<ServiceRole, Arc<ConnectionResource>>,
     sources: HashMap<&'static str, Arc<ConnectionResource>>,
     advertised: Option<HashSet<String>>,
     custom: Vec<Arc<crate::custom_binding::CustomBinding>>,
@@ -91,7 +120,7 @@ pub struct WorkspaceServices {
     pub settings: Option<Arc<dyn HostSettingsService>>,
 }
 macro_rules! bind_role {
-    ($method:ident, $field:ident, $service:ident, $files:literal) => {
+    ($method:ident, $field:ident, $service:ident) => {
         pub fn $method(
             &mut self,
             source: &Arc<ConnectionResource>,
@@ -100,22 +129,10 @@ macro_rules! bind_role {
             if self.$field.is_some() {
                 return Err(concat!(stringify!($field), " already has an explicit binding").into());
             }
-            if !self
-                .connections
-                .iter()
-                .any(|lease| Arc::ptr_eq(lease.resource(), source))
-            {
-                return Err("The selected service source is not owned by this workspace".into());
-            }
-            if $files {
-                if self.file_source.as_ref().is_some_and(|selected| !Arc::ptr_eq(selected, source)) {
-                    return Err("File services must share one explicit source; cross-source path mapping is unavailable".into());
-                }
-                self.file_source = Some(source.clone());
-            }
+            self.select_service(source, ServiceRole::standard(stringify!($field)))?;
             self.$field = Some(Arc::new(Bound {
                 binding: Binding {
-                    workspace: self.alive.clone(),
+                    alive: self.source_lifetime(source)?,
                     source: source.clone(),
                     role: stringify!($field),
                 },
@@ -128,7 +145,7 @@ macro_rules! bind_role {
 }
 impl WorkspaceServices {
     pub fn new(sources: Vec<Arc<ConnectionResource>>) -> Result<Self, String> {
-        let mut connections: Vec<ConnectionLease> = Vec::new();
+        let mut connections: Vec<OwnedSource> = Vec::new();
         for source in sources {
             if let Some(existing) = connections
                 .iter()
@@ -139,12 +156,22 @@ impl WorkspaceServices {
                 }
                 return Err("Conflicting connection instances in workspace".into());
             }
-            connections.push(source.lease()?);
+            connections.push(OwnedSource {
+                lease: source.lease()?,
+                alive: Arc::new(AtomicBool::new(true)),
+            });
         }
         Ok(Self {
             alive: Arc::new(AtomicBool::new(true)),
+            generations: connections
+                .iter()
+                .map(|owned| {
+                    let identity = owned.resource().identity();
+                    (identity.instance, identity.generation)
+                })
+                .collect(),
             connections,
-            file_source: None,
+            selected: HashMap::new(),
             sources: HashMap::new(),
             advertised: None,
             custom: Vec::new(),
@@ -163,20 +190,167 @@ impl WorkspaceServices {
             .map(|lease| lease.resource().identity().clone())
             .collect()
     }
+    fn source_lifetime(&self, source: &Arc<ConnectionResource>) -> Result<Arc<AtomicBool>, String> {
+        self.connections
+            .iter()
+            .find(|owned| Arc::ptr_eq(owned.resource(), source))
+            .map(|owned| owned.alive.clone())
+            .ok_or_else(|| "The selected service source is not owned by this workspace".into())
+    }
+    pub fn select_service(
+        &mut self,
+        source: &Arc<ConnectionResource>,
+        role: ServiceRole,
+    ) -> Result<(), String> {
+        self.source_lifetime(source)?;
+        if self
+            .selected
+            .get(&role)
+            .is_some_and(|old| !Arc::ptr_eq(old, source))
+        {
+            return Err("Service family already has an explicit source; cross-source path mapping is unavailable".into());
+        }
+        if let ServiceRole::Custom(id) = &role {
+            if !custom_service_id(id) {
+                return Err("Invalid custom service role".into());
+            }
+        }
+        self.selected.insert(role, source.clone());
+        Ok(())
+    }
+    /// Commit a fully prepared source without awaiting or changing unrelated handles.
+    /// The caller closes the returned lease outside its registry lock. A cleanup
+    /// failure occurs after commit and must not be treated as a failed replacement.
+    /// IPC callers must capture/validate source generations before using this API.
+    #[cfg_attr(
+        not(test),
+        expect(
+            dead_code,
+            reason = "Source replacement IPC must first capture service generations"
+        )
+    )]
+    pub fn replace_source(
+        &mut self,
+        expected: &ConnectionIdentity,
+        mut replacement: Self,
+    ) -> Result<ConnectionLease, String> {
+        if !self.alive.load(Ordering::Acquire) {
+            return Err("The workspace is closed".into());
+        }
+        let index = self
+            .connections
+            .iter()
+            .position(|owned| owned.resource().identity() == expected)
+            .ok_or("The selected connection changed before replacement")?;
+        if replacement.connections.len() != 1 || !replacement.is_connected() {
+            return Err("Replacement requires exactly one connected source".into());
+        }
+        let old = self.connections[index].resource().clone();
+        let fresh = replacement.connections[0].resource().clone();
+        let identity = fresh.identity();
+        if self
+            .generations
+            .get(&identity.instance)
+            .is_some_and(|last| identity.generation <= *last)
+            || self.connections.iter().enumerate().any(|(i, owned)| {
+                i != index && owned.resource().identity().instance == identity.instance
+            })
+        {
+            return Err("Replacement requires a fresh, non-conflicting connection identity".into());
+        }
+        let roles: HashSet<_> = self
+            .selected
+            .iter()
+            .filter(|(_, resource)| Arc::ptr_eq(resource, &old))
+            .map(|(role, _)| role.clone())
+            .collect();
+        if roles.is_empty() || roles != replacement.selected.keys().cloned().collect() {
+            return Err("Replacement must preserve the selected service families".into());
+        }
+        let incoming_methods = replacement.custom_methods();
+        if self
+            .custom
+            .iter()
+            .filter(|binding| !Arc::ptr_eq(binding.source(), &old))
+            .flat_map(|binding| binding.methods())
+            .any(|method| {
+                incoming_methods
+                    .iter()
+                    .any(|incoming| incoming.name == method.name)
+            })
+        {
+            return Err("Replacement custom methods conflict with another source".into());
+        }
+        // Preserve discovery restrictions on unaffected sources. Recompute only
+        // the replaced families, allowing their actual capabilities to change.
+        let mut capabilities: HashSet<String> = self
+            .status()
+            .services
+            .into_iter()
+            .filter(|status| {
+                status.state != "unsupported"
+                    && !roles.contains(&ServiceRole::standard(match status.capability {
+                        "terminal" => "terminal",
+                        "host.settings" => "settings",
+                        _ => "files",
+                    }))
+            })
+            .map(|status| status.capability.into())
+            .collect();
+        capabilities.extend(
+            replacement
+                .status()
+                .services
+                .into_iter()
+                .filter(|status| status.state != "unsupported")
+                .map(|status| status.capability.to_string()),
+        );
+
+        // All validation precedes this point. Source-local lifetimes move with
+        // the prepared services; dropping the empty candidate cannot retire them.
+        let incoming = replacement
+            .connections
+            .pop()
+            .expect("validated source count");
+        let retired = std::mem::replace(&mut self.connections[index], incoming);
+        retired.alive.store(false, Ordering::Release);
+        self.generations
+            .insert(identity.instance, identity.generation);
+        if roles.contains(&ServiceRole::Files) {
+            self.files = replacement.files.take();
+            self.text = replacement.text.take();
+            self.mutations = replacement.mutations.take();
+            self.moves = replacement.moves.take();
+            self.transfers = replacement.transfers.take();
+        }
+        if roles.contains(&ServiceRole::Console) {
+            self.terminal = replacement.terminal.take();
+        }
+        if roles.contains(&ServiceRole::HostSettings) {
+            self.settings = replacement.settings.take();
+        }
+        self.custom
+            .retain(|binding| !Arc::ptr_eq(binding.source(), &old));
+        self.custom.append(&mut replacement.custom);
+        self.sources
+            .retain(|_, resource| !Arc::ptr_eq(resource, &old));
+        self.sources.extend(replacement.sources.drain());
+        for role in roles {
+            self.selected.insert(role, fresh.clone());
+        }
+        self.advertised = Some(capabilities);
+        Ok(retired.lease)
+    }
     pub fn bind_custom(
         &mut self,
         source: &Arc<ConnectionResource>,
         service: Arc<dyn CustomService>,
     ) -> Result<(), String> {
-        if !self
-            .connections
-            .iter()
-            .any(|lease| Arc::ptr_eq(lease.resource(), source))
-        {
-            return Err("Custom service source is not owned by this workspace".into());
-        }
-        let binding =
-            crate::custom_binding::CustomBinding::new(self.alive.clone(), source.clone(), service)?;
+        let binding = crate::custom_binding::CustomBinding::new(
+            self.source_lifetime(source)?,
+            source.clone(),
+            service,
+        )?;
         let methods = binding.methods();
         if self.custom_methods().iter().any(|old| {
             methods
@@ -185,6 +359,7 @@ impl WorkspaceServices {
         }) {
             return Err("Custom service already has an explicit binding".into());
         }
+        self.select_service(source, ServiceRole::Custom(methods[0].service.clone()))?;
         self.custom.push(Arc::new(binding));
         Ok(())
     }
@@ -249,7 +424,9 @@ impl WorkspaceServices {
                 } else {
                     None
                 },
-                source: source.map(|source| source.identity().clone()),
+                source: source
+                    .or_else(|| self.selected.get(&ServiceRole::standard(role)))
+                    .map(|source| source.identity().clone()),
             }
         })
         .collect();
@@ -274,8 +451,9 @@ impl WorkspaceServices {
     pub async fn disconnect(mut self) -> Result<(), String> {
         self.alive.store(false, Ordering::Release);
         let mut tasks = tokio::task::JoinSet::new();
-        for lease in self.connections.drain(..) {
-            tasks.spawn(lease.close());
+        for owned in self.connections.drain(..) {
+            owned.alive.store(false, Ordering::Release);
+            tasks.spawn(owned.lease.close());
         }
         let mut errors = Vec::new();
         while let Some(result) = tasks.join_next().await {
@@ -291,17 +469,20 @@ impl WorkspaceServices {
             Err(errors.join("; "))
         }
     }
-    bind_role!(bind_terminal, terminal, TerminalService, false);
-    bind_role!(bind_files, files, FileSystemProvider, true);
-    bind_role!(bind_text, text, TextFileService, true);
-    bind_role!(bind_mutations, mutations, FileMutationService, true);
-    bind_role!(bind_moves, moves, FileMoveService, true);
-    bind_role!(bind_transfers, transfers, FileTransferService, true);
-    bind_role!(bind_settings, settings, HostSettingsService, false);
+    bind_role!(bind_terminal, terminal, TerminalService);
+    bind_role!(bind_files, files, FileSystemProvider);
+    bind_role!(bind_text, text, TextFileService);
+    bind_role!(bind_mutations, mutations, FileMutationService);
+    bind_role!(bind_moves, moves, FileMoveService);
+    bind_role!(bind_transfers, transfers, FileTransferService);
+    bind_role!(bind_settings, settings, HostSettingsService);
 }
 impl Drop for WorkspaceServices {
     fn drop(&mut self) {
         self.alive.store(false, Ordering::Release);
+        for owned in &self.connections {
+            owned.alive.store(false, Ordering::Release);
+        }
     }
 }
 

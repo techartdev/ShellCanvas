@@ -3,6 +3,258 @@ use super::*;
 use std::sync::{atomic::AtomicUsize, Mutex};
 use tokio::sync::Notify;
 
+fn file_workspace(resource: &Arc<ConnectionResource>) -> WorkspaceServices {
+    let mut workspace = WorkspaceServices::new(vec![resource.clone()]).unwrap();
+    workspace
+        .bind_files(resource, Arc::new(Files::default()))
+        .unwrap();
+    workspace
+}
+
+#[tokio::test]
+async fn retirement_failure_is_post_commit_and_does_not_discard_the_new_source() {
+    struct FailingCleanup;
+    #[async_trait]
+    impl ConnectionLifecycle for FailingCleanup {
+        fn is_connected(&self) -> bool {
+            true
+        }
+        async fn disconnect(&self) -> Result<()> {
+            bail!("fixture cleanup failed")
+        }
+    }
+    let old = ConnectionResource::new(
+        ConnectionIdentity {
+            instance: 150,
+            generation: 1,
+            adapter: "fixture.cleanup".into(),
+        },
+        Arc::new(FailingCleanup),
+    );
+    let (fresh, _) = source(151, "fixture.files");
+    let mut workspace = file_workspace(&old);
+    let retired = workspace
+        .replace_source(old.identity(), file_workspace(&fresh))
+        .unwrap();
+    assert!(retired
+        .close()
+        .await
+        .unwrap_err()
+        .contains("cleanup failed"));
+    assert_eq!(workspace.identities(), vec![fresh.identity().clone()]);
+    workspace
+        .files
+        .as_ref()
+        .unwrap()
+        .list(Some("opaque@files"))
+        .await
+        .unwrap();
+    workspace.disconnect().await.unwrap();
+}
+
+#[tokio::test]
+async fn source_replacement_preserves_live_console_and_other_workspace_lease() {
+    let (old, old_transport) = source(101, "fixture.files");
+    let (console_source, console_transport) = source(102, "fixture.console");
+    let (fresh, fresh_transport) = source(103, "fixture.files.v2");
+    let files = Arc::new(Files::default());
+    files.delay.store(true, Ordering::SeqCst);
+    let mut workspace = WorkspaceServices::new(vec![old.clone(), console_source.clone()]).unwrap();
+    workspace.bind_files(&old, files.clone()).unwrap();
+    workspace
+        .bind_terminal(&console_source, Arc::new(Console::default()))
+        .unwrap();
+    let survivor = file_workspace(&old);
+    let old_files = workspace.files.clone().unwrap();
+    let pending_handle = old_files.clone();
+    let pending = tokio::spawn(async move { pending_handle.preview("opaque@document").await });
+    files.entered.notified().await;
+    let terminal = workspace.terminal.clone().unwrap();
+    let mut stream = terminal.open(TerminalSize::new(80, 24)).await.unwrap();
+    let prepared = file_workspace(&fresh);
+    // Preparing a replacement has no effect on current services.
+    old_files.list(Some("opaque@files")).await.unwrap();
+    let retired = workspace.replace_source(old.identity(), prepared).unwrap();
+    assert!(Arc::ptr_eq(&terminal, workspace.terminal.as_ref().unwrap()));
+    assert!(old_files.list(Some("opaque@files")).await.is_err());
+    files.release.notify_one();
+    assert!(pending.await.unwrap().is_err());
+    stream.writer.write(b"still running").await.unwrap();
+    assert_eq!(stream.reader.read().await.unwrap(), Some(vec![0, 255, 42]));
+    workspace
+        .files
+        .as_ref()
+        .unwrap()
+        .list(Some("opaque@files"))
+        .await
+        .unwrap();
+    retired.close().await.unwrap();
+    assert_eq!(old_transport.closes.load(Ordering::SeqCst), 0);
+    survivor
+        .files
+        .as_ref()
+        .unwrap()
+        .list(Some("opaque@files"))
+        .await
+        .unwrap();
+    assert_eq!(console_transport.closes.load(Ordering::SeqCst), 0);
+    let new_files = workspace.files.clone().unwrap();
+    workspace.disconnect().await.unwrap();
+    assert!(new_files.list(Some("opaque@files")).await.is_err());
+    assert!(stream.writer.write(b"closed").await.is_err());
+    assert_eq!(fresh_transport.closes.load(Ordering::SeqCst), 1);
+    assert_eq!(console_transport.closes.load(Ordering::SeqCst), 1);
+    survivor.disconnect().await.unwrap();
+    assert_eq!(old_transport.closes.load(Ordering::SeqCst), 1);
+}
+
+#[tokio::test]
+async fn rejected_replacement_never_changes_current_bindings_and_releases_candidate() {
+    let (old, _) = source(110, "fixture.files");
+    let (console, _) = source(111, "fixture.console");
+    let mut workspace = WorkspaceServices::new(vec![old.clone(), console.clone()]).unwrap();
+    workspace
+        .bind_files(&old, Arc::new(Files::default()))
+        .unwrap();
+    workspace
+        .bind_terminal(&console, Arc::new(Console::default()))
+        .unwrap();
+    let original = workspace.files.clone().unwrap();
+    // A files replacement cannot claim the surviving console's family.
+    let (wrong, wrong_transport) = source(112, "fixture.wrong");
+    let mut candidate = file_workspace(&wrong);
+    candidate
+        .bind_terminal(&wrong, Arc::new(Console::default()))
+        .unwrap();
+    assert!(workspace.replace_source(old.identity(), candidate).is_err());
+    wrong.disconnect().await.unwrap();
+    assert_eq!(wrong_transport.closes.load(Ordering::SeqCst), 1);
+    // Nor can it reuse another connection's instance or the old generation.
+    for id in [110, 111] {
+        let (collision, _) = source(id, "fixture.collision");
+        assert!(workspace
+            .replace_source(old.identity(), file_workspace(&collision))
+            .is_err());
+        collision.disconnect().await.unwrap();
+    }
+    let (disconnected, _) = source(113, "fixture.failed");
+    let candidate = file_workspace(&disconnected);
+    disconnected.disconnect().await.unwrap();
+    assert!(workspace.replace_source(old.identity(), candidate).is_err());
+    assert!(Arc::ptr_eq(&original, workspace.files.as_ref().unwrap()));
+    original.list(Some("opaque@files")).await.unwrap();
+    // A second concurrent proposal cannot overwrite an already committed one.
+    let (first, _) = source(114, "fixture.first");
+    workspace
+        .replace_source(old.identity(), file_workspace(&first))
+        .unwrap()
+        .close()
+        .await
+        .unwrap();
+    let (late, _) = source(115, "fixture.late");
+    assert!(workspace
+        .replace_source(old.identity(), file_workspace(&late))
+        .is_err());
+    // A->B->A with the original generation must not make an old approval valid again.
+    let (reused, _) = source(110, "fixture.files");
+    assert!(workspace
+        .replace_source(first.identity(), file_workspace(&reused))
+        .is_err());
+    reused.disconnect().await.unwrap();
+    assert_eq!(
+        workspace.status().services[1].source,
+        Some(first.identity().clone())
+    );
+    workspace
+        .files
+        .as_ref()
+        .unwrap()
+        .list(Some("opaque@files"))
+        .await
+        .unwrap();
+    late.disconnect().await.unwrap();
+    workspace.disconnect().await.unwrap();
+}
+
+#[tokio::test]
+async fn selected_unavailable_family_can_recover_and_lose_capabilities_again() {
+    let (old, _) = source(120, "fixture.unavailable");
+    let (fresh, _) = source(121, "fixture.files");
+    let (last, _) = source(122, "fixture.no-files");
+    let mut workspace = WorkspaceServices::new(vec![old.clone()]).unwrap();
+    workspace.select_service(&old, ServiceRole::Files).unwrap();
+    workspace.advertise_capabilities(&[]);
+    assert_eq!(workspace.status().services[1].state, "unsupported");
+    assert_eq!(
+        workspace.status().services[1].source,
+        Some(old.identity().clone())
+    );
+    workspace
+        .replace_source(old.identity(), file_workspace(&fresh))
+        .unwrap()
+        .close()
+        .await
+        .unwrap();
+    assert_eq!(workspace.status().services[1].state, "available");
+    let handle = workspace.files.clone().unwrap();
+    let mut candidate = WorkspaceServices::new(vec![last.clone()]).unwrap();
+    candidate.select_service(&last, ServiceRole::Files).unwrap();
+    workspace
+        .replace_source(fresh.identity(), candidate)
+        .unwrap()
+        .close()
+        .await
+        .unwrap();
+    assert!(workspace.files.is_none());
+    assert!(handle.preview("opaque@document").await.is_err());
+    assert_eq!(workspace.status().services[1].state, "unsupported");
+    assert_eq!(
+        workspace.status().services[1].source,
+        Some(last.identity().clone())
+    );
+    workspace.disconnect().await.unwrap();
+}
+
+#[tokio::test]
+async fn higher_generation_replacement_and_candidate_drop_keep_correct_lifetimes() {
+    let (old, _) = source(130, "fixture.files");
+    let transport = Arc::new(Transport::default());
+    let fresh = ConnectionResource::new(
+        ConnectionIdentity {
+            generation: 2,
+            ..old.identity().clone()
+        },
+        transport,
+    );
+    let mut workspace = file_workspace(&old);
+    // Abandoning a prepared proposal does not retire any active source.
+    let (abandoned, _) = source(131, "fixture.abandoned");
+    drop(file_workspace(&abandoned));
+    workspace
+        .files
+        .as_ref()
+        .unwrap()
+        .list(Some("opaque@files"))
+        .await
+        .unwrap();
+    workspace
+        .replace_source(old.identity(), file_workspace(&fresh))
+        .unwrap()
+        .close()
+        .await
+        .unwrap();
+    workspace
+        .files
+        .as_ref()
+        .unwrap()
+        .list(Some("opaque@files"))
+        .await
+        .unwrap();
+    assert_eq!(workspace.identities(), vec![fresh.identity().clone()]);
+    workspace.disconnect().await.unwrap();
+    abandoned.disconnect().await.unwrap();
+}
+
 #[derive(Default)]
 struct Transport {
     closed: AtomicBool,
@@ -51,7 +303,7 @@ async fn status_identifies_each_service_source_and_preserves_partial_availabilit
     assert_eq!(snapshot["services"][1]["state"], "available");
     assert_eq!(snapshot["services"][1]["source"]["instance"], 51);
     assert_eq!(snapshot["services"][2]["state"], "unsupported");
-    assert!(snapshot["services"][2]["source"].is_null());
+    assert_eq!(snapshot["services"][2]["source"]["instance"], 51);
     // A concrete interface must not invent capabilities rejected by discovery.
     workspace.advertise_capabilities(&["files.read".into()]);
     let narrowed = serde_json::to_value(workspace.status()).unwrap();
@@ -307,25 +559,45 @@ async fn dispatched_write_after_workspace_close_reports_uncertainty_and_never_re
             })
         }
     }
-    let (source, _) = source(8, "fixture.files");
-    let mut workspace = WorkspaceServices::new(vec![source.clone()]).unwrap();
-    let survivor = WorkspaceServices::new(vec![source.clone()]).unwrap();
-    let text = Arc::new(Text {
-        entered: Notify::new(),
-        release: Notify::new(),
-        writes: AtomicUsize::new(0),
-    });
-    workspace.bind_text(&source, text.clone()).unwrap();
-    let handle = workspace.text.clone().unwrap();
-    let task = tokio::spawn(async move { handle.save_text("opaque@text", "draft", "old").await });
-    text.entered.notified().await;
-    workspace.disconnect().await.unwrap();
-    assert!(survivor.is_connected());
-    text.release.notify_one();
-    let error = task.await.unwrap().err().unwrap().to_string();
-    assert!(error.contains("uncertain"));
-    assert_eq!(text.writes.load(Ordering::SeqCst), 1);
-    survivor.disconnect().await.unwrap();
+    for replace in [false, true] {
+        let (resource, _) = source(8, "fixture.files");
+        let mut workspace = WorkspaceServices::new(vec![resource.clone()]).unwrap();
+        let survivor = WorkspaceServices::new(vec![resource.clone()]).unwrap();
+        let text = Arc::new(Text {
+            entered: Notify::new(),
+            release: Notify::new(),
+            writes: AtomicUsize::new(0),
+        });
+        workspace.bind_text(&resource, text.clone()).unwrap();
+        let handle = workspace.text.clone().unwrap();
+        let task =
+            tokio::spawn(async move { handle.save_text("opaque@text", "draft", "old").await });
+        text.entered.notified().await;
+        if replace {
+            let (fresh, _) = source(140, "fixture.replacement");
+            workspace
+                .replace_source(resource.identity(), file_workspace(&fresh))
+                .unwrap()
+                .close()
+                .await
+                .unwrap();
+            workspace
+                .files
+                .as_ref()
+                .unwrap()
+                .list(Some("opaque@files"))
+                .await
+                .unwrap();
+        } else {
+            workspace.disconnect().await.unwrap();
+        }
+        assert!(survivor.is_connected());
+        text.release.notify_one();
+        let error = task.await.unwrap().err().unwrap().to_string();
+        assert!(error.contains("uncertain"));
+        assert_eq!(text.writes.load(Ordering::SeqCst), 1);
+        survivor.disconnect().await.unwrap();
+    }
 }
 
 #[tokio::test]

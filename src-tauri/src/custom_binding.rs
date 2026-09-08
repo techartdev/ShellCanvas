@@ -21,6 +21,9 @@ pub struct CustomBinding {
     methods: Vec<CustomMethodInfo>,
 }
 impl CustomBinding {
+    pub fn source(&self) -> &Arc<ConnectionResource> {
+        &self.source
+    }
     pub fn new(
         alive: Arc<AtomicBool>,
         source: Arc<ConnectionResource>,
@@ -222,6 +225,112 @@ mod tests {
             .custom_methods()
             .iter()
             .all(|method| !method.available));
+    }
+    #[tokio::test]
+    async fn replacement_retires_only_selected_custom_handles_and_late_calls() {
+        let old = source(11);
+        let other = source(12);
+        let fresh = source(13);
+        let mut workspace = WorkspaceServices::new(vec![old.clone(), other.clone()]).unwrap();
+        let mut other_service = Service::new();
+        Arc::get_mut(&mut other_service).unwrap().descriptor = CustomServiceDescriptor {
+            id: "other".into(),
+            version: 1,
+            methods: vec!["other.echo".into()],
+        };
+        let old_service = Service::new();
+        workspace.bind_custom(&old, old_service.clone()).unwrap();
+        workspace.bind_custom(&other, other_service).unwrap();
+        let infos = workspace.custom_methods();
+        let original = infos.iter().find(|info| info.service == "acme").unwrap();
+        let unaffected = infos.iter().find(|info| info.service == "other").unwrap();
+        let retained = workspace
+            .custom_method(&original.name, &original.binding)
+            .unwrap();
+        let pending_handle = retained.clone();
+        let pending = tokio::spawn(async move {
+            pending_handle
+                .call("acme.echo", serde_json::Value::Null)
+                .await
+        });
+        old_service.started.notified().await;
+        let mut replacement = WorkspaceServices::new(vec![fresh.clone()]).unwrap();
+        let new_service = Service::new();
+        replacement
+            .bind_custom(&fresh, new_service.clone())
+            .unwrap();
+        let retired = workspace
+            .replace_source(old.identity(), replacement)
+            .unwrap();
+        assert!(workspace
+            .custom_method(&original.name, &original.binding)
+            .is_none());
+        assert!(workspace
+            .custom_method(&unaffected.name, &unaffected.binding)
+            .is_some());
+        old_service.finish.notify_one();
+        let error = pending.await.unwrap().unwrap_err();
+        assert_eq!(error.code, "closed");
+        assert!(error.outcome_uncertain);
+        assert!(
+            !retained
+                .call("acme.echo", serde_json::Value::Null)
+                .await
+                .unwrap_err()
+                .outcome_uncertain
+        );
+        let info = workspace
+            .custom_methods()
+            .into_iter()
+            .find(|info| info.service == "acme")
+            .unwrap();
+        assert_ne!(info.binding, original.binding);
+        let new_handle = workspace.custom_method(&info.name, &info.binding).unwrap();
+        new_service.finish.notify_one();
+        assert_eq!(
+            new_handle
+                .call("acme.echo", serde_json::json!(42))
+                .await
+                .unwrap(),
+            serde_json::json!(42)
+        );
+        retired.close().await.unwrap();
+        workspace.disconnect().await.unwrap();
+    }
+    #[tokio::test]
+    async fn replacement_cannot_steal_a_surviving_custom_method() {
+        let old = source(21);
+        let other = source(22);
+        let fresh = source(23);
+        let mut workspace = WorkspaceServices::new(vec![old.clone(), other.clone()]).unwrap();
+        workspace.bind_custom(&old, Service::new()).unwrap();
+        let mut nested = Service::new();
+        Arc::get_mut(&mut nested).unwrap().descriptor = CustomServiceDescriptor {
+            id: "acme.nested".into(),
+            version: 1,
+            methods: vec!["acme.nested.echo".into()],
+        };
+        workspace.bind_custom(&other, nested).unwrap();
+        let original = workspace.custom_methods();
+        let mut candidate = WorkspaceServices::new(vec![fresh.clone()]).unwrap();
+        let mut conflicting = Service::new();
+        Arc::get_mut(&mut conflicting).unwrap().descriptor.methods =
+            vec!["acme.nested.echo".into()];
+        candidate.bind_custom(&fresh, conflicting).unwrap();
+        assert!(workspace.replace_source(old.identity(), candidate).is_err());
+        assert_eq!(
+            workspace
+                .custom_methods()
+                .iter()
+                .map(|info| &info.binding)
+                .collect::<Vec<_>>(),
+            original
+                .iter()
+                .map(|info| &info.binding)
+                .collect::<Vec<_>>()
+        );
+        workspace.disconnect().await.unwrap();
+        fresh.disconnect().await.unwrap();
     }
     #[tokio::test]
     async fn custom_namespaces_cannot_impersonate_kernel_methods() {

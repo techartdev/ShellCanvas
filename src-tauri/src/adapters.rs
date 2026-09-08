@@ -126,6 +126,7 @@ async fn connect_workspace(
             .ok_or("Missing connection source")?;
         match role.as_str() {
             "files" => {
+                active.select_service(resource, crate::workspace_services::ServiceRole::Files)?;
                 if let Some(files) = files {
                     active.bind_files(resource, files.clone())?;
                     capabilities.push("files.read".into());
@@ -136,6 +137,7 @@ async fn connect_workspace(
                 }
             }
             "console" => {
+                active.select_service(resource, crate::workspace_services::ServiceRole::Console)?;
                 if let Some(terminal) = terminal {
                     active.bind_terminal(resource, terminal.clone())?;
                     capabilities.push("terminal".into());
