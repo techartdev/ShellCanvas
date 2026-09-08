@@ -6,7 +6,7 @@ Open **Desktop settings** from the dock or the desktop context menu. Preferences
 - **Terminal:** font size, cursor shape/blinking, and scrollback limit. Existing xterm instances update and refit without reopening their remote shell. Reducing scrollback discards older local output.
 - **Text editor:** font size, word wrap, line numbers and Tab indentation (two/four spaces or a tab). Changing these preserves file contents, undo history and unsaved drafts. Line numbers are shown only with wrapping off; changing indentation affects subsequent Tab input.
 - **Files:** hidden dotfiles, folders first, name/date/size ordering, descending order and compact rows. Sorting does not mutate provider data. Unknown dates stay last. Folder actions also toggle hidden files.
-- **Hosts:** saved and imported connection entries open the selected profile in the existing host manager. Editing a profile does not alter a live connection. Current-host details are accessible from this section. Remote administrative settings are still pending provider-owned operations; this panel does not implement remote hostname/network/service changes.
+- **Hosts:** saved/imported entries open the selected connection profile. Editing a profile does not alter a live connection. Current-host details and its **Remote settings** tab are accessible here. The initial Linux provider exposes static hostname and timezone controls when supported, with review and conflict checks; see [remote settings](remote-settings.md). Network/service administration remains unimplemented.
 
 ## Persistence and boundaries
 
@@ -14,7 +14,7 @@ Non-secret preferences use the versioned `shellcanvas.preferences` entry in loca
 
 Values are validated on read. Malformed JSON or an unsupported schema version is preserved; Settings reports the problem and requires an explicit **Restore defaults** before replacing it. A failed write applies changes in memory and reports that they were not saved. Restore defaults has a confirmation step and resets only desktop preferences, without deleting host profiles or closing windows. Tabs on the same origin receive storage updates; concurrent edits use the storage's last-write behavior.
 
-Settings is a modal dialog with browser-managed focus containment, Escape dismissal and focus restoration. It uses the existing desktop palette. Device-provider settings and a public namespaced extension settings API remain separate backlog work.
+Settings is a modal dialog with browser-managed focus containment, Escape dismissal and focus restoration. It uses the existing desktop palette. Remote provider settings live in Host details; a public namespaced extension settings API remains separate backlog work.
 
 ## Verification
 

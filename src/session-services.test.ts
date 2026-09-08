@@ -4,6 +4,51 @@ import { bindSession } from "./session-services";
 import { previewServices, previewSession } from "./preview";
 import type { Directory, TerminalSession } from "./sdk";
 import { watchFileChanges } from "./file-events";
+it("scopes host settings, rejects missing capability and rejects stale read/write results", async () => {
+  let readDone!: (fields: []) => void;
+  const field = {
+    id: "vendor.setting",
+    label: "Setting",
+    description: "Provider-owned",
+    value: "old",
+    revision: "1",
+    editor: "text" as const,
+    choices: [],
+    writable: true,
+    reason: null,
+  };
+  let writeDone!: (result: typeof field) => void;
+  const readHostSettings = vi.fn(
+    () => new Promise<[]>((resolve) => (readDone = resolve)),
+  );
+  const applyHostSetting = vi.fn(
+    () => new Promise<typeof field>((resolve) => (writeDone = resolve)),
+  );
+  const backend = { ...previewServices, readHostSettings, applyHostSetting };
+  const unavailable = bindSession(backend, previewSession);
+  await expect(unavailable.services.readHostSettings()).rejects.toThrow(
+    "Unavailable",
+  );
+  await expect(
+    unavailable.services.applyHostSetting(field.id, "new", "1"),
+  ).rejects.toThrow("Unavailable");
+  expect(readHostSettings).not.toHaveBeenCalled();
+  expect(applyHostSetting).not.toHaveBeenCalled();
+  const binding = bindSession(backend, {
+    ...previewSession,
+    id: 88,
+    info: { ...previewSession.info, capabilities: ["host.settings"] },
+  });
+  const read = binding.services.readHostSettings();
+  const write = binding.services.applyHostSetting(field.id, "new", "1");
+  expect(readHostSettings).toHaveBeenCalledWith(88);
+  expect(applyHostSetting).toHaveBeenCalledWith(88, field.id, "new", "1");
+  binding.dispose();
+  readDone([]);
+  writeDone({ ...field, value: "new", revision: "2" });
+  await expect(read).rejects.toThrow("no longer connected");
+  await expect(write).rejects.toThrow("may have been applied");
+});
 it("reports uncertain outcomes when a mutation finishes after session disposal", async () => {
   let resolve!: (value: string) => void;
   const binding = bindSession(

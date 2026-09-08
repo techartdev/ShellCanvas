@@ -7,6 +7,7 @@ use anyhow::{bail, Context, Result};
 use async_trait::async_trait;
 use russh_sftp::client::SftpSession;
 use serde::Serialize;
+use std::sync::Arc;
 use tokio::{io::AsyncReadExt, time::timeout};
 
 #[derive(Clone, Debug, Serialize)]
@@ -25,6 +26,12 @@ pub trait SystemProvider: Send + Sync {
     fn id(&self) -> &'static str;
     async fn detect(&self, context: &ProbeContext<'_>) -> bool;
     async fn inspect(&self, context: &ProbeContext<'_>) -> Result<HostInfo>;
+    fn settings(
+        &self,
+        _commands: Option<Arc<dyn crate::settings::SettingsCommands>>,
+    ) -> Option<Arc<dyn crate::HostSettingsService>> {
+        None
+    }
 }
 
 pub struct LinuxProvider;
@@ -32,6 +39,15 @@ pub struct LinuxProvider;
 impl SystemProvider for LinuxProvider {
     fn id(&self) -> &'static str {
         "linux"
+    }
+    fn settings(
+        &self,
+        commands: Option<Arc<dyn crate::settings::SettingsCommands>>,
+    ) -> Option<Arc<dyn crate::HostSettingsService>> {
+        commands.map(|commands| {
+            Arc::new(crate::settings::LinuxSettings::new(commands))
+                as Arc<dyn crate::HostSettingsService>
+        })
     }
     async fn detect(&self, context: &ProbeContext<'_>) -> bool {
         let Some(commands) = context.commands else {
@@ -59,6 +75,18 @@ impl SystemProvider for LinuxProvider {
     }
 }
 
+static SYSTEM_PROVIDERS: &[&dyn SystemProvider] = &[&LinuxProvider];
+
+pub fn settings_for_host(
+    provider: &str,
+    commands: Option<Arc<dyn crate::settings::SettingsCommands>>,
+) -> Option<Arc<dyn crate::HostSettingsService>> {
+    SYSTEM_PROVIDERS
+        .iter()
+        .find(|candidate| candidate.id() == provider)
+        .and_then(|provider| provider.settings(commands))
+}
+
 pub async fn inspect_host(connection: &Connection) -> HostInfo {
     let fallback = HostInfo {
         provider: "generic-ssh".into(),
@@ -73,7 +101,7 @@ pub async fn inspect_host(connection: &Connection) -> HostInfo {
             commands: Some(connection),
             fallback,
         },
-        &[&LinuxProvider],
+        SYSTEM_PROVIDERS,
         OP_TIMEOUT,
     )
     .await

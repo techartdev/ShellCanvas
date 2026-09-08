@@ -4,6 +4,7 @@ pub mod file_actions;
 pub mod probe;
 pub mod profiles;
 pub mod provider;
+pub mod settings;
 pub mod text;
 pub mod transfers;
 pub use connection::*;

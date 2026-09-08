@@ -51,6 +51,29 @@ export function bindSession(
     notifyFileChanges(session!.id);
   }
   const services: SessionServices = {
+    readHostSettings: async () => {
+      const expected = generation;
+      const result = await backend.readHostSettings(check("host.settings"));
+      check("host.settings", expected);
+      return result;
+    },
+    applyHostSetting: async (id, value, revision) => {
+      const expected = generation;
+      const result = await backend.applyHostSetting(
+        check("host.settings"),
+        id,
+        value,
+        revision,
+      );
+      try {
+        check("host.settings", expected);
+      } catch {
+        throw new Error(
+          "The connection changed before the setting was confirmed. It may have been applied; reconnect and refresh before retrying.",
+        );
+      }
+      return result;
+    },
     chooseUploads: async (parent) => {
       const expected = generation;
       return adopt(

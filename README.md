@@ -29,6 +29,7 @@ Windows output: `target/debug/shellcanvas.exe`. This debug build is for local ev
 
 - A custom desktop shell with mountain wallpapers, a dock, launcher, local clock, and floating app windows.
 - Persistent settings for desktop appearance/clock/motion, terminal text/cursor/history, editor text/wrap/indentation, and Files visibility/order/density. The Hosts section opens saved connection settings. [Settings behavior and limits](docs/settings.md).
+- Provider-defined remote settings in Host details: static hostname and timezone on supported Linux/systemd hosts, review before apply, read-only reasons, revision checks and verified readback. [Remote settings and validation limits](docs/remote-settings.md).
 - Move, resize, maximize, minimize, and reopen windows across the full desktop between the top toolbar and bottom dock. Windows can cover desktop widgets, which remain clickable when uncovered. Narrow displays use stacked layouts.
 - Real SSH connections with private-key/passphrase or password authentication.
 - Multiple simultaneous host workspaces. Use the host pill in the top bar to switch; each workspace keeps its Files navigation, terminal buffer and window layout. Add host opens another connection; Disconnect closes only the selected host.

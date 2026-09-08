@@ -127,30 +127,45 @@ impl Connection {
     }
 
     pub async fn exec_readonly(&self, command: &str) -> Result<String> {
+        self.exec_bounded(command).await
+    }
+
+    /// Trusted provider command execution, never exposed as a desktop IPC command.
+    pub(crate) async fn exec_bounded(&self, command: &str) -> Result<String> {
         timeout(OP_TIMEOUT, async {
             let mut channel = self.handle.channel_open_session().await?;
             channel.exec(true, command).await?;
             let mut bytes = Vec::new();
+            let mut stderr = Vec::new();
             let mut status = None;
             while let Some(msg) = channel.wait().await {
                 match msg {
                     ChannelMsg::Data { data } => {
-                        if bytes.len() + data.len() > 65536 {
-                            bail!("Host information exceeded the output limit");
+                        if bytes.len() + stderr.len() + data.len() > 65536 {
+                            bail!("Host command exceeded the output limit");
                         }
                         bytes.extend_from_slice(&data);
+                    }
+                    ChannelMsg::ExtendedData { data, .. } => {
+                        if bytes.len() + stderr.len() + data.len() > 65536 {
+                            bail!("Host command exceeded the output limit");
+                        }
+                        stderr.extend_from_slice(&data);
                     }
                     ChannelMsg::ExitStatus { exit_status } => status = Some(exit_status),
                     _ => {}
                 }
             }
             if status != Some(0) {
-                bail!("Host information command failed");
+                bail!(
+                    "Host command failed: {}",
+                    String::from_utf8_lossy(&stderr).trim()
+                );
             }
             Ok(String::from_utf8_lossy(&bytes).trim().to_owned())
         })
         .await
-        .context("Host information timed out")?
+        .context("Host command timed out")?
     }
 
     pub async fn sftp(&self) -> Result<SftpSession> {

@@ -43,6 +43,12 @@ function directory(path = "/home/demo"): Directory {
   };
 }
 export const previewServices: HostServices = {
+  readHostSettings: async () => {
+    throw new Error("Remote settings are unavailable in the design preview.");
+  },
+  applyHostSetting: async () => {
+    throw new Error("Remote settings cannot be changed in the design preview.");
+  },
   chooseUploads: async () => {
     throw new Error("Use the native desktop app to upload local files.");
   },

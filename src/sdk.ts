@@ -7,7 +7,29 @@ export type Capability =
   | "files.create"
   | "files.manage"
   | "files.upload"
-  | "files.download";
+  | "files.download"
+  | "host.settings";
+export interface HostSetting {
+  id: string;
+  label: string;
+  description: string;
+  value: string | null;
+  revision: string | null;
+  editor: "text" | "select";
+  choices: string[];
+  writable: boolean;
+  reason: string | null;
+}
+export const capabilityLabels: Record<Capability, string> = {
+  terminal: "Terminal",
+  "files.read": "File browsing",
+  "files.edit": "Text editing",
+  "files.create": "New text files",
+  "files.manage": "File changes",
+  "files.upload": "Uploads",
+  "files.download": "Downloads",
+  "host.settings": "Remote settings",
+};
 export interface TransferTicket {
   id: number;
   name: string;
@@ -89,6 +111,13 @@ export interface TerminalSession {
   close(): Promise<void>;
 }
 export interface HostServices {
+  readHostSettings(sessionId: number): Promise<HostSetting[]>;
+  applyHostSetting(
+    sessionId: number,
+    id: string,
+    value: string,
+    revision: string,
+  ): Promise<HostSetting>;
   chooseUploads(sessionId: number, parent: string): Promise<TransferTicket[]>;
   chooseDownload(
     sessionId: number,
@@ -143,6 +172,12 @@ export interface HostServices {
 }
 /** Apps receive a fixed session handle, never connection administration. */
 export interface SessionServices {
+  readHostSettings(): Promise<HostSetting[]>;
+  applyHostSetting(
+    id: string,
+    value: string,
+    revision: string,
+  ): Promise<HostSetting>;
   chooseUploads(parent: string): Promise<TransferTicket[]>;
   chooseDownload(
     path: string,
@@ -225,6 +260,7 @@ export function defineApps(definitions: DesktopApp[]): readonly DesktopApp[] {
               "files.manage",
               "files.upload",
               "files.download",
+              "host.settings",
             ].includes(cap),
         )
       )
@@ -252,6 +288,6 @@ export function unavailableReason(
     (cap) => !session?.info.capabilities.includes(cap),
   );
   return missing.length
-    ? `Unavailable on this device: ${missing.map((cap) => ({ "files.read": "file browsing", "files.edit": "text saving", "files.create": "file creation", "files.manage": "file changes", "files.upload": "uploads", "files.download": "downloads", terminal: "terminal" })[cap]).join(", ")}`
+    ? `Unavailable on this device: ${missing.map((cap) => capabilityLabels[cap].toLowerCase()).join(", ")}`
     : null;
 }

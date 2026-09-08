@@ -43,6 +43,8 @@ An app's `services` is now a `SessionServices` handle: `list(path)`, `preview(pa
 
 ## Acceptance checklist
 
+Optional `host.settings` exposes `readHostSettings()` and `applyHostSetting(id, value, revision)`. The provider owns field definitions and validation; do not branch on OS names in the component. Preserve proposals after errors, review before apply, and keep busy/unsaved guards through result verification. See [the remote settings contract](remote-settings.md).
+
 File apps consume provider-owned locations: call `services.list()` for the default folder and use returned `name`, `parent`, `home`, `roots` and entry paths. Text documents supply their own name and parent. Do not split paths, add separators, infer an OS or invent a root. See [the filesystem contract](filesystem-contract.md).
 
 File transfers use optional `files.upload` and `files.download` capabilities. `chooseUploads(parent)` and `chooseDownload(path, revision)` return native-owned tickets; `runTransfer(ticket, onProgress)` streams through the native broker, and `cancelTransfer(id)` requests cancellation. Use the existing `TransferQueue`, retain busy guards until cancellation/completion is confirmed, and release pending tickets on disposal. Do not expose arbitrary local paths or send file bytes through the app component. See [transfer limits](transfers.md).

@@ -822,7 +822,7 @@ export default function App({
       {closeWorkspace !== null && (
         <ConfirmDialog
           title="Close workspace with unsaved changes?"
-          message="Editor drafts in this workspace will be discarded. Save or copy your changes before disconnecting."
+          message="Unsaved drafts and proposed settings in this workspace will be discarded. Save or copy your changes before disconnecting."
           confirmLabel="Discard and disconnect"
           confirm={() => void disconnectWorkspace(closeWorkspace)}
           cancel={() => setCloseWorkspace(null)}
@@ -838,7 +838,7 @@ export default function App({
           message={
             hasBusy
               ? "Wait for the operation to finish before closing the app."
-              : "Unsaved editor drafts across all workspaces will be discarded."
+              : "Unsaved drafts and proposed settings across all workspaces will be discarded."
           }
           confirmLabel="Discard and quit"
           disabled={hasBusy}

@@ -18,6 +18,10 @@ function Fixture() {
   };
   clipboard.readText = async () => "fixture paste";
   const [services] = useState<SessionServices>(() => ({
+    readHostSettings: async () => [],
+    applyHostSetting: async () => {
+      throw new Error("Unavailable");
+    },
     chooseUploads: () => previewServices.chooseUploads(previewSession.id, "/"),
     chooseDownload: (path, revision) =>
       previewServices.chooseDownload(previewSession.id, path, revision),

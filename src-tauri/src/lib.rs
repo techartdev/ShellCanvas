@@ -19,6 +19,7 @@ struct ActiveSession {
     text: Option<Arc<dyn TextFileService>>,
     mutations: Option<Arc<dyn FileMutationService>>,
     transfers: Option<Arc<dyn FileTransferService>>,
+    settings: Option<Arc<dyn HostSettingsService>>,
 }
 #[derive(Default)]
 struct DesktopState {
@@ -95,6 +96,10 @@ async fn connect_session(
             .map_err(|e| format!("{e:#}"))?,
     );
     let mut info = inspect_host(&connection).await;
+    let settings = settings_for_host(&info.provider, Some(connection.clone()));
+    if settings.is_some() {
+        info.capabilities.push("host.settings".into());
+    }
     let files: Option<Arc<dyn FileSystemProvider>> = match connection.sftp().await {
         Ok(sftp) => {
             info.home = tokio::time::timeout(OP_TIMEOUT, sftp.canonicalize("."))
@@ -146,6 +151,7 @@ async fn connect_session(
             text,
             mutations,
             transfers,
+            settings,
         },
     );
     Ok(SessionInfo { id, info })
@@ -187,6 +193,44 @@ async fn filesystem(
         .ok_or("SFTP is not available on this host".into())
 }
 
+async fn host_settings(
+    state: &DesktopState,
+    session_id: u64,
+) -> Result<Arc<dyn HostSettingsService>, String> {
+    state
+        .registry
+        .lock()
+        .await
+        .sessions
+        .get(&session_id)
+        .and_then(|session| session.settings.clone())
+        .ok_or("Remote settings are unavailable for this host".into())
+}
+#[tauri::command]
+async fn read_host_settings(
+    session_id: u64,
+    state: State<'_, DesktopState>,
+) -> Result<Vec<HostSetting>, String> {
+    host_settings(&state, session_id)
+        .await?
+        .read()
+        .await
+        .map_err(|error| format!("{error:#}"))
+}
+#[tauri::command]
+async fn apply_host_setting(
+    session_id: u64,
+    id: String,
+    value: String,
+    revision: String,
+    state: State<'_, DesktopState>,
+) -> Result<HostSetting, String> {
+    host_settings(&state, session_id)
+        .await?
+        .apply(&id, &value, &revision)
+        .await
+        .map_err(|error| format!("{error:#}"))
+}
 #[tauri::command]
 async fn list_directory(
     session_id: u64,
@@ -428,6 +472,8 @@ pub fn run() {
         .manage(DesktopState::default())
         .invoke_handler(tauri::generate_handler![
             profiles,
+            read_host_settings,
+            apply_host_setting,
             save_profile,
             remove_profile,
             session_alive,

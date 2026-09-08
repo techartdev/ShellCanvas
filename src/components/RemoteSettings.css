@@ -1,0 +1,203 @@
+.host-details-shell {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  flex: 1;
+}
+.host-details-tabs {
+  display: flex;
+  flex-shrink: 0;
+  padding: 0 24px;
+  gap: 24px;
+  background: #192a35;
+  border-bottom: 1px solid #9eb8c319;
+}
+.host-details-tabs button {
+  padding: 14px 0 12px;
+  font-size: 11px;
+  color: #8ba5b4;
+  border-bottom: 2px solid transparent;
+}
+.host-details-tabs button[aria-pressed="true"] {
+  color: #c7e6d7;
+  border-bottom-color: #9ac9b4;
+}
+.host-details-content {
+  overflow: auto;
+  min-height: 0;
+}
+.remote-settings {
+  padding: 24px;
+  color: #cfdee5;
+}
+.remote-settings > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.remote-settings h2 {
+  margin: 7px 0;
+  font-size: 24px;
+  font-weight: 500;
+}
+.remote-settings > p {
+  font-size: 11px;
+  color: #92abba;
+  line-height: 1.65;
+  margin: 10px 0 20px;
+}
+.remote-settings button {
+  font-size: 10px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border-radius: 7px;
+}
+.remote-refresh {
+  color: #a7c4d2;
+  padding: 9px 11px;
+  background: #739cb511;
+  border: 1px solid #a5c2cd22;
+}
+.remote-settings-fields {
+  display: grid;
+  gap: 16px;
+  margin-top: 22px;
+}
+.remote-setting-card {
+  background: #1a2c373b;
+  border: 1px solid #abc8d11c;
+  border-radius: 12px;
+  padding: 18px;
+}
+.remote-setting-card > label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  flex-wrap: wrap;
+}
+.remote-setting-card > label > svg {
+  color: #99bfae;
+}
+.remote-setting-card > label span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-left: auto;
+  font-size: 9px;
+  font-weight: 400;
+  color: #8fa9b8;
+}
+.remote-setting-card > p {
+  color: #8ea7b6;
+  font-size: 10px;
+  line-height: 1.65;
+  margin: 11px 0 15px;
+}
+.remote-setting-control {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.remote-setting-control input,
+.remote-setting-control select {
+  min-width: 140px;
+  width: 100%;
+  flex: 1 1 220px;
+  color: #cfdee5;
+  background: #111e28;
+  border: 1px solid #a4c1cf2c;
+  border-radius: 7px;
+  padding: 10px 12px;
+  font-size: 12px;
+}
+.remote-setting-control input:focus,
+.remote-setting-control select:focus {
+  outline: 1px solid #acd7c480;
+  outline-offset: 1px;
+}
+.remote-setting-control input[readonly] {
+  color: #8ca5b5;
+}
+.remote-setting-control > button {
+  padding: 9px;
+  color: #9fb9c7;
+}
+.remote-setting-control > .remote-review {
+  color: #b8dacc;
+  background: #9ac8b411;
+}
+.remote-settings .remote-setting-reason {
+  margin-bottom: 0;
+  color: #b6bbaa;
+}
+.remote-setting-review {
+  margin-top: 18px;
+  padding: 16px;
+  border: 1px solid #a3d2bb40;
+  background: #92bca809;
+  border-radius: 9px;
+  font-size: 11px;
+}
+.remote-setting-diff {
+  display: grid;
+  grid-template-columns: 1fr 18px 1fr;
+  align-items: center;
+  gap: 14px;
+  margin: 16px 0;
+}
+.remote-setting-diff div {
+  min-width: 0;
+}
+.remote-setting-diff small {
+  display: block;
+  color: #85a1b0;
+  margin-bottom: 7px;
+}
+.remote-setting-diff code {
+  font-size: 12px;
+  overflow-wrap: anywhere;
+  color: #d3e3e8;
+}
+.remote-setting-confirm {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+}
+.remote-setting-confirm button {
+  padding: 9px 13px;
+  color: #aac3cf;
+}
+.remote-setting-confirm button:last-child {
+  background: #a8d4bf;
+  color: #173127;
+  font-weight: 600;
+}
+.remote-settings .remote-settings-note {
+  display: flex;
+  gap: 9px;
+  align-items: flex-start;
+  padding: 12px;
+  background: #9ab6c10b;
+  border-radius: 8px;
+}
+.remote-settings .remote-settings-success {
+  color: #acd8c3;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+@media (max-width: 600px) {
+  .remote-settings {
+    padding: 17px;
+  }
+  .remote-setting-card {
+    padding: 14px;
+  }
+}

@@ -1,12 +1,45 @@
 // SPDX-License-Identifier: MPL-2.0
 import type { AppContext } from "../sdk";
+import { capabilityLabels } from "../sdk";
+import { useState } from "react";
+import { RemoteSettings } from "../components/RemoteSettings";
+
+export function HostDetails(context: AppContext) {
+  const [tab, setTab] = useState<"overview" | "settings">("overview");
+  const [settingsOpened, setSettingsOpened] = useState(false);
+  return (
+    <div className="host-details-shell">
+      <nav className="host-details-tabs" aria-label="Host details sections">
+        <button
+          aria-pressed={tab === "overview"}
+          onClick={() => setTab("overview")}
+        >
+          Overview
+        </button>
+        <button
+          aria-pressed={tab === "settings"}
+          onClick={() => {
+            setSettingsOpened(true);
+            setTab("settings");
+          }}
+        >
+          Remote settings
+        </button>
+      </nav>
+      <div className="host-details-content">
+        <div hidden={tab !== "overview"}>
+          <HostOverview {...context} />
+        </div>
+        <div hidden={tab !== "settings"}>
+          <RemoteSettings {...context} enabled={settingsOpened} />
+        </div>
+      </div>
+    </div>
+  );
+}
 
 /** A small reference app: only consumes the provider's existing snapshot. */
-export function HostDetails({
-  session,
-  preview,
-  connected = true,
-}: AppContext) {
+function HostOverview({ session, preview, connected = true }: AppContext) {
   if (!session) return null;
   const { info } = session;
   return (
@@ -19,7 +52,10 @@ export function HostDetails({
             : "LAST KNOWN HOST"}
       </p>
       <h2>{info.hostname}</h2>
-      <p>Your host and the tools available in this workspace.</p>
+      <p>
+        Your host and the tools available in this workspace. System details
+        reflect when this connection opened.
+      </p>
       <dl>
         <div>
           <dt>System</dt>
@@ -38,17 +74,7 @@ export function HostDetails({
       <div className="capability-list">
         {info.capabilities.map((capability) => (
           <span key={capability}>
-            {capability === "files.read"
-              ? "File browsing"
-              : capability === "terminal"
-                ? "Terminal"
-                : capability === "files.edit"
-                  ? "Text editing"
-                  : capability === "files.create"
-                    ? "New text files"
-                    : capability === "files.manage"
-                      ? "File changes"
-                      : capability}
+            {capabilityLabels[capability] ?? capability}
           </span>
         ))}
       </div>

@@ -373,7 +373,7 @@ export function SettingsDialog({
                       <strong>{session.info.hostname}</strong>
                       <small>
                         {connected ? "Connected" : "Disconnected"} ·{" "}
-                        {session.info.system}
+                        {session.info.system} · Details & remote settings
                       </small>
                     </span>
                     <ChevronRight size={17} />

@@ -8,6 +8,9 @@ import type {
 } from "./sdk";
 export const native = isTauri();
 export const nativeServices: HostServices = {
+  readHostSettings: (sessionId) => invoke("read_host_settings", { sessionId }),
+  applyHostSetting: (sessionId, id, value, revision) =>
+    invoke("apply_host_setting", { sessionId, id, value, revision }),
   chooseUploads: (sessionId, parent) =>
     invoke("choose_upload_files", { sessionId, parent }),
   chooseDownload: (sessionId, path, revision) =>

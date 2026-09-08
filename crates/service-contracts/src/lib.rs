@@ -1,9 +1,11 @@
 // SPDX-License-Identifier: MPL-2.0
-//! Transport-independent file services. Paths are nonempty provider-owned tokens;
+//! Transport-independent file and host-settings services. Paths are nonempty provider-owned tokens;
 //! consumers display/pass them unchanged and never split, join or normalize them.
 use anyhow::Result;
 use async_trait::async_trait;
+pub mod settings;
 use serde::Serialize;
+pub use settings::*;
 use std::sync::Arc;
 
 /// Maximum bytes per transfer operation; consumers and providers both enforce it.

@@ -15,6 +15,8 @@ Additional protocols are optional until these core workflows work well. Connecti
 
 ## Evidence and outstanding work
 
+- Host details now renders provider-defined remote settings with individual availability, proposals, review/apply and conflict/uncertain-outcome handling. Linux hostname/timezone commands have controlled tests; live read-only inspection and desktop/tablet UI checks passed. Actual systemd mutations still require a disposable host. See [remote settings](remote-settings.md).
+
 - Regular-file upload/download now has native pickers, a bounded streaming broker, per-window queues, progress, cancellation and no-clobber publication. Automated cleanup/ownership/late-outcome checks, browser queue interactions, a disposable live SFTP probe and an 8 MiB Windows native dialog round trip passed. See [transfers](transfers.md). Resume, recursive transfers, permission-denied and physical-network interruption checks remain.
 
 - Files and Editor now consume provider-owned names, parents, home and roots without parsing paths. File contracts were extracted from the SSH implementation. Drive/opaque UI fixtures and a read-only Linux regression passed; see [filesystem contracts](filesystem-contract.md). This prepares transfers and future providers; it does not add a production connector.
