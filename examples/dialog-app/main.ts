@@ -7,7 +7,7 @@ const status = root.querySelector("output")!;
 const localActions = document.createElement("div");
 localActions.className = "actions";
 localActions.innerHTML =
-  '<button id="remember">Remember locally</button><button id="restore">Restore local note</button>';
+  '<button id="remember">Remember locally</button><button id="restore">Restore local note</button><button id="copy-note">Copy note</button><button id="paste-text">Paste text</button>';
 status.before(localActions);
 const buttons = [...root.querySelectorAll("button")];
 buttons.forEach((button) => {
@@ -42,6 +42,27 @@ async function start() {
       /* Older workbenches may only offer dialog services. */
     }
     let dirty = false;
+    const available = await client.services.list();
+    const canCopy = available.some(
+      (method) =>
+        method.name === "system.clipboard.writeStart" &&
+        method.granted &&
+        method.available,
+    );
+    const canPaste = available.some(
+      (method) =>
+        method.name === "system.clipboard.readStart" &&
+        method.granted &&
+        method.available,
+    );
+    const enabled = (button: HTMLButtonElement) =>
+      button.id === "copy-note"
+        ? canCopy
+        : button.id === "paste-text"
+          ? canPaste
+          : ["remember", "restore"].includes(button.id)
+            ? localAvailable
+            : true;
     let busy = false;
     const publish = () => client.window.setDocumentState({ dirty, busy });
     root.querySelector("textarea")!.addEventListener("input", () => {
@@ -53,8 +74,7 @@ async function start() {
     status.textContent =
       "Connected through the app API. No direct host or native access.";
     buttons.forEach((button) => {
-      button.disabled =
-        !localAvailable && ["remember", "restore"].includes(button.id);
+      button.disabled = !enabled(button);
     });
     const run = async (operation: () => Promise<unknown>) => {
       busy = true;
@@ -71,8 +91,7 @@ async function start() {
         busy = false;
         await publish().catch(() => {});
         buttons.forEach((button) => {
-          button.disabled =
-            !localAvailable && ["remember", "restore"].includes(button.id);
+          button.disabled = !enabled(button);
         });
       }
     };
@@ -174,6 +193,34 @@ async function start() {
           localRevision = saved.revision;
           dirty = true;
           return "Restored the note remembered on this device.";
+        }),
+    );
+    root.querySelector("#copy-note")!.addEventListener(
+      "click",
+      () =>
+        void run(async () => {
+          await client.clipboard.writeText(
+            root.querySelector("textarea")!.value,
+          );
+          return "Copied the note.";
+        }),
+    );
+    root.querySelector("#paste-text")!.addEventListener(
+      "click",
+      () =>
+        void run(async () => {
+          const note = root.querySelector("textarea")!,
+            previous = note.value,
+            start = note.selectionStart,
+            end = note.selectionEnd;
+          const text = await client.clipboard.readText();
+          if (note.value !== previous)
+            throw new Error(
+              "The note changed while reading the clipboard. Paste again when ready.",
+            );
+          note.setRangeText(text, start, end, "end");
+          dirty = true;
+          return "Pasted clipboard text.";
         }),
     );
     return client;

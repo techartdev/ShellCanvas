@@ -65,7 +65,7 @@ The frame uses `sandbox="allow-scripts"` without `allow-same-origin`, a host-bui
 
 This is not a security claim for arbitrary hostile packages. In particular, document CSP is not a universal navigation/network sandbox, and a same-renderer app can consume CPU or memory. The Windows navigation and direct-IPC checks are described below. Equivalent checks on other platforms, publisher authentication and stronger resource containment remain open. Native adapters will have a distinct process trust model.
 
-The original `runtime-app.html` channel workbench still immediately replaces/unloads its one sample, without preserving dirty app state. Use the desktop or catalog workbench for pinned generations and close confirmation. The desktop now supplies [app data and settings](app-storage.md) through the broker. Clipboard, additional lifecycle events, streaming services, native adapters and their hot switching remain open in the roadmap.
+The original `runtime-app.html` channel workbench still immediately replaces/unloads its one sample, without preserving dirty app state. Use the desktop or catalog workbench for pinned generations and close confirmation. The desktop now supplies [app data and settings](app-storage.md), [state events](app-events.md) and [text clipboard access](app-clipboard.md) through the broker. Further lifecycle actions, general streaming services, native adapters and their hot switching remain open in the roadmap.
 
 ## Evidence
 

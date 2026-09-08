@@ -25,7 +25,17 @@ const catalog = new AppCatalog(
   indexedCatalogStorage("shellcanvas-native-desktop-probe"),
 );
 const localData = indexedAppStorage("shellcanvas-desktop-probe-data");
-const runtime = new DesktopRuntime(catalog, apps, localData);
+let clipboardText = "Fixture clipboard";
+let clipboardReads = 0;
+const runtime = new DesktopRuntime(catalog, apps, localData, {
+  readText: async () => {
+    clipboardReads++;
+    return clipboardText;
+  },
+  writeText: async (text) => {
+    clipboardText = text;
+  },
+});
 let sessionSerial = 100;
 const services = {
   ...previewServices,
@@ -59,6 +69,7 @@ function ask(frame: HTMLIFrameElement, action = "snapshot") {
     environment?: AppEnvironment;
     services?: readonly ServiceMethodInfo[];
     environmentEvents?: AppEnvironment[];
+    clipboard?: Record<string, boolean>;
   }>((resolve, reject) => {
     const timer = setTimeout(() => {
       window.removeEventListener("message", receive);
@@ -116,7 +127,13 @@ async function install(version: string) {
           id: "org.shellcanvas.native-fixture",
           title: "Native Notes",
           version,
-          permissions: ["system.dialogs", "files.read", "system.storage"],
+          permissions: [
+            "system.dialogs",
+            "files.read",
+            "system.storage",
+            "system.clipboard.read",
+            "system.clipboard.write",
+          ],
           script: source,
           style,
         }),
@@ -140,6 +157,15 @@ async function install(version: string) {
       item.closest("label")?.textContent?.includes("File browsing"),
     )!;
     checkbox.click();
+    [
+      ...document.querySelectorAll<HTMLInputElement>(
+        '.extension-review input[type="checkbox"]',
+      ),
+    ]
+      .find((item) =>
+        item.closest("label")?.textContent?.includes("Read clipboard text"),
+      )!
+      .click();
   }
   installButton.click();
   await until(
@@ -261,6 +287,8 @@ async function run() {
     "dirty window state",
   );
   checks.sdkDocumentState = true;
+  const clipboard = (await ask(first, "clipboard")).clipboard;
+  checks.sdkClipboard = !!clipboard && Object.values(clipboard).every(Boolean);
   const appStorage = (await ask(first, "storage")).storage;
   checks.sdkStorage =
     !!appStorage &&
@@ -362,6 +390,10 @@ async function run() {
   );
   await frameState(second, (state) => state.ready);
   const secondEnvironment = await ask(second, "environment");
+  const beforeDeniedRead = clipboardReads;
+  checks.clipboardGrantDenied =
+    (await ask(second, "clipboard-denied")).clipboard?.denied === true &&
+    clipboardReads === beforeDeniedRead;
   checks.discoveryGrantDenied =
     secondEnvironment.services?.find(
       (method) => method.name === "system.dialogs.openFile",

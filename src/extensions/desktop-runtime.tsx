@@ -17,6 +17,10 @@ import { indexedAppStorage } from "./app-storage";
 import type { AppStorageBackend } from "./storage-api";
 import { RuntimeEnvironment } from "./environment";
 import type { AppEnvironment } from "./environment-api";
+import {
+  clipboard as systemClipboard,
+  type ClipboardService,
+} from "../clipboard";
 
 function descriptor(
   entry: InstalledApp,
@@ -45,11 +49,13 @@ function RuntimeDocument({
   retain,
   context,
   storage,
+  clipboard,
 }: {
   lease: AppLease;
   retain(): () => void;
   context: AppContext;
   storage: AppStorageBackend;
+  clipboard: ClipboardService;
 }) {
   const [accepted, accept] = useState(context.system);
   const target = useRef(accepted);
@@ -119,6 +125,7 @@ function RuntimeDocument({
           system={system}
           onDocumentState={context.setDocumentState}
           storage={storage}
+          clipboard={clipboard}
           environment={environment}
         />
       </div>
@@ -139,6 +146,7 @@ export class DesktopRuntime {
     readonly catalog: AppCatalog,
     private bundled: readonly DesktopApp[],
     private storage: AppStorageBackend = indexedAppStorage(),
+    private clipboard: ClipboardService = systemClipboard,
   ) {
     this.manager = {
       apiVersion: 1,
@@ -224,6 +232,7 @@ export class DesktopRuntime {
         retain={retain}
         context={context}
         storage={this.storage}
+        clipboard={this.clipboard}
       />
     ));
     this.live.set(lease.id, { lease, app, mounts: 0 });

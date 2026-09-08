@@ -8,6 +8,8 @@
     "system.dialogs",
     "files.read",
     "files.create",
-    "system.storage"
+    "system.storage",
+    "system.clipboard.read",
+    "system.clipboard.write"
   ]
 }

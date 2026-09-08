@@ -21,6 +21,27 @@ window.addEventListener("message", async (event) => {
   if (event.data.action === "remember" || event.data.action === "restore")
     document.querySelector<HTMLButtonElement>(`#${event.data.action}`)!.click();
   let storage: unknown;
+  let clipboard: Record<string, boolean> | undefined;
+  if (event.data.action === "clipboard") {
+    const client = (await connection)!;
+    const original = await client.clipboard.readText();
+    const large = "x".repeat(65535) + "🌿" + "\u0001".repeat(800000);
+    await client.clipboard.writeText(large);
+    clipboard = {
+      read: original === "Fixture clipboard",
+      roundtrip: (await client.clipboard.readText()) === large,
+    };
+    await client.clipboard.writeText("");
+    clipboard.empty = (await client.clipboard.readText()) === "";
+  }
+  if (event.data.action === "clipboard-denied") {
+    try {
+      await (await connection)!.clipboard.readText();
+      clipboard = { denied: false };
+    } catch (error) {
+      clipboard = { denied: (error as { code: string }).code === "denied" };
+    }
+  }
   let environment: AppEnvironment | undefined,
     services: readonly ServiceMethodInfo[] | undefined;
   if (event.data.action === "environment" || event.data.action === "watch") {
@@ -82,6 +103,7 @@ window.addEventListener("message", async (event) => {
       status: document.querySelector("output")!.textContent,
       ready: !document.querySelector<HTMLButtonElement>("#message")!.disabled,
       storage,
+      clipboard,
       environment,
       services,
       environmentEvents,

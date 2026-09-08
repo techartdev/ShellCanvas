@@ -7,6 +7,9 @@ import "./ExtensionManager.css";
 
 function permissionName(name: string) {
   if (name === "system.storage") return "This app’s local data and settings";
+  if (name === "system.clipboard.read")
+    return "Read clipboard text, including content from other apps";
+  if (name === "system.clipboard.write") return "Replace clipboard text";
   return name === "system.dialogs"
     ? "Shared desktop dialogs"
     : (capabilityLabels[name as Capability] ?? name);

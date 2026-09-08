@@ -16,6 +16,8 @@ import {
   emptyOptions,
 } from "./environment";
 import { capabilityLabels } from "../sdk";
+import type { ClipboardService } from "../clipboard";
+import { AppClipboard } from "./clipboard-api";
 
 /** Isolated app document shared by the desktop and development workbenches.
  * One effect owns one document, port and system handle. A prop change retires that instance.
@@ -27,6 +29,7 @@ export function ExtensionFrame({
   lease,
   onDocumentState,
   storage,
+  clipboard,
   environment: suppliedEnvironment,
 }: {
   app: AppPackage;
@@ -35,6 +38,7 @@ export function ExtensionFrame({
   lease?: AppLease;
   onDocumentState?: (state: AppDocumentState) => void;
   storage?: AppStorageBackend;
+  clipboard?: ClipboardService;
   environment?: RuntimeEnvironment;
 }) {
   const ref = useRef<HTMLIFrameElement>(null);
@@ -55,6 +59,7 @@ export function ExtensionFrame({
       "system.services",
     ]);
     let stopEnvironment: (() => void) | undefined;
+    const clipboardOwner = clipboard ? new AppClipboard(clipboard) : undefined;
     const receive = (event: MessageEvent) => {
       if (
         retired ||
@@ -75,6 +80,9 @@ export function ExtensionFrame({
       const methods = new Map(systemMethods(system, approved));
       if (storage)
         for (const [name, method] of appStorageMethods(app.id, storage))
+          methods.set(name, method);
+      if (clipboardOwner)
+        for (const [name, method] of clipboardOwner.methods())
           methods.set(name, method);
       methods.set(
         "system.window.setDocumentState",
@@ -141,6 +149,7 @@ export function ExtensionFrame({
         approved,
       );
       peer.onClose(() => {
+        clipboardOwner?.close();
         stopEnvironment?.();
         events.close();
       });
@@ -159,6 +168,7 @@ export function ExtensionFrame({
       peer?.close();
       stopEnvironment?.();
       events.close();
+      clipboardOwner?.close();
       unmount();
     };
     const stop = lease?.onClose(retire);
@@ -166,7 +176,16 @@ export function ExtensionFrame({
       stop?.();
       retire();
     };
-  }, [app, system, grants, lease, storage, environment, suppliedEnvironment]);
+  }, [
+    app,
+    system,
+    grants,
+    lease,
+    storage,
+    clipboard,
+    environment,
+    suppliedEnvironment,
+  ]);
   return (
     <>
       {error && (

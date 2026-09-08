@@ -9,6 +9,7 @@ import type {
   AppEventsAPI,
 } from "./environment-api";
 import { appEventClient } from "./app-events";
+import { appClipboardClient, type AppClipboardAPI } from "./clipboard-api";
 export interface ExtensionClient {
   readonly system: SystemAPI;
   readonly window: { setDocumentState(state: AppDocumentState): Promise<void> };
@@ -19,6 +20,7 @@ export interface ExtensionClient {
     list(signal?: AbortSignal): Promise<readonly ServiceMethodInfo[]>;
   };
   readonly events: AppEventsAPI;
+  readonly clipboard: AppClipboardAPI;
   /** Namespaced services use the same broker; method availability never implies permission. */
   call(method: string, params?: Json, signal?: AbortSignal): Promise<Json>;
   dispose(): void;
@@ -179,6 +181,7 @@ export function connectToShellCanvas(
             )) as unknown as readonly ServiceMethodInfo[],
         }),
         events: appEventClient(peer),
+        clipboard: appClipboardClient(peer),
         window: Object.freeze({
           setDocumentState: async (state: AppDocumentState) => {
             await peer.call(

@@ -6,7 +6,7 @@ export interface ClipboardService {
   readText(): Promise<string>;
   writeText(text: string): Promise<void>;
 }
-// Reads happen only in response to Paste; never monitor the clipboard.
+// Reads are explicit operations; this service never monitors or polls the clipboard.
 export const clipboard: ClipboardService = {
   readText: () => (isTauri() ? readText() : navigator.clipboard.readText()),
   writeText: (text) =>
