@@ -6,6 +6,7 @@ export type Capability =
   | "files.edit"
   | "files.create"
   | "files.manage"
+  | "files.move"
   | "files.upload"
   | "files.download"
   | "host.settings";
@@ -26,6 +27,7 @@ export const capabilityLabels: Record<Capability, string> = {
   "files.edit": "Text editing",
   "files.create": "New text files",
   "files.manage": "File changes",
+  "files.move": "Move files and folders",
   "files.upload": "Uploads",
   "files.download": "Downloads",
   "host.settings": "Remote settings",
@@ -148,6 +150,12 @@ export interface HostServices {
     revision: string,
   ): Promise<string>;
   removeEntry(sessionId: number, path: string, revision: string): Promise<void>;
+  moveEntry(
+    sessionId: number,
+    path: string,
+    parent: string,
+    revision: string,
+  ): Promise<string>;
   profiles(): Promise<HostProfile[]>;
   saveProfile(profile: HostProfile): Promise<HostProfile>;
   removeProfile(id: string): Promise<void>;
@@ -192,6 +200,7 @@ export interface SessionServices {
   makeDirectory(parent: string, name: string): Promise<string>;
   renameEntry(path: string, name: string, revision: string): Promise<string>;
   removeEntry(path: string, revision: string): Promise<void>;
+  moveEntry(path: string, parent: string, revision: string): Promise<string>;
   list(path?: string): Promise<Directory>;
   preview(path: string): Promise<string>;
   readText(path: string): Promise<TextDocument>;
@@ -258,6 +267,7 @@ export function defineApps(definitions: DesktopApp[]): readonly DesktopApp[] {
               "files.edit",
               "files.create",
               "files.manage",
+              "files.move",
               "files.upload",
               "files.download",
               "host.settings",

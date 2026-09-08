@@ -4,6 +4,51 @@ import { bindSession } from "./session-services";
 import { previewServices, previewSession } from "./preview";
 import type { Directory, TerminalSession } from "./sdk";
 import { watchFileChanges } from "./file-events";
+it("moves opaque locations only in the owning capable session, with stale completion reporting", async () => {
+  let finish!: (location: string) => void;
+  const moveEntry = vi.fn(
+    () =>
+      new Promise<string>((resolve) => {
+        finish = resolve;
+      }),
+  );
+  const backend = { ...previewServices, moveEntry };
+  const incapable = bindSession(backend, {
+    ...previewSession,
+    info: { ...previewSession.info, capabilities: ["files.manage"] },
+  });
+  await expect(
+    incapable.services.moveEntry("item:1", "folder:2", "rev"),
+  ).rejects.toThrow("files.move");
+  expect(moveEntry).not.toHaveBeenCalled();
+  const session = {
+    ...previewSession,
+    id: 81,
+    info: { ...previewSession.info, capabilities: ["files.move" as const] },
+  };
+  const binding = bindSession(backend, session);
+  const changed = vi.fn(),
+    other = vi.fn();
+  const stop = watchFileChanges(81, changed),
+    stopOther = watchFileChanges(82, other);
+  const moved = binding.services.moveEntry("item:1", "folder:2", "rev");
+  expect(moveEntry).toHaveBeenCalledWith(81, "item:1", "folder:2", "rev");
+  finish("item:3");
+  await expect(moved).resolves.toBe("item:3");
+  expect(changed).toHaveBeenCalledOnce();
+  expect(other).not.toHaveBeenCalled();
+  const pending = binding.services.moveEntry("item:4", "folder:2", "rev2");
+  binding.dispose();
+  finish("item:5");
+  await expect(pending).rejects.toThrow("may have completed");
+  expect(changed).toHaveBeenCalledOnce();
+  await expect(
+    binding.services.moveEntry("item:4", "folder:2", "rev2"),
+  ).rejects.toThrow("no longer connected");
+  expect(moveEntry).toHaveBeenCalledTimes(2);
+  stop();
+  stopOther();
+});
 it("scopes host settings, rejects missing capability and rejects stale read/write results", async () => {
   let readDone!: (fields: []) => void;
   const field = {

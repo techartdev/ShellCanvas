@@ -32,6 +32,7 @@ import { clipboard } from "../clipboard";
 import { usePreferences } from "../preferences";
 import { visibleFiles } from "../file-view";
 import { FileActionDialog } from "../components/FileActionDialog";
+import { MoveFileDialog } from "../components/MoveFileDialog";
 import { watchFileChanges } from "../file-events";
 import { TransferQueue, pendingTransfer } from "../transfer-queue";
 import { TransferPanel } from "../components/TransferPanel";
@@ -121,6 +122,27 @@ export function Files({
     !loading &&
     !busy &&
     !!session?.info.capabilities.includes("files.manage");
+  const hasFileChanges = session?.info.capabilities.some((capability) =>
+    [
+      "files.manage",
+      "files.move",
+      "files.create",
+      "files.edit",
+      "files.upload",
+    ].includes(capability),
+  );
+  const [moveTarget, setMoveTarget] = useState<{
+    entry: FileEntry;
+    parent: string;
+    sessionId: number;
+    services: AppContext["services"];
+  } | null>(null);
+  const canMove =
+    connected &&
+    !!directory.path &&
+    !loading &&
+    !busy &&
+    !!session?.info.capabilities.includes("files.move");
   const canCreate =
     connected &&
     !!directory.path &&
@@ -340,6 +362,18 @@ export function Files({
                 setOperation({ kind: "rename", parent: directory.path, entry }),
             },
             {
+              id: "move",
+              label: "Move to folder…",
+              disabled: !canMove || !entry.revision,
+              run: () =>
+                setMoveTarget({
+                  entry,
+                  parent: directory.path,
+                  sessionId: session!.id,
+                  services,
+                }),
+            },
+            {
               id: "delete",
               label:
                 entry.kind === "directory" ? "Delete empty folder…" : "Delete…",
@@ -489,9 +523,9 @@ export function Files({
                 ? "File access unavailable"
                 : preview
                   ? "Sample filesystem"
-                  : session?.info.capabilities.includes("files.manage")
-                    ? "SFTP"
-                    : "SFTP · read only"}
+                  : hasFileChanges
+                    ? "File access"
+                    : "Read-only access"}
             </small>
           </div>
         </div>
@@ -774,7 +808,7 @@ export function Files({
               ? "Cached listing · file access unavailable"
               : busy
                 ? "Working…"
-                : session?.info.capabilities.includes("files.manage")
+                : hasFileChanges
                   ? "Remote filesystem"
                   : "Read-only explorer"}
           </span>
@@ -812,6 +846,20 @@ export function Files({
                 ]
               : menuActions(menu.entry)
           }
+        />
+      )}
+      {moveTarget && (
+        <MoveFileDialog
+          entry={moveTarget.entry}
+          initialParent={moveTarget.parent}
+          services={moveTarget.services}
+          disabled={
+            !connected ||
+            session?.id !== moveTarget.sessionId ||
+            !session.info.capabilities.includes("files.move")
+          }
+          close={() => setMoveTarget(null)}
+          setBusy={setBusy}
         />
       )}
       {operation && (

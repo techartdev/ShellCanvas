@@ -97,3 +97,109 @@
   overflow: auto;
   overflow-wrap: anywhere;
 }
+.move-file-dialog {
+  width: min(530px, calc(100vw - 32px));
+  padding: 24px;
+}
+.move-file-dialog .file-action-emblem {
+  width: 38px;
+  height: 38px;
+  margin-bottom: 12px;
+}
+.move-file-dialog h2 {
+  margin: 8px 0;
+}
+.move-file-dialog .file-action-description {
+  line-height: 1.5;
+}
+.move-file-dialog label {
+  margin-top: 12px;
+}
+.move-file-dialog .file-action-buttons {
+  margin-top: 16px;
+}
+.move-file-dialog .file-action-target {
+  margin: 12px 0;
+}
+.move-file-dialog .file-action-target {
+  display: grid;
+  gap: 4px;
+}
+.move-file-dialog .file-action-target span {
+  color: #8faab8;
+}
+.move-folder-address {
+  display: flex;
+  align-items: stretch;
+  gap: 6px;
+  margin-top: 8px;
+}
+.move-folder-address input {
+  margin: 0;
+  min-width: 0;
+  flex: 1;
+}
+.move-folder-address button {
+  display: grid;
+  place-items: center;
+  padding: 0 10px;
+  border: 1px solid #a3c0c230;
+  border-radius: 6px;
+}
+.move-folder-places {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin: 12px 0;
+}
+.move-folder-places button {
+  font-size: 11px;
+  padding: 6px 10px;
+  background: #91baa810;
+  border-radius: 5px;
+}
+.move-folder-list {
+  height: 128px;
+  overflow: auto;
+  border: 1px solid #a3c0c225;
+  border-radius: 8px;
+  margin-top: 12px;
+  padding: 4px;
+  background: #12242f;
+}
+.move-folder-list button {
+  display: flex;
+  width: 100%;
+  gap: 10px;
+  align-items: center;
+  padding: 10px;
+  font-size: 12px;
+  text-align: left;
+  border-radius: 5px;
+}
+.move-folder-list button:hover {
+  background: #91baa815;
+}
+.move-folder-list button svg:first-child {
+  color: #d9bc80;
+}
+.move-folder-list button span {
+  flex: 1;
+  overflow-wrap: anywhere;
+  min-width: 0;
+}
+.move-folder-list p {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  color: #8faab8;
+  font-size: 12px;
+  padding: 40px 10px;
+}
+.move-folder-review {
+  margin-top: 12px;
+}
+.move-folder-review strong {
+  color: #cee1db;
+  font-weight: 500;
+}

@@ -15,6 +15,8 @@ Additional protocols are optional until these core workflows work well. Connecti
 
 ## Evidence and outstanding work
 
+- Files now has a capability-gated **Move to folder…** dialog with provider-owned navigation, destination review, no replacement and stale-session safeguards. Browser collision/denial/retry/two-window/opaque-location checks and live disposable file/folder/symlink moves passed. Real unprivileged move refusal/recovery and exact cleanup passed too. See [file actions](file-actions.md). Cross-host copy/move, editor path-following and interrupted-move integration remain separate work.
+
 - Windows native terminal checks passed copy through the OS clipboard into an editor draft, opening and closing a second terminal, right tiling, F6 focus cycling, Shift+F10 menus and keyboard move/cancel. Floating/tiled native windows and compact/large browser fixtures showed no black strip or footer overlap. Native terminal paste, Files clipboard and keyboard resize remain separate checks; see [terminal services](terminal-services.md) and [window controls](window-management.md).
 
 - Real unprivileged SFTP permission refusal and recovery now pass for reads, file actions, editor saves and transfers. Original files and temporary cleanup were checked; browser folder/editor failures retained their inputs and recovered on retry. See [permission validation](permission-validation.md).

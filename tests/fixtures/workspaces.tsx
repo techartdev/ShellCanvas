@@ -57,6 +57,7 @@ const first: Session = {
       "files.edit",
       "files.create",
       "files.manage",
+      "files.move",
     ],
   },
 };
@@ -131,6 +132,64 @@ const backend: HostServices = {
       });
     }
     log(`renamed ${path} -> ${destination}`);
+    return destination;
+  },
+  moveEntry: async (id, path, destinationParent, revision) => {
+    checkFilePermission();
+    const { parent, entry } = await findEntry(id, path, revision);
+    if (
+      entry.kind === "directory" &&
+      (destinationParent === path || destinationParent.startsWith(`${path}/`))
+    )
+      throw new Error("A folder cannot be moved into itself or a child.");
+    const target = await folder(id, destinationParent);
+    if (target.entries.some((item) => item.name === entry.name))
+      throw new Error(
+        "An item already exists at this destination. Nothing was replaced.",
+      );
+    const destination = `${target.path.replace(/\/$/, "")}/${entry.name}`;
+    parent.entries = parent.entries.filter((item) => item.path !== path);
+    target.entries.push({ ...entry, path: destination });
+    // This fixture adapter owns its POSIX path mapping, including loaded children.
+    for (const [key, value] of [...folders]) {
+      if (
+        key === fileKey(id, value.path) &&
+        (value.path === path || value.path.startsWith(`${path}/`))
+      ) {
+        const movedPath = destination + value.path.slice(path.length);
+        folders.delete(key);
+        folders.set(fileKey(id, movedPath), {
+          ...value,
+          path: movedPath,
+          parent:
+            value.path === path
+              ? target.path
+              : destination + value.parent!.slice(path.length),
+          entries: value.entries.map((item) => ({
+            ...item,
+            path: destination + item.path.slice(path.length),
+          })),
+        });
+      }
+    }
+    for (const [key, value] of [...documents]) {
+      if (
+        key === fileKey(id, value.path) &&
+        (value.path === path || value.path.startsWith(`${path}/`))
+      ) {
+        const movedPath = destination + value.path.slice(path.length);
+        documents.delete(key);
+        documents.set(fileKey(id, movedPath), {
+          ...value,
+          path: movedPath,
+          parent:
+            value.path === path
+              ? target.path
+              : destination + value.parent!.slice(path.length),
+        });
+      }
+    }
+    log(`moved ${path} -> ${destination}`);
     return destination;
   },
   removeEntry: async (id, path, revision) => {

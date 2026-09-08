@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
-use crate::{text::validate_path, FileMutationService, SftpTextFiles};
+use crate::{text::validate_path, FileMoveService, FileMutationService, SftpTextFiles};
 use anyhow::{bail, Context, Result};
 use async_trait::async_trait;
 use russh_sftp::{
@@ -120,6 +120,29 @@ impl FileMutationService for SftpTextFiles {
                 .context("Deletion was not confirmed. Refresh the directory before retrying")?;
         }
         Ok(())
+    }
+}
+#[async_trait]
+impl FileMoveService for SftpTextFiles {
+    async fn move_entry(&self, path: &str, parent: &str, revision: &str) -> Result<String> {
+        let _lock = self.save_lock.lock().await;
+        let attrs = self.checked_entry(path, revision).await?;
+        let (_, name) = path.rsplit_once('/').context("Unsupported remote path")?;
+        let destination = self.child_path(parent, name).await?;
+        if destination == path {
+            bail!("This item is already in the selected folder.");
+        }
+        // child_path resolves destination aliases before this ancestry check.
+        if attrs.is_dir() && destination.starts_with(&format!("{path}/")) {
+            bail!("A folder cannot be moved into itself or one of its children.");
+        }
+        self.require_absent(&destination).await?;
+        // Standard v3 rename refuses replacement; never use posix-rename here or
+        // silently fall back to copy/delete when filesystems differ.
+        self.raw.rename(path, &destination).await.context(
+            "Move was not confirmed. Inspect both folders before retrying; nothing was intentionally replaced. The server may prohibit moves between filesystems",
+        )?;
+        Ok(destination)
     }
 }
 #[cfg(test)]

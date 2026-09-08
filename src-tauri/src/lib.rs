@@ -20,6 +20,7 @@ struct ActiveSession {
     files: Option<Arc<dyn FileSystemProvider>>,
     text: Option<Arc<dyn TextFileService>>,
     mutations: Option<Arc<dyn FileMutationService>>,
+    moves: Option<Arc<dyn FileMoveService>>,
     transfers: Option<Arc<dyn FileTransferService>>,
     settings: Option<Arc<dyn HostSettingsService>>,
 }
@@ -118,6 +119,7 @@ async fn connect_session(
     };
     let id = state.next_id.fetch_add(1, Ordering::Relaxed) + 1;
     let mut mutations: Option<Arc<dyn FileMutationService>> = None;
+    let mut moves: Option<Arc<dyn FileMoveService>> = None;
     let mut transfers: Option<Arc<dyn FileTransferService>> = None;
     let text: Option<Arc<dyn TextFileService>> = if files.is_some() {
         match connection.text_files().await {
@@ -127,9 +129,11 @@ async fn connect_session(
                 }
                 let service = Arc::new(service);
                 mutations = Some(service.clone());
+                moves = Some(service.clone());
                 transfers = Some(service.clone());
                 info.capabilities.extend([
                     "files.manage".into(),
+                    "files.move".into(),
                     "files.create".into(),
                     "files.upload".into(),
                     "files.download".into(),
@@ -153,6 +157,7 @@ async fn connect_session(
             files,
             text,
             mutations,
+            moves,
             transfers,
             settings,
         },
@@ -371,6 +376,27 @@ async fn rename_entry(
         .map_err(|e| format!("{e:#}"))
 }
 #[tauri::command]
+async fn move_entry(
+    session_id: u64,
+    path: String,
+    parent: String,
+    revision: String,
+    state: State<'_, DesktopState>,
+) -> Result<String, String> {
+    let service = state
+        .registry
+        .lock()
+        .await
+        .sessions
+        .get(&session_id)
+        .and_then(|s| s.moves.clone())
+        .ok_or("Moving files is unavailable for this session")?;
+    service
+        .move_entry(&path, &parent, &revision)
+        .await
+        .map_err(|e| format!("{e:#}"))
+}
+#[tauri::command]
 async fn remove_entry(
     session_id: u64,
     path: String,
@@ -494,6 +520,7 @@ pub fn run() {
             create_text,
             make_directory,
             rename_entry,
+            move_entry,
             remove_entry,
             transfers::choose_upload_files,
             transfers::choose_download_file,

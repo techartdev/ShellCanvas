@@ -108,7 +108,7 @@ export function filesystemFixture(
       provider: `fixture-${kind}`,
       system: "Synthetic file service",
       home: null,
-      capabilities: ["files.read", "files.edit", "files.create"],
+      capabilities: ["files.read", "files.edit", "files.create", "files.move"],
     },
   };
   const backend: HostServices = {
@@ -126,6 +126,33 @@ export function filesystemFixture(
       return { ...doc };
     },
     preview: async (_, path) => documents.get(path)?.text ?? "No fixture text",
+    moveEntry: async (_, path, parent, revision) => {
+      const source = [...folders.values()].find((folder) =>
+        folder.entries.some((item) => item.path === path),
+      );
+      const item = source?.entries.find((item) => item.path === path);
+      const target = folders.get(parent);
+      if (!source || !item || item.revision !== revision)
+        throw new Error("CONFLICT: Fixture item changed");
+      if (!target) throw new Error("Choose an existing provider folder.");
+      if (item.kind !== "file")
+        throw new Error("This synthetic provider only moves files.");
+      if (target.entries.some((entry) => entry.name === item.name))
+        throw new Error("This name already exists.");
+      const destination =
+        kind === "virtual"
+          ? `moved@${next++}`
+          : parent.replace(/[\\/]$/, "") + locations.separator + item.name;
+      source.entries = source.entries.filter((entry) => entry.path !== path);
+      target.entries.push({ ...item, path: destination });
+      const doc = documents.get(path);
+      if (doc) {
+        documents.delete(path);
+        documents.set(destination, { ...doc, path: destination, parent });
+      }
+      log(`move ${path} -> ${parent} :: ${destination}`);
+      return destination;
+    },
     createText: async (_, parent, name, text) => {
       const directory = folders.get(parent);
       if (!directory) throw new Error("Choose an existing provider folder.");

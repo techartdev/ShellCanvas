@@ -26,6 +26,26 @@ it.each(["unix", "drives", "virtual"] as const)(
     expect(copy.parent).toBe(start.path);
     expect(copy.name).toBe("copy.txt");
     expect((await services.readText(copy.path)).text).toBe(doc.text);
+    const entry = (await services.list()).entries.find(
+      (item) => item.path === locations.file,
+    )!;
+    const moved = await services.moveEntry(
+      entry.path,
+      child.path,
+      entry.revision!,
+    );
+    expect(
+      (await services.list()).entries.some((item) => item.path === entry.path),
+    ).toBe(false);
+    expect(
+      (await services.list(child.path)).entries.find(
+        (item) => item.path === moved,
+      )?.name,
+    ).toBe("notes.txt");
+    expect((await services.readText(moved)).text).toBe(doc.text);
+    expect(events).toContain(
+      `move ${locations.file} -> ${locations.child} :: ${moved}`,
+    );
     await expect(services.list("invented/location")).rejects.toThrow(
       "Unknown fixture location",
     );

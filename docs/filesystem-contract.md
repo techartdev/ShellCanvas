@@ -2,7 +2,9 @@
 
 File apps treat paths as nonempty opaque strings. They display them and pass them back to the owning service without splitting, joining or rewriting separators. Entered paths and clipboard paths are passed unchanged. Providers validate their own path and filename rules.
 
-`crates/service-contracts` contains `FileSystemProvider`, `TextFileService`, `FileMutationService`, `FileTransferService`, bounded transfer handles and their data types. Its dependency tree contains serde, async-trait and anyhow, with no SSH, SFTP or Tauri dependency. The SSH core implements and re-exports these contracts. Lifecycle, terminal and composite-binding extraction remain separate work. See [transfer ownership and publication](transfers.md).
+`crates/service-contracts` contains `FileSystemProvider`, `TextFileService`, `FileMutationService`, optional `FileMoveService`, `FileTransferService`, bounded transfer handles and their data types. Its dependency tree contains serde, async-trait and anyhow, with no SSH, SFTP or Tauri dependency. The SSH core implements and re-exports these contracts. Terminal contracts are also extracted; lifecycle and composite bindings remain separate work. See [transfer ownership and publication](transfers.md).
+
+Moving passes the original opaque location, destination folder location and listing revision to `FileMoveService`. Providers preserve the name and refuse replacement. `files.move` is independent of other file changes. The destination browser uses the same Directory metadata as Files; it does not derive parent paths or destination names. See [move behavior and limits](file-actions.md).
 
 ## Navigation data
 

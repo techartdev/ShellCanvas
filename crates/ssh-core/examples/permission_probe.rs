@@ -121,6 +121,7 @@ async fn main() -> Result<()> {
         denied(service.save_text(&public, "must not replace", &public_document.revision).await, "Editor save")?;
         let public_entry = entry(&fs, &dir, "public.txt").await?;
         denied(service.rename_entry(&public, "renamed.txt", &public_entry.revision).await, "Rename")?;
+        denied(service.move_entry(&public, &writable, &public_entry.revision).await, "Move from a protected folder")?;
         denied(service.remove_entry(&public, &public_entry.revision).await, "Delete")?;
         denied(service.clone().upload(&dir, "denied.bin", 1).await, "Upload")?;
         ensure!(root_fs.0.read(&public).await? == b"Public fixture\n", "Denied operations changed public data");
@@ -142,12 +143,21 @@ async fn main() -> Result<()> {
         reader.finish().await?;
         ensure!(read == bytes, "Allowed transfer did not roundtrip after denial");
         let text = entry(&fs, &writable, "allowed.txt").await?;
+        denied(service.move_entry(&text.path, &dir, &text.revision).await, "Move into a protected folder")?;
+        ensure!(service.read_text(&text.path).await?.text == "after", "Denied move changed source");
+        service.make_directory(&writable, "destination").await?;
+        let moved = service.move_entry(&text.path, &format!("{writable}/destination"), &text.revision).await?;
+        let moved_entry = entry(&fs, &format!("{writable}/destination"), "allowed.txt").await?;
+        service.move_entry(&moved, &writable, &moved_entry.revision).await?;
+        let target = entry(&fs, &writable, "destination").await?;
+        service.remove_entry(&target.path, &target.revision).await?;
+        let text = entry(&fs, &writable, "allowed.txt").await?;
         service.rename_entry(&text.path, "renamed.txt", &text.revision).await?;
         let renamed = entry(&fs, &writable, "renamed.txt").await?;
         service.remove_entry(&renamed.path, &renamed.revision).await?;
         service.remove_entry(&uploaded.path, &uploaded.revision).await?;
         ensure!(fs.list(Some(&writable)).await?.entries.is_empty(), "Allowed operations left temporary files");
-        println!("Same unprivileged services recover: editor save, binary upload/download, rename and removal OK");
+        println!("Same unprivileged services recover: editor save, binary upload/download, moves, rename and removal OK");
         Ok(())
     }.await;
     drop(service);
@@ -159,9 +169,16 @@ async fn main() -> Result<()> {
         format!("{writable}/allowed.txt"),
         format!("{writable}/allowed.bin"),
         format!("{writable}/renamed.txt"),
+        format!("{writable}/public.txt"),
+        format!("{dir}/allowed.txt"),
+        format!("{writable}/destination/allowed.txt"),
     ] {
         let _ = root_fs.0.remove_file(path).await;
     }
+    let _ = root_fs
+        .0
+        .remove_dir(format!("{writable}/destination"))
+        .await;
     let _ = root_fs.0.remove_dir(&writable).await;
     root_fs.0.remove_dir(&dir).await.with_context(|| {
         format!("Inspect the disposable directory before further cleanup: {dir}")

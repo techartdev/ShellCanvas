@@ -119,3 +119,10 @@ pub trait FileMutationService: Send + Sync {
     async fn rename_entry(&self, path: &str, name: &str, revision: &str) -> Result<String>;
     async fn remove_entry(&self, path: &str, revision: &str) -> Result<()>;
 }
+
+/// Move within one filesystem service, preserving the item and refusing replacement.
+/// Paths remain opaque; the provider resolves the destination folder and item name.
+#[async_trait]
+pub trait FileMoveService: Send + Sync {
+    async fn move_entry(&self, path: &str, parent: &str, revision: &str) -> Result<String>;
+}

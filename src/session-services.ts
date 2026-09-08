@@ -154,6 +154,17 @@ export function bindSession(
       await backend.removeEntry(check("files.manage"), path, revision);
       mutationCompleted("files.manage", expected);
     },
+    moveEntry: async (path, parent, revision) => {
+      const expected = generation;
+      const result = await backend.moveEntry(
+        check("files.move"),
+        path,
+        parent,
+        revision,
+      );
+      mutationCompleted("files.move", expected);
+      return result;
+    },
     readText: async (path) => {
       const expected = generation;
       const result = await backend.readText(check("files.read"), path);

@@ -74,6 +74,11 @@ export const previewServices: HostServices = {
       "Remote file changes are unavailable in the design preview.",
     );
   },
+  moveEntry: async () => {
+    throw new Error(
+      "Moving remote files is unavailable in the design preview.",
+    );
+  },
   removeEntry: async () => {
     throw new Error(
       "Remote file changes are unavailable in the design preview.",
