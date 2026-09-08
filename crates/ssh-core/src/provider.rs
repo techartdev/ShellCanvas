@@ -1,25 +1,14 @@
 // SPDX-License-Identifier: MPL-2.0
 use crate::{
-    Connection, Directory, FileEntry, FileLocation, FilePlace, FileSystemProvider, ProbeContext,
-    OP_TIMEOUT,
+    CommandProbe, Connection, Directory, FileEntry, FileLocation, FilePlace, FileSystemProvider,
+    ProbeContext, OP_TIMEOUT,
 };
 use anyhow::{bail, Context, Result};
 use async_trait::async_trait;
 use russh_sftp::client::SftpSession;
-use serde::Serialize;
+pub use shellcanvas_services::HostInfo;
 use std::sync::Arc;
 use tokio::{io::AsyncReadExt, time::timeout};
-
-#[derive(Clone, Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct HostInfo {
-    pub provider: String,
-    pub system: String,
-    pub hostname: String,
-    pub home: Option<String>,
-    pub capabilities: Vec<String>,
-    pub notices: Vec<String>,
-}
 
 #[async_trait]
 pub trait SystemProvider: Send + Sync {
@@ -114,10 +103,15 @@ pub async fn inspect_with_providers(
     providers: &[&dyn SystemProvider],
     budget: std::time::Duration,
 ) -> HostInfo {
+    let cached = context.commands.map(crate::probe::CachedProbe::new);
+    let context = ProbeContext {
+        commands: cached.as_ref().map(|probe| probe as &dyn CommandProbe),
+        fallback: context.fallback.clone(),
+    };
     let selected = timeout(budget, async {
         for provider in providers {
-            if provider.detect(context).await {
-                if let Ok(info) = provider.inspect(context).await {
+            if provider.detect(&context).await {
+                if let Ok(info) = provider.inspect(&context).await {
                     return Some(info);
                 }
             }
@@ -331,6 +325,67 @@ mod detection_tests {
         let info = inspect_with_providers(&context, &[&LinuxProvider], OP_TIMEOUT).await;
         assert_eq!(info.provider, "generic-device");
         assert_eq!(info.capabilities, vec!["terminal"]);
+    }
+
+    struct UnknownCommands;
+    #[async_trait]
+    impl CommandProbe for UnknownCommands {
+        async fn probe(&self, _: &str) -> Result<String> {
+            Ok("UnknownOS".into())
+        }
+    }
+    #[tokio::test]
+    async fn unknown_system_preserves_identity_and_only_connection_capabilities() {
+        let context = ProbeContext {
+            commands: Some(&UnknownCommands),
+            fallback: fallback(&["files.read"]),
+        };
+        let info = inspect_with_providers(&context, &[&LinuxProvider], OP_TIMEOUT).await;
+        assert_eq!(info.provider, "generic-device");
+        assert_eq!(info.hostname, "Fixture");
+        assert_eq!(info.system, "Device");
+        assert_eq!(info.capabilities, vec!["files.read"]);
+        assert!(info.notices[0].contains("No supported device"));
+    }
+
+    struct BrokenProvider;
+    #[async_trait]
+    impl SystemProvider for BrokenProvider {
+        fn id(&self) -> &'static str {
+            "broken"
+        }
+        async fn detect(&self, context: &ProbeContext<'_>) -> bool {
+            context.commands.unwrap().probe("uname -s").await.is_ok()
+        }
+        async fn inspect(&self, context: &ProbeContext<'_>) -> Result<HostInfo> {
+            context.commands.unwrap().probe("uname -s").await?;
+            bail!("Inspection failed")
+        }
+    }
+    struct CountingLinuxCommands(std::sync::atomic::AtomicUsize);
+    #[async_trait]
+    impl CommandProbe for CountingLinuxCommands {
+        async fn probe(&self, command: &str) -> Result<String> {
+            self.0.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            LinuxCommands.probe(command).await
+        }
+    }
+    #[tokio::test]
+    async fn failed_inspection_continues_in_order_and_shares_cached_detection() {
+        let commands = CountingLinuxCommands(std::sync::atomic::AtomicUsize::new(0));
+        let context = ProbeContext {
+            commands: Some(&commands),
+            fallback: fallback(&["terminal"]),
+        };
+        let info =
+            inspect_with_providers(&context, &[&BrokenProvider, &LinuxProvider], OP_TIMEOUT).await;
+        assert_eq!(info.provider, "linux");
+        assert_eq!(info.capabilities, vec!["terminal"]);
+        // Broken detection, broken inspection and Linux detection share uname -s.
+        assert_eq!(commands.0.load(std::sync::atomic::Ordering::SeqCst), 3);
+        let info = inspect_with_providers(&context, &[&BrokenProvider], OP_TIMEOUT).await;
+        assert_eq!(info.provider, "generic-device");
+        assert_eq!(commands.0.load(std::sync::atomic::Ordering::SeqCst), 4);
     }
 
     struct HangingCommands;

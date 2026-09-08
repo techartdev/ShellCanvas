@@ -15,6 +15,8 @@ Additional protocols are optional until these core workflows work well. Connecti
 
 ## Evidence and outstanding work
 
+- Provider selection now has bounded per-attempt shared probes and connection-neutral inspection contracts. Recognized/unknown/failed/no-exec/timed-out fixtures, concurrent cache checks, 29 Rust tests, Clippy and a read-only Linux SSH/SFTP/PTY regression passed. This completes BASE-04; composite bindings and further connection-neutral lifecycle/terminal contracts remain open. See [device detection](device-detection.md).
+
 - Window menus now expose keyboard move/resize and left/right tiling. Titlebars support F6 cycling and Shift+F10 menus. Browser geometry, cancellation, restore, edge bounds and desktop/tablet transition checks passed; see [window controls](window-management.md). Native keyboard and layout persistence checks remain separate.
 
 - Host details now renders provider-defined remote settings with individual availability, proposals, review/apply and conflict/uncertain-outcome handling. Linux hostname/timezone commands have controlled tests; live read-only inspection and desktop/tablet UI checks passed. Actual systemd mutations still require a disposable host. See [remote settings](remote-settings.md).

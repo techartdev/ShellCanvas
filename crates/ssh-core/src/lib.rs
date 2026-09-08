@@ -9,7 +9,6 @@ pub mod text;
 pub mod transfers;
 pub use connection::*;
 pub use file_actions::*;
-pub use probe::*;
 pub use profiles::*;
 pub use provider::*;
 pub use shellcanvas_services::*;
