@@ -4,7 +4,7 @@ Updated: 2026-09-08. `[x]` means implemented and checked within the stated scope
 
 ## Immediate delivery focus — everyday basics
 
-Prioritize a dependable working desktop over adding protocols or more bundled apps. Delivered: terminal containment/actions, saved host CRUD, independent host workspaces, Files context actions/clipboard, multiple app instances, existing-file text editing with unsaved guards, and persistent desktop/app preferences. Save As, explicit reconnect and provider-owned navigation are also implemented. Next: transfers, provider-owned host settings and remaining native integration gates. [Core completion work](docs/core-completion.md) tracks the active overnight goal. Keep the composite-adapter architecture as a constraint rather than building every adapter now.
+Prioritize a dependable working desktop over adding protocols or more bundled apps. Delivered: terminal containment/actions, saved host CRUD, independent host workspaces, Files context actions/clipboard, multiple app instances, existing-file text editing with unsaved guards, and persistent desktop/app preferences. Save As, explicit reconnect, provider-owned navigation, regular-file transfers and provider-defined host settings are also implemented. Next: remaining native integration and failure-handling gates. [Core completion work](docs/core-completion.md) tracks the active overnight goal. Keep the composite-adapter architecture as a constraint rather than building every adapter now.
 
 ## M1 — Extensible base (current)
 
@@ -81,6 +81,8 @@ Scope is flexibility now, not implementing every protocol now. Pick the first re
 - [ ] **COMM-01 — Community launch.** Prepare contribution templates, supported-system matrix, SDK examples and release notes. Domain/trademark checks and public release remain separate from the private repository. No paid-tier commitment yet.
 
 ## Validation record
+
+- Windows clipboard/quit walkthrough: Unicode and multiline text copied and pasted between independent editor drafts. Canceling native app quit preserved both; confirmed discard closed the process. Dusk persisted across a full restart, then the original Fjord setting was restored. No remote writes were made. Editor titlebars and dock menus now share stable instance numbering, including document titles; browser labels were checked with two editor windows.
 
 - Remote settings slice: 37 frontend tests, 24 Rust tests and Clippy passed. Provider fixtures cover validation, readonly/partial access, concurrent changes and verified/uncertain outcomes. Browser hostname/timezone review, apply, close guards, conflict retention and desktop/tablet layout checks passed. The authorized read-only Linux probe discovered both fields and 497 timezone choices; no remote settings were changed. Real mutation and unprivileged authorization checks remain pending a disposable systemd environment.
 

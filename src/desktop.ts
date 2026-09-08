@@ -50,6 +50,15 @@ export function focusedApp(state: DesktopState): string | undefined {
   return state.open.filter((id) => !state.minimized.includes(id)).at(-1);
 }
 
+/** Keep document titles and stable instance numbers identical in windows and menus. */
+export function instanceTitle(
+  app: Pick<DesktopApp, "title">,
+  instance: Pick<DesktopState["instances"][string], "title" | "ordinal">,
+): string {
+  const title = instance.title || app.title;
+  return instance.ordinal > 1 ? `${title} ${instance.ordinal}` : title;
+}
+
 export function updateDesktop(
   state: DesktopState,
   action: DesktopAction,

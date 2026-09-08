@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 import { useLayoutEffect, useMemo } from "react";
 import { apps } from "../apps/registry";
-import { focusedApp, type DesktopAction } from "../desktop";
+import { focusedApp, instanceTitle, type DesktopAction } from "../desktop";
 import { bindSession } from "../session-services";
 import type { AppContext, HostServices } from "../sdk";
 import type { Workspace } from "../workspaces";
@@ -58,12 +58,7 @@ export function WorkspaceWindows({
           <AppWindow
             key={id}
             app={app}
-            title={
-              instance.title ||
-              (instance.ordinal > 1
-                ? `${app.title} ${instance.ordinal}`
-                : app.title)
-            }
+            title={instanceTitle(app, instance)}
             dirty={instance.dirty}
             busy={instance.busy}
             cascade={instance.ordinal - 1}

@@ -17,7 +17,7 @@ import {
   X,
 } from "lucide-react";
 import { apps } from "./apps/registry";
-import type { DesktopAction } from "./desktop";
+import { instanceTitle, type DesktopAction } from "./desktop";
 import {
   connectionProfile,
   initialWorkspaces,
@@ -361,7 +361,7 @@ export default function App({
         },
         ...ids.map((id) => ({
           id,
-          label: `${app.title}${desktop.instances[id].ordinal > 1 ? ` ${desktop.instances[id].ordinal}` : ""}${desktop.minimized.includes(id) ? " · Minimized" : ""}`,
+          label: `${instanceTitle(app, desktop.instances[id])}${desktop.minimized.includes(id) ? " · Minimized" : ""}`,
           run: () => dispatch({ type: "focus", id }),
         })),
       ],
