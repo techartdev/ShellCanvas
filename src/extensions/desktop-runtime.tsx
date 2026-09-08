@@ -21,6 +21,8 @@ import type { AppEnvironment } from "./environment-api";
 import type { CustomAccess } from "../custom-services";
 import { RpcError } from "./rpc";
 import type { AppFileSourceGetter } from "./file-bridge";
+import type { AppConsoleSourceGetter } from "./console-bridge";
+import { appCapabilities } from "./permissions";
 import {
   clipboard as systemClipboard,
   type ClipboardService,
@@ -30,9 +32,7 @@ function descriptor(
   entry: InstalledApp,
   component: DesktopApp["component"],
 ): DesktopApp {
-  const capabilities = entry.grants.filter((grant): grant is Capability =>
-    Object.hasOwn(capabilityLabels, grant),
-  );
+  const capabilities = appCapabilities(entry.grants);
   return {
     apiVersion: 1,
     id: entry.package.id,
@@ -140,6 +140,15 @@ function RuntimeDocument({
     [],
   );
   const [environment] = useState(() => new RuntimeEnvironment(state));
+  const consoleSource = useMemo<AppConsoleSourceGetter>(
+    () => () => {
+      const current = fileTarget.current;
+      return current.binding
+        ? { binding: current.binding, services: current.services }
+        : undefined;
+    },
+    [],
+  );
   useLayoutEffect(() => environment.update(state));
   const system = useMemo<SystemAPI>(
     () => ({
@@ -185,6 +194,7 @@ function RuntimeDocument({
           environment={environment}
           custom={custom}
           fileSource={fileSource}
+          consoleSource={consoleSource}
         />
       </div>
     </div>

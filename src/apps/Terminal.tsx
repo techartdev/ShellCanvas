@@ -185,7 +185,10 @@ export function Terminal({
     void services
       .terminal(terminal.cols, terminal.rows, (event) => {
         if (disposed || !connectionState.current) return;
-        if (event.type === "output") terminal.write(new Uint8Array(event.data));
+        if (event.type === "output")
+          return new Promise<void>((resolve) =>
+            terminal.write(new Uint8Array(event.data), resolve),
+          );
         else if (event.type === "closed") {
           closed = true;
           setReady(false);

@@ -359,7 +359,14 @@ const backend: HostServices = {
       write: async (text) => {
         if (!sessions.has(id)) throw new Error("Fixture session closed");
         log(`input ${id}: ${text}`);
-        output(text);
+        event({
+          type: "output",
+          data: [
+            ...(typeof text === "string"
+              ? new TextEncoder().encode(text)
+              : text),
+          ],
+        });
       },
       resize: async () => {},
       close: async () => {

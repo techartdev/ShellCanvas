@@ -197,7 +197,9 @@ export type TerminalEvent =
   | { type: "closed" }
   | { type: "error"; data: string };
 export interface TerminalSession {
-  write(data: string): Promise<void>;
+  /** Absent only for legacy bundled providers. */
+  readonly resizable?: boolean;
+  write(data: string | Uint8Array): Promise<void>;
   resize(cols: number, rows: number): Promise<void>;
   close(): Promise<void>;
 }
@@ -313,7 +315,7 @@ export interface HostServices {
     sessionId: number,
     cols: number,
     rows: number,
-    onEvent: (event: TerminalEvent) => void,
+    onEvent: (event: TerminalEvent) => void | Promise<void>,
   ): Promise<TerminalSession>;
 }
 /** Apps receive a fixed session handle, never connection administration. */
@@ -368,7 +370,7 @@ export interface SessionServices {
   terminal(
     cols: number,
     rows: number,
-    onEvent: (event: TerminalEvent) => void,
+    onEvent: (event: TerminalEvent) => void | Promise<void>,
   ): Promise<TerminalSession>;
 }
 export interface AppContext {

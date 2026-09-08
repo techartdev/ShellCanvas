@@ -420,7 +420,7 @@ export function bindSession(
         cols,
         rows,
         (event) => {
-          if (valid("terminal", expected)) onEvent(event);
+          if (valid("terminal", expected)) return onEvent(event);
         },
       );
       if (!valid("terminal", expected)) {
@@ -428,6 +428,7 @@ export function bindSession(
         throw new Error("This host session is no longer connected");
       }
       return {
+        resizable: handle.resizable,
         write: async (data) => {
           check("terminal", expected);
           await handle.write(data);

@@ -208,21 +208,63 @@ function createNativeServices(pins?: SourcePins): HostServices {
     saveText: (sessionId, path, text, revision) =>
       invoke("save_text", { sessionId, path, text, revision }),
     terminal: async (sessionId, cols, rows, onEvent) => {
-      const channel = new Channel<TerminalEvent>();
-      channel.onmessage = onEvent;
-      const terminalId = await invoke<number>("open_terminal", {
+      const channel = new Channel<
+        TerminalEvent & { sequence?: number | null }
+      >();
+      let retired = false;
+      let opening: Promise<{ id: number; resizable: boolean }>;
+      channel.onmessage = (event) => {
+        if (retired) return;
+        void (async () => {
+          await onEvent(event);
+          if (event.type === "output" && !retired) {
+            const { id: terminalId } = await opening;
+            if (!retired)
+              await invoke("acknowledge_terminal_output", {
+                sessionId,
+                terminalId,
+                sequence: event.sequence,
+              });
+          }
+        })().catch(async (error) => {
+          if (retired) return;
+          retired = true;
+          try {
+            await onEvent({
+              type: "error",
+              data: `Console delivery failed: ${error}`,
+            });
+          } catch {
+            /* Consumer failed. */
+          }
+          try {
+            const { id: terminalId } = await opening;
+            await invoke("close_terminal", { sessionId, terminalId });
+          } catch {
+            /* An unsuccessful open has no retained terminal. */
+          }
+        });
+      };
+      opening = invoke<{ id: number; resizable: boolean }>("open_terminal", {
         sessionId,
         cols,
         rows,
         onEvent: channel,
       });
+      const { id: terminalId, resizable } = await opening;
       // Preserve input ordering across IPC calls, including large pasted text.
       let pending = Promise.resolve();
       return {
+        resizable,
         write: (data) => {
-          const bytes = new TextEncoder().encode(data);
+          const bytes =
+            typeof data === "string"
+              ? new TextEncoder().encode(data)
+              : new Uint8Array(data);
           pending = pending.then(async () => {
+            if (retired) throw new Error("Console is closed.");
             for (let offset = 0; offset < bytes.length; offset += 16384) {
+              if (retired) throw new Error("Console is closed.");
               await invoke("terminal_input", {
                 sessionId,
                 terminalId,
@@ -234,7 +276,10 @@ function createNativeServices(pins?: SourcePins): HostServices {
         },
         resize: (cols, rows) =>
           invoke("terminal_resize", { sessionId, terminalId, cols, rows }),
-        close: () => invoke("close_terminal", { sessionId, terminalId }),
+        close: () => {
+          retired = true;
+          return invoke("close_terminal", { sessionId, terminalId });
+        },
       };
     },
   };

@@ -123,7 +123,14 @@ function backend(source = 1): HostServices {
       return {
         write: async (text) => {
           inputs++;
-          event({ type: "output", data: [...new TextEncoder().encode(text)] });
+          event({
+            type: "output",
+            data: [
+              ...(typeof text === "string"
+                ? new TextEncoder().encode(text)
+                : text),
+            ],
+          });
         },
         resize: async () => {},
         close: async () => {

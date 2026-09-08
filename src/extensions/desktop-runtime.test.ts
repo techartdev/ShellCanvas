@@ -22,7 +22,7 @@ async function setup() {
           id: "org.example.notes",
           title: "Notes",
           version,
-          permissions: ["system.dialogs", "files.read"],
+          permissions: ["system.dialogs", "files.read", "system.console"],
           script: "void 0",
           style: "",
         }),
@@ -31,6 +31,17 @@ async function setup() {
     );
   return { catalog, runtime, install };
 }
+it("maps the namespaced console permission to a host capability without granting unrelated services", async () => {
+  const { runtime, install } = await setup();
+  await install("1.0.0", ["system.console"]);
+  const descriptor = runtime
+    .snapshot()
+    .find((app) => app.id === "org.example.notes")!;
+  expect(descriptor.scope).toBe("host");
+  expect(descriptor.optional).toEqual(["terminal"]);
+  expect(descriptor.requires).toEqual([]);
+  runtime.closeAll();
+});
 it("pins running descriptors and grants while new desktop windows use the installed update", async () => {
   const { runtime, install } = await setup();
   await install("1.0.0", ["files.read"]);

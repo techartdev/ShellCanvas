@@ -543,15 +543,26 @@ async fn remove_entry(
         .map_err(|e| format!("{e:#}"))
 }
 
+#[derive(serde::Serialize)]
+struct OpenedTerminal {
+    id: u64,
+    resizable: bool,
+}
+#[derive(Clone, serde::Serialize)]
+struct TerminalDelivery {
+    #[serde(flatten)]
+    event: TerminalEvent,
+    sequence: Option<u64>,
+}
 #[tauri::command]
 async fn open_terminal(
     session_id: u64,
     binding: Option<ConnectionIdentity>,
     cols: u32,
     rows: u32,
-    on_event: Channel<TerminalEvent>,
+    on_event: Channel<TerminalDelivery>,
     state: State<'_, DesktopState>,
-) -> Result<u64, String> {
+) -> Result<OpenedTerminal, String> {
     let terminal = session_service(
         &state,
         session_id,
@@ -565,18 +576,49 @@ async fn open_terminal(
         .map_err(error)?
         .map_err(error)?;
     let (send, recv) = mpsc::channel(128);
+    let resizable = stream.resizable;
+    let gate = Arc::new(terminals::OutputGate::default());
     let id = state.next_id.fetch_add(1, Ordering::Relaxed) + 1;
-    let canceled = state
+    let canceled =
+        state
+            .registry
+            .lock()
+            .await
+            .add_terminal(session_id, id, send, Some(gate.clone()))?;
+    let registry = state.registry.clone();
+    tauri::async_runtime::spawn(async move {
+        terminals::run_terminal(stream, recv, canceled, |event| {
+            let gate = gate.clone();
+            let on_event = on_event.clone();
+            async move {
+                let sequence = matches!(&event, TerminalEvent::Output(_)).then(|| gate.begin());
+                if on_event.send(TerminalDelivery { event, sequence }).is_err() {
+                    return false;
+                }
+                if sequence.is_some() {
+                    gate.wait().await;
+                }
+                true
+            }
+        })
+        .await;
+        registry.lock().await.close_terminal(session_id, id);
+    });
+    Ok(OpenedTerminal { id, resizable })
+}
+
+#[tauri::command]
+async fn acknowledge_terminal_output(
+    session_id: u64,
+    terminal_id: u64,
+    sequence: u64,
+    state: State<'_, DesktopState>,
+) -> Result<(), String> {
+    state
         .registry
         .lock()
         .await
-        .add_terminal(session_id, id, send)?;
-    let registry = state.registry.clone();
-    tauri::async_runtime::spawn(async move {
-        terminals::run_terminal(stream, recv, canceled, |event| on_event.send(event).is_ok()).await;
-        registry.lock().await.close_terminal(session_id, id);
-    });
-    Ok(id)
+        .acknowledge(session_id, terminal_id, sequence)
 }
 
 async fn terminal_sender(
@@ -710,6 +752,7 @@ pub fn run() {
                 transfers::cancel_transfer,
                 open_terminal,
                 terminal_input,
+                acknowledge_terminal_output,
                 terminal_resize,
                 close_terminal
             ];

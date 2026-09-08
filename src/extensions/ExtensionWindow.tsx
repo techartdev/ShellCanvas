@@ -2,15 +2,11 @@
 import { useEffect, useMemo, useState } from "react";
 import { PanelsTopLeft } from "lucide-react";
 import { AppWindow } from "../components/AppWindow";
-import {
-  capabilityLabels,
-  type AppContext,
-  type Capability,
-  type DesktopApp,
-} from "../sdk";
+import { type AppContext, type DesktopApp } from "../sdk";
 import type { AppLease } from "./catalog";
 import type { AppDocumentState } from "./window-api";
 import { ExtensionFrame } from "./ExtensionFrame";
+import { appCapabilities } from "./permissions";
 
 /** Reuses the desktop's window chrome, dirty-close review and per-window system scope. */
 export function ExtensionWindow({
@@ -37,9 +33,7 @@ export function ExtensionWindow({
     busy: false,
   });
   const app = useMemo<DesktopApp>(() => {
-    const capabilities = lease.installed.grants.filter(
-      (grant): grant is Capability => Object.hasOwn(capabilityLabels, grant),
-    );
+    const capabilities = appCapabilities(lease.installed.grants);
     return {
       apiVersion: 1,
       id: lease.installed.package.id,

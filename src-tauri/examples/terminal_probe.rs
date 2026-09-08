@@ -6,8 +6,10 @@ mod connection_resource;
 #[path = "../src/custom_binding.rs"]
 mod custom_binding;
 #[path = "../src/session_registry.rs"]
+#[allow(dead_code)] // This CLI consumer has no renderer acknowledgement channel.
 mod session_registry;
 #[path = "../src/terminals.rs"]
+#[allow(dead_code)] // Native UI flow control is exercised by the pump/registry tests.
 mod terminals;
 #[allow(dead_code)]
 #[path = "../src/workspace_services.rs"]
@@ -90,7 +92,7 @@ async fn main() -> Result<()> {
         let stream = service.open(TerminalSize::new(80, 24)).await?;
         let (sender, input) = mpsc::channel(128);
         let canceled = registry
-            .add_terminal(1, id, sender)
+            .add_terminal(1, id, sender, None)
             .map_err(anyhow::Error::msg)?;
         let bytes = Arc::new(Mutex::new(Vec::new()));
         let output = bytes.clone();
@@ -102,11 +104,11 @@ async fn main() -> Result<()> {
                 if let TerminalEvent::Output(bytes) = event {
                     let mut output = output.lock().unwrap();
                     if output.len() + bytes.len() > 1024 * 1024 {
-                        return false;
+                        return std::future::ready(false);
                     }
                     output.extend(bytes);
                 }
-                true
+                std::future::ready(true)
             },
         )));
         outputs.push(bytes);

@@ -137,8 +137,9 @@ export const previewServices: HostServices = {
       "\x1b[38;2;115;205;173m  ShellCanvas\x1b[0m  /  design preview\r\n\r\n  Your remote workspace, one connection away.\r\n  \x1b[38;2;137;153;166mSample terminal • no commands are executed\x1b[0m\r\n\r\n\x1b[38;2;115;205;173mdemo@atlas\x1b[0m \x1b[38;2;153;183;210m~\x1b[0m $ ",
     );
     return {
+      resizable: true,
       write: async (text) => {
-        if (text.includes("\r"))
+        if (typeof text === "string" ? text.includes("\r") : text.includes(13))
           output(
             "\r\nPreview only. Connect in the native app to run commands.\r\n\x1b[38;2;115;205;173mdemo@atlas\x1b[0m ~ $ ",
           );

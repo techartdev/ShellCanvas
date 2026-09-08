@@ -156,7 +156,9 @@ const transport: HostServices = native
         write: async (text) =>
           onEvent({
             type: "output",
-            data: Array.from(new TextEncoder().encode(text)),
+            data: Array.from(
+              typeof text === "string" ? new TextEncoder().encode(text) : text,
+            ),
           }),
         resize: async () => {},
         close: async () => {},
@@ -177,7 +179,7 @@ function instrument(transport: HostServices): HostServices {
             (output.get(id) ?? "") +
               new TextDecoder().decode(new Uint8Array(event.data)),
           );
-        onEvent(event);
+        return onEvent(event);
       });
       terminals.set(id, handle);
       return handle;
@@ -384,7 +386,7 @@ async function installCustom(granted: boolean) {
             : "org.example.custom-denied",
           version: "1.0.0",
           title,
-          permissions: ["services.acme", "files.read"],
+          permissions: ["services.acme", "files.read", "system.console"],
           script: customScript,
           style: customStyle,
         }),
@@ -403,7 +405,10 @@ async function installCustom(granted: boolean) {
     "Use acme services on the selected connection",
     review,
   );
-  if (!granted) permission.click();
+  if (!granted) {
+    permission.click();
+    (await label("Open and control remote consoles", review)).click();
+  }
   await click("Install app", review);
   const card = await until(
     () =>
@@ -522,6 +527,8 @@ async function run() {
     );
     checks.customPermissionDenied =
       (await askCustom(denied, "call")).code === "denied";
+    checks.consolePermissionDenied =
+      (await askCustom(denied, "console")).code === "denied";
     (
       await until(
         () =>
@@ -532,6 +539,10 @@ async function run() {
       )
     ).click();
     customFrame = await installCustom(true);
+    const consoleResult = (await askCustom(customFrame, "console")).value as
+      { bytes?: boolean; survivor?: boolean } | undefined;
+    checks.sdkConsoleBytes = consoleResult?.bytes === true;
+    checks.sdkConsoleIndependentClose = consoleResult?.survivor === true;
     const catalog = (await askCustom(customFrame, "list"))
       .value as ServiceMethodInfo[];
     checks.textOperationUnavailable =
@@ -632,6 +643,11 @@ async function run() {
     checks.customReconnectNeedsReview =
       (await askCustom(customFrame, "call")).code === "unavailable";
     await click("Use reconnected host");
+    checks.sdkConsoleOldHandleRetired =
+      (await askCustom(customFrame, "console-stale")).code === "closed";
+    const renewedConsole = (await askCustom(customFrame, "console")).value as
+      { bytes?: boolean } | undefined;
+    checks.sdkConsoleNewBinding = renewedConsole?.bytes === true;
     const updated = (await askCustom(customFrame, "list"))
       .value as ServiceMethodInfo[];
     const method = updated.find((item) => item.name === "acme.echo");

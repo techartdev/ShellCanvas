@@ -2,6 +2,7 @@
 import type { SystemAPI } from "./system-api.js";
 import { RpcPeer, messagePortTransport, type Json } from "./rpc.js";
 import { appFileClient, type AppFilesAPI } from "./file-client.js";
+import { appConsoleClient, type AppConsoleAPI } from "./console-client.js";
 import type { AppDocumentState } from "./window-api.js";
 import type { AppStorageAPI, AppValue, StoragePage } from "./storage-api.js";
 import type {
@@ -17,6 +18,7 @@ import {
 export interface ExtensionClient {
   readonly system: SystemAPI;
   readonly files: AppFilesAPI;
+  readonly console: AppConsoleAPI;
   readonly window: { setDocumentState(state: AppDocumentState): Promise<void> };
   readonly storage: AppStorageAPI;
   readonly settings: AppStorageAPI;
@@ -169,6 +171,7 @@ export function connectToShellCanvas(
       resolve({
         system,
         files: appFileClient(peer),
+        console: appConsoleClient(peer),
         storage: storage("storage"),
         settings: storage("settings"),
         environment: Object.freeze({

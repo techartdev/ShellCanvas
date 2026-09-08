@@ -67,7 +67,9 @@ const backend: HostServices = {
       write: async (data) =>
         onEvent({
           type: "output",
-          data: Array.from(new TextEncoder().encode(data)),
+          data: Array.from(
+            typeof data === "string" ? new TextEncoder().encode(data) : data,
+          ),
         }),
     };
   },

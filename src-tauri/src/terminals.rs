@@ -4,17 +4,53 @@ use anyhow::{bail, Context, Result};
 use shellcanvas_services::{
     TerminalEvent, TerminalInput, TerminalSize, TerminalStream, TERMINAL_CHUNK,
 };
-use std::time::Duration;
+use std::{
+    future::Future,
+    sync::atomic::{AtomicU64, Ordering},
+    time::Duration,
+};
 use tokio::{
-    sync::{mpsc, oneshot},
+    sync::{mpsc, oneshot, Notify},
     time::timeout,
 };
 
-pub async fn run_terminal(
+/// Exactly one unacknowledged output chunk. Input and teardown never wait on this gate.
+#[derive(Default)]
+pub struct OutputGate {
+    sequence: AtomicU64,
+    pending: AtomicU64,
+    consumed: Notify,
+}
+impl OutputGate {
+    pub fn begin(&self) -> u64 {
+        let sequence = self.sequence.fetch_add(1, Ordering::SeqCst) + 1;
+        self.pending.store(sequence, Ordering::SeqCst);
+        sequence
+    }
+    pub fn acknowledge(&self, sequence: u64) -> Result<(), String> {
+        if sequence == 0
+            || self
+                .pending
+                .compare_exchange(sequence, 0, Ordering::SeqCst, Ordering::SeqCst)
+                .is_err()
+        {
+            return Err("Output acknowledgement is stale or out of order".into());
+        }
+        self.consumed.notify_one();
+        Ok(())
+    }
+    pub async fn wait(&self) {
+        while self.pending.load(Ordering::SeqCst) != 0 {
+            self.consumed.notified().await;
+        }
+    }
+}
+
+pub async fn run_terminal<F: Future<Output = bool>>(
     mut stream: TerminalStream,
     mut input: mpsc::Receiver<TerminalInput>,
     canceled: oneshot::Receiver<()>,
-    output: impl Fn(TerminalEvent) -> bool,
+    output: impl Fn(TerminalEvent) -> F,
 ) {
     let result: Result<()> = {
         let write = async {
@@ -44,7 +80,7 @@ pub async fn run_terminal(
                 if bytes.is_empty() || bytes.len() > TERMINAL_CHUNK {
                     bail!("Console returned an invalid output chunk");
                 }
-                if !output(TerminalEvent::Output(bytes)) {
+                if !output(TerminalEvent::Output(bytes)).await {
                     break;
                 }
                 tokio::task::yield_now().await;
@@ -59,12 +95,12 @@ pub async fn run_terminal(
         }
     };
     if let Err(error) = result {
-        output(TerminalEvent::Error(format!("{error:#}")));
+        output(TerminalEvent::Error(format!("{error:#}"))).await;
     }
     // Both I/O futures are dropped before cleanup. A blocked write must not
     // prevent closing this window, even when another IPC caller holds a sender.
     let _ = timeout(Duration::from_secs(3), stream.writer.close()).await;
-    output(TerminalEvent::Closed);
+    output(TerminalEvent::Closed).await;
 }
 
 #[cfg(test)]
@@ -143,7 +179,7 @@ mod tests {
         let events = record.events.clone();
         let task = tokio::spawn(run_terminal(stream, recv, canceled, move |event| {
             events.lock().unwrap().push(event);
-            true
+            std::future::ready(true)
         }));
         Fixture {
             record,
@@ -167,6 +203,62 @@ mod tests {
             .await
             .unwrap()
             .unwrap();
+    }
+
+    #[tokio::test]
+    async fn paused_output_preserves_bytes_and_does_not_block_input_or_close() {
+        let record = Record::default();
+        let (remote, read) = mpsc::channel(8);
+        let (input, recv) = mpsc::channel(8);
+        let (cancel, canceled) = oneshot::channel();
+        let stream = TerminalStream {
+            reader: Box::new(Reader(read)),
+            writer: Box::new(Writer {
+                record: record.clone(),
+                blocked: None,
+                fail: false,
+            }),
+            resizable: true,
+        };
+        let gate = Arc::new(OutputGate::default());
+        let output_gate = gate.clone();
+        let events = record.events.clone();
+        let task = tokio::spawn(run_terminal(stream, recv, canceled, move |event| {
+            let gate = output_gate.clone();
+            let events = events.clone();
+            async move {
+                let is_output = matches!(&event, TerminalEvent::Output(_));
+                if is_output {
+                    gate.begin();
+                }
+                events.lock().unwrap().push(event);
+                if is_output {
+                    gate.wait().await;
+                }
+                true
+            }
+        }));
+        remote.send(Ok(vec![0, 255, 0xf0])).await.unwrap();
+        remote.send(Ok(vec![0x9f, 0x8c, 0x8a])).await.unwrap();
+        until(|| record.events.lock().unwrap().len() == 1).await;
+        input.send(TerminalInput::Data(vec![255, 0])).await.unwrap();
+        until(|| !record.writes.lock().unwrap().is_empty()).await;
+        assert_eq!(record.events.lock().unwrap().len(), 1);
+        assert!(gate.acknowledge(2).is_err());
+        gate.acknowledge(1).unwrap();
+        until(|| record.events.lock().unwrap().len() == 2).await;
+        assert!(gate.acknowledge(1).is_err());
+        drop(cancel);
+        finished(task).await;
+        assert_eq!(
+            *record.events.lock().unwrap(),
+            vec![
+                TerminalEvent::Output(vec![0, 255, 0xf0]),
+                TerminalEvent::Output(vec![0x9f, 0x8c, 0x8a]),
+                TerminalEvent::Closed
+            ]
+        );
+        assert_eq!(record.closes.load(Ordering::SeqCst), 1);
     }
 
     #[tokio::test]

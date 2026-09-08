@@ -36,3 +36,5 @@ For the existing lifecycle/permissions/clipboard walkthrough using the same inde
 The SDK also supports [custom adapter services](custom-services.md) through explicit per-service grants. `verify:sdk` independently builds the Device Services example, which uses `services.list` and `services.call`. Set `SHELLCANVAS_SDK_PROBE=1` and build `src-tauri/tauri.adapter-probe.conf.json` to exercise that artifact alongside the separate adapter process in the Windows fixture.
 
 This establishes the app SDK packaging path. The standalone adapter SDK/schema/starter, repository AI skills, further lifecycle actions and the other [kernel delivery gates](kernel-roadmap.md) remain open. No package has been published to a registry by this workflow.
+
+The SDK also exposes [remote consoles](app-console.md) with `system.console` permission, byte streams, flow control, optional resizing and window-owned cleanup. The adapter integration fixture checks binary I/O through the independently built SDK app and actual native process transport. File transfers and provider-defined settings still need public app APIs.

@@ -6,6 +6,7 @@ import { AppCatalog, type AppLease, type InstallReview } from "./catalog";
 import "./ExtensionManager.css";
 
 function permissionName(name: string) {
+  if (name === "system.console") return "Open and control remote consoles";
   if (name.startsWith("services."))
     return `Use ${name.slice(9)} services on the selected connection`;
   if (name === "system.storage") return "This app’s local data and settings";

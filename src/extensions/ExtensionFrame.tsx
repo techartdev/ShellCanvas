@@ -6,6 +6,7 @@ import { RpcPeer, RpcError, messagePortTransport, type Json } from "./rpc";
 import { systemMethods } from "./system-bridge";
 import { fileMethods, type AppFileSourceGetter } from "./file-bridge";
 import { AppDirectories } from "./directory-bridge";
+import { AppConsoles, type AppConsoleSourceGetter } from "./console-bridge";
 import type { AppLease } from "./catalog";
 import { documentStateMethod, type AppDocumentState } from "./window-api";
 import { isFrameHandshake, mountAppDocument } from "./frame-document";
@@ -18,7 +19,7 @@ import {
   emptyOptions,
   methodAvailable,
 } from "./environment";
-import { capabilityLabels } from "../sdk";
+import { appCapabilities } from "./permissions";
 import type { ClipboardService } from "../clipboard";
 import { AppClipboard } from "./clipboard-api";
 import { customMethods } from "./custom-bridge";
@@ -38,6 +39,7 @@ export function ExtensionFrame({
   environment: suppliedEnvironment,
   custom,
   fileSource,
+  consoleSource,
 }: {
   app: AppPackage;
   system: SystemAPI;
@@ -49,6 +51,7 @@ export function ExtensionFrame({
   environment?: RuntimeEnvironment;
   custom?: CustomAccess;
   fileSource?: AppFileSourceGetter;
+  consoleSource?: AppConsoleSourceGetter;
 }) {
   const ref = useRef<HTMLIFrameElement>(null);
   const [error, setError] = useState("");
@@ -70,6 +73,9 @@ export function ExtensionFrame({
     let stopEnvironment: (() => void) | undefined;
     const clipboardOwner = clipboard ? new AppClipboard(clipboard) : undefined;
     const directories = fileSource ? new AppDirectories(fileSource) : undefined;
+    const consoles = consoleSource
+      ? new AppConsoles(consoleSource, setError)
+      : undefined;
     const receive = (event: MessageEvent) => {
       if (
         retired ||
@@ -94,6 +100,9 @@ export function ExtensionFrame({
       if (directories)
         for (const [name, method] of directories.methods())
           methods.set(name, method);
+      if (consoles)
+        for (const [name, method] of consoles.methods())
+          methods.set(name, method);
       const customService = customMethods(
         custom,
         approved,
@@ -111,9 +120,7 @@ export function ExtensionFrame({
         documentStateMethod((state) => documentState.current?.(state)),
       );
       for (const [name, method] of methods) {
-        const remote = method.grants.filter((grant) =>
-          Object.hasOwn(capabilityLabels, grant),
-        );
+        const remote = appCapabilities(method.grants);
         if (remote.length && suppliedEnvironment)
           methods.set(name, {
             ...method,
@@ -156,6 +163,11 @@ export function ExtensionFrame({
       });
       const publishEnvironment = () => {
         directories?.refresh(environment.snapshot().connection === "connected");
+        const state = environment.snapshot();
+        consoles?.refresh(
+          state.connection === "connected" &&
+            state.capabilities.includes("terminal"),
+        );
         events.publish(
           "system.environment",
           environment.snapshot() as unknown as Json,
@@ -170,6 +182,7 @@ export function ExtensionFrame({
         approved,
       );
       peer.onClose(() => {
+        consoles?.close();
         directories?.close();
         clipboardOwner?.close();
         stopEnvironment?.();
@@ -185,6 +198,7 @@ export function ExtensionFrame({
     setError("");
     const unmount = mountAppDocument(frame, app, token, setError);
     const retire = () => {
+      consoles?.close();
       directories?.close();
       retired = true;
       window.removeEventListener("message", receive);
@@ -210,6 +224,7 @@ export function ExtensionFrame({
     suppliedEnvironment,
     custom,
     fileSource,
+    consoleSource,
   ]);
   return (
     <>

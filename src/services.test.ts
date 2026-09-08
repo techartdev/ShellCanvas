@@ -14,6 +14,52 @@ import { nativeServices } from "./services";
 import { bindSession } from "./session-services";
 import { previewSession } from "./preview";
 
+it("acknowledges output only after consumption and preserves queued binary input", async () => {
+  let event!: (value: {
+    type: "output";
+    data: number[];
+    sequence: number;
+  }) => void;
+  const consumed = deferred<void>();
+  invoke.mockImplementation(async (command, args) => {
+    if (command === "open_terminal") {
+      event = args.onEvent.onmessage;
+      return { id: 90, resizable: false };
+    }
+  });
+  const received = vi.fn(() => consumed.promise);
+  const console = await nativeServices.terminal(700, 80, 24, received);
+  expect(console.resizable).toBe(false);
+  event({ type: "output", data: [0, 255, 240], sequence: 1 });
+  await Promise.resolve();
+  expect(
+    invoke.mock.calls.some(
+      ([command]) => command === "acknowledge_terminal_output",
+    ),
+  ).toBe(false);
+  const bytes = Uint8Array.from({ length: 33000 }, (_, i) => i % 256);
+  const written = console.write(bytes);
+  bytes.fill(42);
+  await written;
+  const parts = invoke.mock.calls
+    .filter(([command]) => command === "terminal_input")
+    .map(([, args]) => args.data as number[]);
+  expect(parts.map((part) => part.length)).toEqual([16384, 16384, 232]);
+  expect(parts.flat()).toEqual(
+    Array.from({ length: 33000 }, (_, i) => i % 256),
+  );
+  consumed.resolve();
+  await vi.waitFor(() =>
+    expect(invoke).toHaveBeenCalledWith("acknowledge_terminal_output", {
+      sessionId: 700,
+      terminalId: 90,
+      sequence: 1,
+    }),
+  );
+  await console.close();
+  await expect(console.write("closed")).rejects.toThrow("closed");
+});
+
 it("captures each source once and attaches it to all native service requests", async () => {
   const files = { instance: 11, generation: 1, adapter: "files" };
   const consoleSource = { instance: 12, generation: 1, adapter: "console" };
@@ -124,6 +170,7 @@ beforeEach(() => {
   invoke.mockReset();
   connected = deferred<Session>();
   invoke.mockImplementation(async (command, args) => {
+    if (command === "open_terminal") return { id: 50, resizable: true };
     if (command === "begin_connect") return 42;
     if (command === "connect") {
       channel = args.onHostKey;
