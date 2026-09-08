@@ -17,8 +17,13 @@ use tokio::{
 };
 
 #[cfg(test)]
+#[path = "transfer_folder_tests.rs"]
+mod folder_tests;
+#[cfg(test)]
 #[path = "transfer_tests.rs"]
 mod tests;
+#[path = "transfer_tree.rs"]
+mod tree;
 
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -45,6 +50,10 @@ pub struct Outcome {
     pub path: Option<String>,
 }
 enum Job {
+    Tree {
+        tree: tree::Tree,
+        target: tree::Target,
+    },
     Copy {
         path: String,
         revision: String,
@@ -179,10 +188,22 @@ pub async fn choose_upload_files(
     app: tauri::AppHandle,
     session_id: u64,
     parent: String,
+    folder: Option<bool>,
     state: State<'_, DesktopState>,
 ) -> Result<Vec<Ticket>, String> {
     provider(&state, session_id).await?;
     let jobs = tauri::async_runtime::spawn_blocking(move || -> Result<Vec<_>, String> {
+        if folder.unwrap_or(false) {
+            let Some(selected) = app
+                .dialog()
+                .file()
+                .set_title("Upload folder")
+                .blocking_pick_folder()
+            else {
+                return Ok(Vec::new());
+            };
+            return clipboard_uploads(vec![selected.into_path().map_err(error)?], parent);
+        }
         let paths = app
             .dialog()
             .file()
@@ -347,12 +368,13 @@ pub async fn choose_download_files(
         return Err("Choose between 1 and 16 versioned files at a time.".into());
     }
     provider(&state, session_id).await?;
-    let fs = crate::filesystem(&state, session_id).await?;
     let mut names = Vec::new();
+    let mut trees = Vec::new();
     for file in &files {
-        let location = fs.locate(&file.path).await.map_err(error)?;
-        download_name(&location.name)?;
-        names.push(location.name);
+        let tree = remote_tree(&state, session_id, file).await?;
+        tree.local_names().map_err(error)?;
+        names.push(tree.nodes[0].entry.name.clone());
+        trees.push(tree);
     }
     let destination = tauri::async_runtime::spawn_blocking(move || {
         app.dialog()
@@ -367,21 +389,26 @@ pub async fn choose_download_files(
     };
     let folder = destination.into_path().map_err(error)?;
     let destinations = download_destinations(&folder, &names)?;
-    let jobs = files
+    let jobs = trees
         .into_iter()
         .zip(names)
         .zip(destinations)
-        .map(|((file, name), destination)| {
-            (
+        .map(|((tree, name), destination)| {
+            let size = tree.size;
+            let job = if tree.nodes[0].entry.kind == "directory" {
+                Job::Tree {
+                    tree,
+                    target: tree::Target::Local(destination),
+                }
+            } else {
+                let entry = &tree.nodes[0].entry;
                 Job::Download {
                     destination,
-                    path: file.path,
-                    revision: file.revision,
-                },
-                name,
-                0,
-                "download",
-            )
+                    path: entry.path.clone(),
+                    revision: entry.revision.clone(),
+                }
+            };
+            (job, name, size, "download")
         })
         .collect();
     let registry = state.registry.lock().await;
@@ -391,6 +418,41 @@ pub async fn choose_download_files(
     state.transfers.lock().await.add(session_id, jobs)
 }
 
+async fn remote_tree(
+    state: &DesktopState,
+    session: u64,
+    file: &DownloadSource,
+) -> Result<tree::Tree, String> {
+    let service = provider(state, session).await?;
+    let fs = crate::filesystem(state, session).await?;
+    let location = fs.locate(&file.path).await.map_err(error)?;
+    let parent = location
+        .parent
+        .ok_or("Select a file or folder, not a filesystem root")?;
+    let entry = fs
+        .list(Some(&parent))
+        .await
+        .map_err(error)?
+        .entries
+        .into_iter()
+        .find(|entry| {
+            entry.path == file.path && !file.revision.is_empty() && entry.revision == file.revision
+        })
+        .ok_or("The selected item changed. Refresh and select it again.")?;
+    tree::remote(&service, entry).await.map_err(error)
+}
+#[cfg(windows)]
+fn clipboard_sources(
+    tree: tree::Tree,
+    service: Arc<dyn FileTransferService>,
+) -> Result<Vec<crate::clipboard_stream::Source>, String> {
+    let names = tree.local_names().map_err(error)?;
+    tree.nodes.into_iter().zip(names).map(|(node, name)| {
+        let display_path = name.to_string_lossy().replace('/', "\\");
+        if display_path.encode_utf16().count() >= 260 { return Err("A folder path is too long for Explorer's file clipboard (259 characters). Use Download instead.".into()); }
+        Ok(crate::clipboard_stream::Source { entry: node.entry, display_path, service: service.clone(), runtime: tokio::runtime::Handle::current() })
+    }).collect()
+}
 #[tauri::command]
 pub async fn copy_system_files(
     session_id: u64,
@@ -404,45 +466,22 @@ pub async fn copy_system_files(
     }
     #[cfg(windows)]
     {
-        let sequence =
-            unsafe { windows::Win32::System::DataExchange::GetClipboardSequenceNumber() };
+        let sequence = crate::windows_file_input::sequence();
         if files.is_empty() || files.len() > 16 {
-            return Err("Select up to 16 regular files.".into());
+            return Err("Select up to 16 files or folders.".into());
         }
         let service = provider(&state, session_id).await?;
-        let fs = crate::filesystem(&state, session_id).await?;
-        let mut directories = HashMap::new();
         let mut names = std::collections::HashSet::new();
         let mut sources = Vec::new();
         for file in files {
-            let location = fs.locate(&file.path).await.map_err(error)?;
-            let parent = location
-                .parent
-                .ok_or("Only regular files can be copied to Explorer")?;
-            if !directories.contains_key(&parent) {
-                directories.insert(parent.clone(), fs.list(Some(&parent)).await.map_err(error)?);
+            let tree = remote_tree(&state, session_id, &file).await?;
+            if !names.insert(tree.nodes[0].entry.name.to_lowercase()) {
+                return Err("Selected names conflict in Explorer".into());
             }
-            let entry = directories[&parent]
-                .entries
-                .iter()
-                .find(|entry| {
-                    entry.path == location.path
-                        && entry.kind == "file"
-                        && !entry.revision.is_empty()
-                        && entry.revision == file.revision
-                })
-                .ok_or("A selected file changed. Refresh and copy it again.")?
-                .clone();
-            download_name(&entry.name)?;
-            if entry.name.encode_utf16().count() >= 260 || !names.insert(entry.name.to_lowercase())
-            {
-                return Err("The selected filenames are too long or conflict in Explorer.".into());
+            if sources.len() + tree.nodes.len() > tree::MAX_ENTRIES {
+                return Err("Copy up to 1024 files and folders at a time".into());
             }
-            sources.push(crate::clipboard_stream::Source {
-                entry,
-                service: service.clone(),
-                runtime: tokio::runtime::Handle::current(),
-            });
+            sources.extend(clipboard_sources(tree, service.clone())?);
         }
         if !state
             .registry
@@ -469,24 +508,49 @@ pub async fn system_clipboard_sequence() -> Result<u32, String> {
 }
 
 // Retain opened local handles before returning any tickets. No path supplied by JS.
-#[cfg(any(windows, test))]
 fn clipboard_uploads(
     paths: Vec<PathBuf>,
     parent: String,
 ) -> Result<Vec<(Job, String, u64, &'static str)>, String> {
     if paths.is_empty() || paths.len() > 16 {
-        return Err("Copy up to 16 regular files at a time.".into());
+        return Err("Copy up to 16 files or folders at a time.".into());
     }
     let mut names = std::collections::HashSet::new();
-    paths.into_iter().map(|path| {
-        if !path.is_absolute() || !std::fs::symlink_metadata(&path).map_err(error)?.file_type().is_file() {
-            return Err("Paste currently supports regular files only. Folders and links are not uploaded.".into());
-        }
-        let name = path.file_name().and_then(|name| name.to_str()).ok_or("Invalid clipboard filename")?.to_string();
-        if !names.insert(name.clone()) { return Err("Copied files have duplicate names. Paste them separately.".into()); }
-        let (file, size, modified) = source(&path).map_err(error)?;
-        Ok((Job::Upload { file, parent: parent.clone(), name: name.clone(), size, modified }, name, size, "upload"))
-    }).collect()
+    let mut count = 0;
+    paths
+        .into_iter()
+        .map(|path| {
+            if !path.is_absolute() {
+                return Err("Clipboard paths must be absolute".into());
+            }
+            let mut tree = tree::local(path).map_err(error)?;
+            count += tree.nodes.len();
+            if count > tree::MAX_ENTRIES {
+                return Err("Copy up to 1024 files and folders at a time".into());
+            }
+            let name = tree.nodes[0].entry.name.clone();
+            let size = tree.size;
+            if !names.insert(name.clone()) {
+                return Err("Copied items have duplicate names. Paste them separately.".into());
+            }
+            let job = if tree.nodes[0].entry.kind == "file" {
+                let (file, modified) = tree.nodes[0].local.take().unwrap();
+                Job::Upload {
+                    file,
+                    parent: parent.clone(),
+                    name: name.clone(),
+                    size,
+                    modified,
+                }
+            } else {
+                Job::Tree {
+                    tree,
+                    target: tree::Target::Remote(parent.clone()),
+                }
+            };
+            Ok((job, name, size, "upload"))
+        })
+        .collect()
 }
 
 #[tauri::command]
@@ -553,17 +617,12 @@ pub async fn cut_system_file(
             })
             .ok_or("The selected item changed. Refresh and cut again.")?;
         let mut sources = Vec::new();
-        if entry.kind == "file" {
+        if matches!(entry.kind.as_str(), "file" | "directory") {
             if let Ok(service) = provider(&state, session_id).await {
-                download_name(&entry.name)?;
-                if entry.name.encode_utf16().count() >= 260 {
-                    return Err("Filename is too long for Explorer.".into());
-                }
-                sources.push(crate::clipboard_stream::Source {
-                    entry,
+                sources = clipboard_sources(
+                    tree::remote(&service, entry).await.map_err(error)?,
                     service,
-                    runtime: tokio::runtime::Handle::current(),
-                });
+                )?;
             }
         }
         if !state
@@ -607,25 +666,52 @@ pub async fn prepare_file_copy(
     if location.parent.as_deref() == Some(parent.as_str()) {
         return Err("Choose a different destination folder".into());
     }
+    let tree = remote_tree(
+        &state,
+        session_id,
+        &DownloadSource {
+            path: path.clone(),
+            revision: revision.clone(),
+        },
+    )
+    .await?;
+    let destination = crate::filesystem(&state, session_id)
+        .await?
+        .locate(&parent)
+        .await
+        .map_err(error)?
+        .path;
+    if tree
+        .nodes
+        .iter()
+        .any(|node| node.entry.kind == "directory" && node.entry.path == destination)
+    {
+        return Err("A folder cannot be copied into itself or a descendant".into());
+    }
+    let size = tree.size;
+    let job = if tree.nodes[0].entry.kind == "directory" {
+        Job::Tree {
+            tree,
+            target: tree::Target::Remote(destination),
+        }
+    } else {
+        Job::Copy {
+            path: location.path,
+            revision,
+            parent: destination,
+            name: location.name.clone(),
+        }
+    };
     let registry = state.registry.lock().await;
     if !registry.sessions.contains_key(&session_id) {
         return Err("The host disconnected while preparing the copy".into());
     }
     let name = location.name;
-    let mut tickets = state.transfers.lock().await.add(
-        session_id,
-        vec![(
-            Job::Copy {
-                path: location.path,
-                revision,
-                parent,
-                name: name.clone(),
-            },
-            name,
-            0,
-            "copy",
-        )],
-    )?;
+    let mut tickets = state
+        .transfers
+        .lock()
+        .await
+        .add(session_id, vec![(job, name, size, "copy")])?;
     tickets.pop().ok_or("Copy preparation failed".into())
 }
 fn checkpoint(cancel: &watch::Receiver<bool>) -> Result<()> {
@@ -648,6 +734,9 @@ async fn execute(
 ) -> Result<String> {
     checkpoint(cancel)?;
     match job {
+        Job::Tree { tree, target } => {
+            tree::execute_tree(tree, target, service, cancel, progress).await
+        }
         Job::Copy {
             path,
             revision,
@@ -848,7 +937,7 @@ pub async fn run_transfer(
         Err(error) => {
             let message = format!("{error:#}");
             Outcome {
-                status: if message == "Transfer canceled" {
+                status: if message.starts_with("Transfer canceled") {
                     "canceled"
                 } else {
                     "failed"

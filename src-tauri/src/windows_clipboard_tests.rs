@@ -86,6 +86,7 @@ fn fixture(size: usize) -> (tokio::runtime::Runtime, Arc<Memory>, Source) {
         changed: AtomicBool::new(false),
     });
     let source = Source {
+        display_path: "Notes \u{1f30d}.bin".into(),
         entry: FileEntry {
             path: "file@opaque".into(),
             name: "Notes 🌍.bin".into(),
@@ -98,6 +99,69 @@ fn fixture(size: usize) -> (tokio::runtime::Runtime, Arc<Memory>, Source) {
         runtime: runtime.handle().clone(),
     };
     (runtime, memory, source)
+}
+#[test]
+fn folder_descriptors_keep_empty_directories_and_nested_stream_indices() {
+    let (_runtime, memory, mut file) = fixture(37);
+    file.display_path = "Folder\\Nested\\Notes.bin".into();
+    let mut root = file.clone();
+    root.entry.kind = "directory".into();
+    root.entry.size = 0;
+    root.display_path = "Folder".into();
+    let mut empty = root.clone();
+    empty.display_path = "Folder\\Empty".into();
+    let mut nested = root.clone();
+    nested.display_path = "Folder\\Nested".into();
+    unsafe {
+        OleInitialize(None).unwrap();
+        let object = VirtualFiles::new(vec![root, empty, nested, file]);
+        let descriptors = object.descriptors;
+        let contents = object.contents;
+        let object: IDataObject = object.into();
+        let mut medium = object
+            .GetData(&format(descriptors, TYMED_HGLOBAL, -1))
+            .unwrap();
+        let bytes = GlobalLock(medium.u.hGlobal).cast::<u8>();
+        assert_eq!(ptr::read_unaligned(bytes.cast::<u32>()), 4);
+        for (i, expected) in [
+            "Folder",
+            "Folder\\Empty",
+            "Folder\\Nested",
+            "Folder\\Nested\\Notes.bin",
+        ]
+        .iter()
+        .enumerate()
+        {
+            let descriptor = ptr::read_unaligned(
+                bytes
+                    .add(4 + i * size_of::<FILEDESCRIPTORW>())
+                    .cast::<FILEDESCRIPTORW>(),
+            );
+            let name = descriptor.cFileName;
+            assert_eq!(
+                String::from_utf16_lossy(&name[..name.iter().position(|n| *n == 0).unwrap()]),
+                *expected
+            );
+            let attrs = descriptor.dwFileAttributes;
+            assert_eq!(attrs, if i < 3 { 0x10 } else { 0x80 });
+        }
+        let _ = GlobalUnlock(medium.u.hGlobal);
+        ReleaseStgMedium(&mut medium);
+        assert_eq!(memory.opens.load(Ordering::SeqCst), 0);
+        assert!(object.GetData(&format(contents, TYMED_ISTREAM, 0)).is_err());
+        let mut medium = object.GetData(&format(contents, TYMED_ISTREAM, 3)).unwrap();
+        let stream = medium.u.pstm.as_ref().unwrap();
+        let mut data = [0u8; 37];
+        let mut read = 0;
+        stream
+            .Read(data.as_mut_ptr().cast(), 37, Some(&mut read))
+            .ok()
+            .unwrap();
+        assert_eq!(read, 37);
+        assert_eq!(data.as_slice(), memory.bytes);
+        ReleaseStgMedium(&mut medium);
+        OleUninitialize();
+    }
 }
 #[test]
 fn virtual_descriptors_are_metadata_only_and_contents_stream_exact_bytes() {
@@ -203,8 +267,25 @@ fn explorer_clipboard_probe() {
     let (runtime, memory, first) = fixture(8 * 1024 * 1024 + 17);
     let mut second = first.clone();
     second.entry.name = "Second file.bin".into();
+    second.display_path = second.entry.name.clone();
+    let sources = if std::env::var_os("SHELLCANVAS_FOLDER_PROBE").is_some() {
+        let mut first = first;
+        first.display_path = "Folder probe\\Nested\\First.bin".into();
+        second.display_path = "Folder probe\\Second.bin".into();
+        let mut root = first.clone();
+        root.entry.kind = "directory".into();
+        root.entry.size = 0;
+        root.display_path = "Folder probe".into();
+        let mut nested = root.clone();
+        nested.display_path = "Folder probe\\Nested".into();
+        let mut empty = root.clone();
+        empty.display_path = "Folder probe\\Empty".into();
+        vec![root, nested, empty, first, second]
+    } else {
+        vec![first, second]
+    };
     runtime
-        .block_on(publish(vec![first, second], unsafe {
+        .block_on(publish(sources, unsafe {
             windows::Win32::System::DataExchange::GetClipboardSequenceNumber()
         }))
         .unwrap();

@@ -2,7 +2,7 @@
 use super::*;
 
 #[test]
-fn clipboard_uploads_capture_bytes_and_refuse_folders_and_duplicate_names() {
+fn clipboard_uploads_capture_bytes_and_refuse_duplicate_names() {
     use std::io::Read;
     let directory = tempfile::tempdir().unwrap();
     let first = directory.path().join("local 🌍.bin");
@@ -31,7 +31,7 @@ fn clipboard_uploads_capture_bytes_and_refuse_folders_and_duplicate_names() {
         ("local 🌍.bin", 16, "upload")
     );
     assert!(clipboard_uploads(vec![first.clone(), first.clone()], "dest".into()).is_err());
-    assert!(clipboard_uploads(vec![first, directory.path().to_path_buf()], "dest".into()).is_err());
+    assert!(clipboard_uploads(vec![first, directory.path().to_path_buf()], "dest".into()).is_ok());
     assert!(clipboard_uploads(vec![], "dest".into()).is_err());
 }
 use async_trait::async_trait;
@@ -40,15 +40,15 @@ use std::sync::{
     atomic::{AtomicUsize, Ordering},
     Mutex,
 };
-struct Memory {
-    data: Vec<u8>,
+pub(super) struct Memory {
+    pub(super) data: Vec<u8>,
     writes: Mutex<Vec<u8>>,
     aborts: AtomicUsize,
     commits: AtomicUsize,
     fail_verify: bool,
 }
 impl Memory {
-    fn new(fail_verify: bool) -> Arc<Self> {
+    pub(super) fn new(fail_verify: bool) -> Arc<Self> {
         Arc::new(Self {
             data: vec![0xA5; TRANSFER_CHUNK * 3 + 17],
             writes: Mutex::new(Vec::new()),

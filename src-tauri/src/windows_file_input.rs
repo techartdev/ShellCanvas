@@ -35,7 +35,7 @@ pub fn files() -> Result<Option<Vec<PathBuf>>, String> {
 unsafe fn read_drop(handle: HDROP) -> Result<Vec<PathBuf>, String> {
     let count = DragQueryFileW(handle, u32::MAX, None);
     if count == 0 || count > 16 {
-        return Err("Copy up to 16 regular files in Explorer, then paste here.".into());
+        return Err("Copy up to 16 files or folders in Explorer, then paste here.".into());
     }
     let mut paths = Vec::new();
     for index in 0..count {

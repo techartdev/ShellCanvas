@@ -34,6 +34,7 @@ export const apps = defineApps([
       "files.manage",
       "files.move",
       "files.copy",
+      "files.folders",
       "files.create",
       "files.upload",
       "files.download",

@@ -86,8 +86,10 @@ export function scopeAppServices(
     terminal: guard("terminal", base.terminal.bind(base)),
     readHostSettings: guard("host.settings", base.readHostSettings.bind(base)),
     applyHostSetting: guard("host.settings", base.applyHostSetting.bind(base)),
-    chooseUploads: guard("files.upload", async (parent: string) =>
-      (await base.chooseUploads(parent)).map(adopt),
+    chooseUploads: guard(
+      "files.upload",
+      async (parent: string, folder?: boolean) =>
+        (await base.chooseUploads(parent, folder)).map(adopt),
     ),
     chooseDownload: guard(
       "files.download",

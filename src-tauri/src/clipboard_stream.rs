@@ -7,6 +7,7 @@ use std::{collections::VecDeque, sync::Arc, time::Duration};
 #[derive(Clone)]
 pub struct Source {
     pub entry: FileEntry,
+    pub display_path: String,
     pub service: Arc<dyn FileTransferService>,
     pub runtime: tokio::runtime::Handle,
 }

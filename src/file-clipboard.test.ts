@@ -99,8 +99,10 @@ it("invalidates copied batches when a source is removed or relocated", () => {
   });
   expect(clipboard.snapshot().copies).toBeUndefined();
   expect(() =>
-    clipboard.copy([{ ...source, kind: "directory" }], "source"),
-  ).toThrow("regular files");
+    clipboard.copy([{ ...source, kind: "symlink" }], "source"),
+  ).toThrow("files or folders");
+  clipboard.copy([{ ...source, kind: "directory" }], "source");
+  expect(clipboard.snapshot().copies?.[0].entry.kind).toBe("directory");
   binding.dispose();
 });
 const moved: FileRelocation = {

@@ -148,11 +148,15 @@ export function Files({
     !picking &&
     !relocating &&
     !!session?.info.capabilities.includes("files.download");
-  async function upload() {
+  const transferable = (entry: FileEntry) =>
+    entry.kind === "file" ||
+    (entry.kind === "directory" &&
+      !!session?.info.capabilities.includes("files.folders"));
+  async function upload(folder = false) {
     if (!canUpload) return;
     setPicking(true);
     try {
-      queue.enqueue(await services.chooseUploads(directory.path));
+      queue.enqueue(await services.chooseUploads(directory.path, folder));
     } catch (error) {
       setError(String(error));
     } finally {
@@ -160,11 +164,22 @@ export function Files({
     }
   }
   async function download(entry: FileEntry) {
-    if (!canDownload || !entry.revision || entry.kind !== "file") return;
+    if (!canDownload || !entry.revision || !transferable(entry)) return;
     setPicking(true);
     try {
-      const ticket = await services.chooseDownload(entry.path, entry.revision);
-      if (ticket) queue.enqueue([ticket]);
+      if (entry.kind === "directory") {
+        queue.enqueue(
+          await services.chooseDownloads([
+            { path: entry.path, revision: entry.revision },
+          ]),
+        );
+      } else {
+        const ticket = await services.chooseDownload(
+          entry.path,
+          entry.revision,
+        );
+        if (ticket) queue.enqueue([ticket]);
+      }
     } catch (error) {
       setError(String(error));
     } finally {
@@ -176,9 +191,9 @@ export function Files({
     if (selectedEntries.length === 1) return download(selectedEntries[0]);
     if (
       selectedEntries.length > 16 ||
-      selectedEntries.some((entry) => entry.kind !== "file" || !entry.revision)
+      selectedEntries.some((entry) => !transferable(entry) || !entry.revision)
     ) {
-      setError("Select up to 16 regular files to download together.");
+      setError("Select up to 16 files or folders to download together.");
       return;
     }
     setPicking(true);
@@ -397,7 +412,7 @@ export function Files({
       (services.systemFileClipboard &&
         session?.info.capabilities.includes("files.download")));
   async function copyFiles(items: FileEntry[]) {
-    if (!copyAvailable) return;
+    if (!copyAvailable || items.some((entry) => !transferable(entry))) return;
     const epoch = ++copyEpoch.current;
     try {
       cutClipboard.copy(items, directory.path);
@@ -444,8 +459,8 @@ export function Files({
       if (epoch === copyEpoch.current && currentServices.current === services) {
         cutClipboard.syncSystem(sequence);
         setSystemCopyNotice(
-          entry.kind === "file"
-            ? "Pasting in Explorer copies the file and keeps its remote source"
+          ["file", "directory"].includes(entry.kind)
+            ? "Pasting in Explorer copies the item and keeps its remote source"
             : "Folder moves are available within this workspace",
         );
       }
@@ -467,7 +482,10 @@ export function Files({
         !cutState.working &&
         !!parent &&
         cutState.copies.every(
-          (item) => item.parent !== parent && item.entry.path !== parent,
+          (item) =>
+            transferable(item.entry) &&
+            item.parent !== parent &&
+            item.entry.path !== parent,
         )
       );
     return (
@@ -720,13 +738,13 @@ export function Files({
       return [
         {
           id: "copy-files",
-          label: `Copy ${selectedEntries.length} files`,
+          label: `Copy ${selectedEntries.length} ${selectedEntries.some((item) => item.kind === "directory") ? "items" : "files"}`,
           shortcut: "Ctrl+C",
           disabled:
             !copyAvailable ||
             selectedEntries.length > 16 ||
             selectedEntries.some(
-              (entry) => entry.kind !== "file" || !entry.revision,
+              (entry) => !transferable(entry) || !entry.revision,
             ),
           run: copySelection,
         },
@@ -737,7 +755,7 @@ export function Files({
             !canDownload ||
             selectedEntries.length > 16 ||
             selectedEntries.some(
-              (entry) => entry.kind !== "file" || !entry.revision,
+              (entry) => !transferable(entry) || !entry.revision,
             ),
           run: () => void downloadSelection(),
         },
@@ -794,13 +812,19 @@ export function Files({
         disabled: !canUpload,
         run: () => void upload(),
       },
+      {
+        id: "upload-folder",
+        label: "Upload folder…",
+        disabled:
+          !canUpload || !session?.info.capabilities.includes("files.folders"),
+        run: () => void upload(true),
+      },
       ...(entry
         ? [
             {
               id: "download",
               label: "Download…",
-              disabled:
-                !canDownload || entry.kind !== "file" || !entry.revision,
+              disabled: !canDownload || !transferable(entry) || !entry.revision,
               run: () => void download(entry),
             },
             {
@@ -808,7 +832,7 @@ export function Files({
               label: "Copy",
               shortcut: "Ctrl+C",
               disabled:
-                !copyAvailable || entry.kind !== "file" || !entry.revision,
+                !copyAvailable || !transferable(entry) || !entry.revision,
               run: () => void copyFiles([entry]),
             },
             {
@@ -819,7 +843,7 @@ export function Files({
                 loading ||
                 busy ||
                 picking ||
-                entry.kind !== "file" ||
+                !transferable(entry) ||
                 !entry.revision ||
                 !session?.info.capabilities.includes("files.copy"),
               run: () =>
@@ -1231,7 +1255,7 @@ export function Files({
               !selectedEntries.length ||
               selectedEntries.length > 16 ||
               selectedEntries.some(
-                (entry) => entry.kind !== "file" || !entry.revision,
+                (entry) => !transferable(entry) || !entry.revision,
               )
             }
             onClick={() => {

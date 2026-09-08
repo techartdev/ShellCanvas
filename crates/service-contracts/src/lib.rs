@@ -42,6 +42,24 @@ pub trait TransferWriter: Send {
 }
 #[async_trait]
 pub trait FileTransferService: Send + Sync {
+    /// Optional recursive-transfer operations. Providers keep all path handling.
+    fn supports_folders(&self) -> bool {
+        false
+    }
+    /// List a real directory with a matching revision; refuse links, special
+    /// files, and more than `limit` children. Returned paths remain opaque.
+    async fn transfer_children(
+        &self,
+        _path: &str,
+        _revision: &str,
+        _limit: usize,
+    ) -> Result<Vec<FileEntry>> {
+        anyhow::bail!("Folder transfers are unavailable on this device")
+    }
+    /// Create an absent directory, without merging or replacing anything.
+    async fn transfer_mkdir(&self, _parent: &str, _name: &str) -> Result<FileLocation> {
+        anyhow::bail!("Folder transfers are unavailable on this device")
+    }
     async fn download(
         self: Arc<Self>,
         path: &str,

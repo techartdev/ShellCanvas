@@ -8,6 +8,7 @@ export type Capability =
   | "files.manage"
   | "files.move"
   | "files.copy"
+  | "files.folders"
   | "files.upload"
   | "files.download"
   | "host.settings";
@@ -30,6 +31,7 @@ export const capabilityLabels: Record<Capability, string> = {
   "files.manage": "File changes",
   "files.move": "Move files and folders",
   "files.copy": "Copy files",
+  "files.folders": "Transfer folders",
   "files.upload": "Uploads",
   "files.download": "Downloads",
   "host.settings": "Remote settings",
@@ -214,7 +216,11 @@ export interface HostServices {
     value: string,
     revision: string,
   ): Promise<HostSetting>;
-  chooseUploads(sessionId: number, parent: string): Promise<TransferTicket[]>;
+  chooseUploads(
+    sessionId: number,
+    parent: string,
+    folder?: boolean,
+  ): Promise<TransferTicket[]>;
   chooseDownload(
     sessionId: number,
     path: string,
@@ -300,7 +306,7 @@ export interface SessionServices {
     value: string,
     revision: string,
   ): Promise<HostSetting>;
-  chooseUploads(parent: string): Promise<TransferTicket[]>;
+  chooseUploads(parent: string, folder?: boolean): Promise<TransferTicket[]>;
   chooseDownload(
     path: string,
     revision: string,
@@ -385,6 +391,7 @@ export function defineApps(definitions: DesktopApp[]): readonly DesktopApp[] {
               "files.manage",
               "files.move",
               "files.copy",
+              "files.folders",
               "files.upload",
               "files.download",
               "host.settings",

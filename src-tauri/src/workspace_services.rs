@@ -172,12 +172,18 @@ impl WorkspaceServices {
             ("files.upload", "transfers"),
             ("files.download", "transfers"),
             ("files.copy", "transfers"),
+            ("files.folders", "transfers"),
             ("host.settings", "settings"),
         ]
         .into_iter()
         .map(|(capability, role)| {
             let source = self.sources.get(role);
             let supported = source.is_some()
+                && (capability != "files.folders"
+                    || self
+                        .transfers
+                        .as_ref()
+                        .is_some_and(|service| service.supports_folders()))
                 && self
                     .advertised
                     .as_ref()
@@ -426,6 +432,24 @@ impl TransferWriter for Upload {
 }
 #[async_trait]
 impl FileTransferService for Bound<dyn FileTransferService> {
+    fn supports_folders(&self) -> bool {
+        self.service.supports_folders()
+    }
+    async fn transfer_children(
+        &self,
+        path: &str,
+        revision: &str,
+        limit: usize,
+    ) -> Result<Vec<FileEntry>> {
+        self.binding
+            .run(false, self.service.transfer_children(path, revision, limit))
+            .await
+    }
+    async fn transfer_mkdir(&self, parent: &str, name: &str) -> Result<FileLocation> {
+        self.binding
+            .run(true, self.service.transfer_mkdir(parent, name))
+            .await
+    }
     async fn download(
         self: Arc<Self>,
         path: &str,

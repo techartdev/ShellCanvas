@@ -182,6 +182,7 @@ async fn connect_session(
                     "files.upload".into(),
                     "files.download".into(),
                     "files.copy".into(),
+                    "files.folders".into(),
                 ]);
                 Some(service)
             }

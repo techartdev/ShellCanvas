@@ -94,6 +94,7 @@ impl VirtualFiles {
             && value.tymed & TYMED_ISTREAM.0 as u32 != 0
             && value.lindex >= 0
             && (value.lindex as usize) < self.sources.len()
+            && self.sources[value.lindex as usize].entry.kind == "file"
         {
             return S_OK;
         }
@@ -117,12 +118,19 @@ impl IDataObject_Impl for VirtualFiles_Impl {
                 let mut descriptor = FILEDESCRIPTORW {
                     dwFlags: (FD_FILESIZE.0 | FD_ATTRIBUTES.0 | FD_PROGRESSUI.0 | FD_UNICODE.0)
                         as u32,
-                    dwFileAttributes: 0x80,
+                    dwFileAttributes: if source.entry.kind == "directory" {
+                        0x10
+                    } else {
+                        0x80
+                    },
                     nFileSizeHigh: (source.entry.size >> 32) as u32,
                     nFileSizeLow: source.entry.size as u32,
                     ..Default::default()
                 };
-                let name: Vec<_> = source.entry.name.encode_utf16().collect();
+                if source.entry.kind == "directory" {
+                    descriptor.dwFlags &= !(FD_FILESIZE.0 as u32);
+                }
+                let name: Vec<_> = source.display_path.encode_utf16().collect();
                 let mut filename = [0u16; 260];
                 if name.len() >= filename.len() {
                     return Err(failure("Filename is too long for Explorer"));

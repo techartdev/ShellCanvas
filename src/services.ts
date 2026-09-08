@@ -27,8 +27,8 @@ export const nativeServices: HostServices = {
   readHostSettings: (sessionId) => invoke("read_host_settings", { sessionId }),
   applyHostSetting: (sessionId, id, value, revision) =>
     invoke("apply_host_setting", { sessionId, id, value, revision }),
-  chooseUploads: (sessionId, parent) =>
-    invoke("choose_upload_files", { sessionId, parent }),
+  chooseUploads: (sessionId, parent, folder = false) =>
+    invoke("choose_upload_files", { sessionId, parent, folder }),
   chooseDownload: (sessionId, path, revision) =>
     invoke("choose_download_file", { sessionId, path, revision }),
   runTransfer: (sessionId, transferId, onProgress) => {

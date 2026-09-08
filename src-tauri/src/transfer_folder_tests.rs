@@ -1,0 +1,342 @@
+// SPDX-License-Identifier: MPL-2.0
+use super::*;
+use async_trait::async_trait;
+use shellcanvas_core::{FileEntry, FileLocation};
+use std::collections::HashSet;
+use std::sync::Mutex;
+
+fn entry(path: &str, name: &str, directory: bool, size: u64) -> FileEntry {
+    FileEntry {
+        path: path.into(),
+        name: name.into(),
+        kind: if directory { "directory" } else { "file" }.into(),
+        size,
+        revision: "v1".into(),
+        modified: None,
+    }
+}
+struct Folders {
+    data: Arc<super::tests::Memory>,
+    created: Mutex<HashSet<String>>,
+    bad_child: Option<FileEntry>,
+}
+#[async_trait]
+impl FileTransferService for Folders {
+    fn supports_folders(&self) -> bool {
+        true
+    }
+    async fn transfer_children(&self, path: &str, _: &str, _: usize) -> Result<Vec<FileEntry>> {
+        Ok(if path == "root@opaque" {
+            match &self.bad_child {
+                Some(child) => vec![child.clone()],
+                None => vec![
+                    entry("empty@opaque", "Empty", true, 0),
+                    entry(
+                        "file@opaque",
+                        "binary.bin",
+                        false,
+                        self.data.data.len() as u64,
+                    ),
+                ],
+            }
+        } else {
+            vec![]
+        })
+    }
+    async fn transfer_mkdir(&self, parent: &str, name: &str) -> Result<FileLocation> {
+        // Deliberately non-path identifiers expose accidental path construction.
+        let path = format!("{name}@child-of({parent})");
+        if !self.created.lock().unwrap().insert(path.clone()) {
+            bail!("already exists");
+        }
+        Ok(FileLocation {
+            path,
+            name: name.into(),
+            parent: Some(parent.into()),
+        })
+    }
+    async fn download(
+        self: Arc<Self>,
+        path: &str,
+        revision: &str,
+    ) -> Result<Box<dyn shellcanvas_core::TransferReader>> {
+        self.data.clone().download(path, revision).await
+    }
+    async fn upload(
+        self: Arc<Self>,
+        parent: &str,
+        name: &str,
+        size: u64,
+    ) -> Result<Box<dyn shellcanvas_core::TransferWriter>> {
+        self.data.clone().upload(parent, name, size).await
+    }
+}
+fn provider(bad_child: Option<FileEntry>) -> Arc<dyn FileTransferService> {
+    Arc::new(Folders {
+        data: super::tests::Memory::new(false),
+        created: Mutex::new(HashSet::new()),
+        bad_child,
+    })
+}
+#[test]
+fn local_folder_plan_retains_files_empty_directories_and_parent_links() {
+    let temp = tempfile::tempdir().unwrap();
+    let root = temp.path().join("Folder");
+    std::fs::create_dir_all(root.join("Nested/Empty")).unwrap();
+    std::fs::write(root.join("Nested/data.bin"), b"test bytes").unwrap();
+    let tree = tree::local(root).unwrap();
+    assert_eq!(tree.nodes.len(), 4);
+    assert_eq!(tree.size, 10);
+    let paths = tree.local_names().unwrap();
+    assert!(paths.contains(&PathBuf::from("Folder/Nested/Empty")));
+    assert!(tree
+        .nodes
+        .iter()
+        .any(|n| n.local.is_some() && n.entry.name == "data.bin"));
+}
+#[tokio::test]
+async fn remote_folder_plan_rejects_cycles_links_escapes_and_local_case_aliases() {
+    for child in [
+        entry("root@opaque", "loop", true, 0),
+        entry("bad", "../escape", false, 1),
+        FileEntry {
+            kind: "symlink".into(),
+            ..entry("link", "link", false, 1)
+        },
+    ] {
+        assert!(tree::remote(
+            &provider(Some(child)),
+            entry("root@opaque", "Root", true, 0)
+        )
+        .await
+        .is_err());
+    }
+    let mut tree = tree::remote(&provider(None), entry("root@opaque", "Root", true, 0))
+        .await
+        .unwrap();
+    tree.nodes.push(tree::Node {
+        parent: Some(0),
+        entry: entry("another", "BINARY.BIN", false, 1),
+        local: None,
+    });
+    assert!(tree.local_names().is_err());
+}
+#[tokio::test]
+async fn folder_download_preserves_empty_directories_refuses_merging_and_reports_partial_cancel() {
+    for cancel_early in [false, true] {
+        let service = provider(None);
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path().join("Root");
+        let plan = tree::remote(&service, entry("root@opaque", "Root", true, 0))
+            .await
+            .unwrap();
+        let (stop, cancel) = watch::channel(false);
+        let mut last = 0;
+        let result = execute(
+            Job::Tree {
+                tree: plan,
+                target: tree::Target::Local(root.clone()),
+            },
+            service.clone(),
+            &cancel,
+            &mut |event| {
+                assert!(event.bytes >= last);
+                last = event.bytes;
+                if cancel_early && event.bytes > 0 {
+                    stop.send_replace(true);
+                }
+            },
+        )
+        .await;
+        assert!(root.join("Empty").is_dir());
+        if cancel_early {
+            assert!(result
+                .unwrap_err()
+                .to_string()
+                .contains("completed items remain"));
+            assert!(!root.join("binary.bin").exists());
+        } else {
+            result.unwrap();
+            assert_eq!(
+                std::fs::read(root.join("binary.bin")).unwrap(),
+                super::tests::Memory::new(false).data
+            );
+            let plan = tree::remote(&service, entry("root@opaque", "Root", true, 0))
+                .await
+                .unwrap();
+            assert!(execute(
+                Job::Tree {
+                    tree: plan,
+                    target: tree::Target::Local(root.clone())
+                },
+                service,
+                &cancel,
+                &mut |_| {}
+            )
+            .await
+            .is_err());
+        }
+    }
+}
+#[tokio::test]
+async fn folder_copy_refuses_a_descendant_before_creating_anything() {
+    let service = provider(None);
+    let plan = tree::remote(&service, entry("root@opaque", "Root", true, 0))
+        .await
+        .unwrap();
+    let (_, cancel) = watch::channel(false);
+    let error = execute(
+        Job::Tree {
+            tree: plan,
+            target: tree::Target::Remote("empty@opaque".into()),
+        },
+        service,
+        &cancel,
+        &mut |_| {},
+    )
+    .await
+    .unwrap_err();
+    assert!(error.to_string().contains("descendant"));
+}
+
+/// Opt in with SHELLCANVAS_TEST_HOST / USER / KEY; only writes inside a fresh
+/// UUID directory, removes its own entries individually, and reports leftovers.
+#[tokio::test]
+#[ignore]
+async fn live_folder_roundtrip() -> Result<()> {
+    use shellcanvas_core::*;
+    let connection = Connection::connect(ConnectOptions {
+        host: std::env::var("SHELLCANVAS_TEST_HOST")?,
+        username: std::env::var("SHELLCANVAS_TEST_USER")?,
+        key_path: std::env::var("SHELLCANVAS_TEST_KEY")?,
+        port: 22,
+        password: None,
+        passphrase: None,
+    })
+    .await?;
+    let service = Arc::new(connection.text_files().await?);
+    let transfer: Arc<dyn FileTransferService> = service.clone();
+    let fs = SftpFileSystem(connection.sftp().await?);
+    let remote_root = service
+        .make_directory(
+            "/tmp",
+            &format!("shellcanvas-folders-{}", uuid::Uuid::new_v4()),
+        )
+        .await?;
+    println!("Disposable fixture: {remote_root}");
+    let local = tempfile::tempdir()?;
+    let input = local.path().join("Folder");
+    std::fs::create_dir_all(input.join("Nested/Empty"))?;
+    let bytes: Vec<u8> = (0..1048593).map(|i| (i % 251) as u8).collect();
+    std::fs::write(input.join("Nested/Unicode 🌍.bin"), &bytes)?;
+    std::fs::write(input.join("zero.bin"), [])?;
+    #[cfg(windows)]
+    let clipboard_paths =
+        if let Some(expected) = std::env::var_os("SHELLCANVAS_TEST_CLIPBOARD_FOLDER") {
+            let paths = crate::windows_file_input::files()
+                .map_err(anyhow::Error::msg)?
+                .context("No Explorer file list on clipboard")?;
+            anyhow::ensure!(
+                paths == vec![PathBuf::from(expected)],
+                "Clipboard does not match the explicitly selected fixture"
+            );
+            Some(paths)
+        } else {
+            None
+        };
+    #[cfg(not(windows))]
+    let clipboard_paths: Option<Vec<PathBuf>> = None;
+    let input = clipboard_paths
+        .as_ref()
+        .map(|paths| paths[0].clone())
+        .unwrap_or(input);
+    let plan = tree::local(input.clone())?;
+    let name = plan.nodes[0].entry.name.clone();
+    let total = plan.size;
+    let relative = plan.local_names()?;
+    let expected: Vec<_> = plan
+        .nodes
+        .iter()
+        .zip(relative)
+        .map(|(node, path)| {
+            let bytes = if node.entry.kind == "file" {
+                Some(std::fs::read(&node.entry.path).unwrap())
+            } else {
+                None
+            };
+            (path, bytes)
+        })
+        .collect();
+    let upload = if let Some(paths) = clipboard_paths {
+        clipboard_uploads(paths, remote_root.clone())
+            .map_err(anyhow::Error::msg)?
+            .pop()
+            .unwrap()
+            .0
+    } else {
+        Job::Tree {
+            tree: plan,
+            target: tree::Target::Remote(remote_root.clone()),
+        }
+    };
+    let verify = |out: &Path| -> Result<()> {
+        for (relative, bytes) in &expected {
+            let path = out.join(relative);
+            if let Some(bytes) = bytes {
+                anyhow::ensure!(std::fs::read(path)? == *bytes, "File bytes differ");
+            } else {
+                anyhow::ensure!(path.is_dir(), "Empty folder missing");
+            }
+        }
+        Ok(())
+    };
+    let (_, cancel) = watch::channel(false);
+    let work: Result<()> = async {
+        let uploaded = execute(upload, transfer.clone(), &cancel, &mut |_| {}).await?;
+        let selected = fs.list(Some(&remote_root)).await?.entries.into_iter().find(|e| e.path == uploaded).context("Uploaded folder missing")?;
+        let plan = tree::remote(&transfer, selected.clone()).await?;
+        anyhow::ensure!(plan.nodes.len() == expected.len() && plan.size == total, "Manifest mismatch");
+        let out = local.path().join("download"); std::fs::create_dir(&out)?;
+        execute(Job::Tree { tree: plan, target: tree::Target::Local(out.join(&name)) }, transfer.clone(), &cancel, &mut |_| {}).await?;
+        verify(&out)?;
+        let destination = service.make_directory(&remote_root, "Copy destination").await?;
+        let copied = execute(Job::Tree { tree: tree::remote(&transfer, selected).await?, target: tree::Target::Remote(destination.clone()) }, transfer.clone(), &cancel, &mut |_| {}).await?;
+        let selected = fs.list(Some(&destination)).await?.entries.into_iter().find(|e| e.path == copied).unwrap();
+        let out2 = local.path().join("copy"); std::fs::create_dir(&out2)?;
+        execute(Job::Tree { tree: tree::remote(&transfer, selected).await?, target: tree::Target::Local(out2.join(&name)) }, transfer.clone(), &cancel, &mut |_| {}).await?;
+        verify(&out2)?;
+        println!("Local folder upload, remote folder copy, downloads, Unicode names, zero-byte file and empty folders: exact byte verification passed");
+        Ok(())
+    }.await;
+    // Enumerate only this newly created root. Delete leaves before parents with
+    // fresh revisions; remove_entry refuses nonempty directories and follows no links.
+    anyhow::ensure!(
+        remote_root.starts_with("/tmp/shellcanvas-folders-") && !remote_root[5..].contains('/')
+    );
+    let mut paths = vec![remote_root.clone()];
+    let mut i = 0;
+    while i < paths.len() {
+        for entry in fs.list(Some(&paths[i])).await?.entries {
+            anyhow::ensure!(entry.path.starts_with(&(remote_root.clone() + "/")));
+            if entry.kind == "directory" {
+                paths.push(entry.path);
+            } else {
+                service.remove_entry(&entry.path, &entry.revision).await?;
+            }
+        }
+        i += 1;
+    }
+    for path in paths.into_iter().rev() {
+        let location = fs.locate(&path).await?;
+        let entry = fs
+            .list(location.parent.as_deref())
+            .await?
+            .entries
+            .into_iter()
+            .find(|e| e.path == path)
+            .context("Cleanup item missing")?;
+        service.remove_entry(&entry.path, &entry.revision).await?;
+    }
+    println!("Disposable remote fixture removed");
+    work
+}

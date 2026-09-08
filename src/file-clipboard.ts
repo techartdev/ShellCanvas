@@ -66,12 +66,15 @@ class FileClipboard {
       !entries.length ||
       entries.length > 16 ||
       entries.some(
-        (entry) => entry.kind !== "file" || !entry.path || !entry.revision,
+        (entry) =>
+          !["file", "directory"].includes(entry.kind) ||
+          !entry.path ||
+          !entry.revision,
       ) ||
       new Set(entries.map((entry) => entry.path)).size !== entries.length
     )
       throw new Error(
-        "Select up to 16 regular files with current revisions to copy.",
+        "Select up to 16 files or folders with current revisions to copy.",
       );
     ++this.generation;
     this.publish({

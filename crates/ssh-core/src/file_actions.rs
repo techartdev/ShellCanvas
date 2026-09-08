@@ -62,7 +62,7 @@ impl SftpTextFiles {
             Err(error) => Err(error.into()),
         }
     }
-    async fn checked_entry(&self, path: &str, revision: &str) -> Result<FileAttributes> {
+    pub(crate) async fn checked_entry(&self, path: &str, revision: &str) -> Result<FileAttributes> {
         validate_path(path)?;
         let (parent, name) = path.rsplit_once('/').context("Unsupported remote path")?;
         let resolved = self

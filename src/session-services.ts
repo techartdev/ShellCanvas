@@ -171,10 +171,10 @@ export function bindSession(
       }
       return result;
     },
-    chooseUploads: async (parent) => {
+    chooseUploads: async (parent, folder) => {
       const expected = generation;
       return adopt(
-        await backend.chooseUploads(check("files.upload"), parent),
+        await backend.chooseUploads(check("files.upload"), parent, folder),
         expected,
         "files.upload",
       );
@@ -201,7 +201,8 @@ export function bindSession(
           if (valid(transferCapability(owned.direction), expected))
             onProgress(event);
         });
-        if (result.status === "completed" && owned.direction !== "download")
+        // Interrupted folders can contain successfully completed children.
+        if (owned.direction !== "download")
           mutationCompleted(transferCapability(owned.direction), expected);
         if (
           result.status === "completed" &&

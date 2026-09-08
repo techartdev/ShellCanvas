@@ -172,6 +172,57 @@ impl TransferWriter for Writer {
 
 #[async_trait]
 impl FileTransferService for SftpTextFiles {
+    fn supports_folders(&self) -> bool {
+        true
+    }
+    async fn transfer_children(
+        &self,
+        path: &str,
+        revision: &str,
+        limit: usize,
+    ) -> Result<Vec<crate::FileEntry>> {
+        if !self.checked_entry(path, revision).await?.is_dir() {
+            bail!("Folder transfers do not follow symbolic links");
+        }
+        let handle = self.raw.opendir(path).await?.handle;
+        let work = async {
+            let mut entries = Vec::new();
+            loop {
+                let batch = match self.raw.readdir(&handle).await {
+                    Ok(batch) => batch.files,
+                    Err(SftpError::Status(status)) if status.status_code == StatusCode::Eof => break,
+                    Err(error) => return Err(error.into()),
+                };
+                if batch.is_empty() { bail!("The server returned an empty directory page without EOF"); }
+                for item in batch {
+                    if matches!(item.filename.as_str(), "." | "..") { continue; }
+                    crate::file_actions::validate_name(&item.filename)?;
+                    if entries.len() >= limit { bail!("Folder transfer exceeds the entry limit"); }
+                    if !item.attrs.is_regular() && !item.attrs.is_dir() {
+                        bail!("Folder contains a link or special file: {}. These are not followed or copied.", item.filename);
+                    }
+                    entries.push(crate::FileEntry {
+                        path: format!("{}/{}", path.trim_end_matches('/'), item.filename),
+                        name: item.filename,
+                        kind: if item.attrs.is_dir() { "directory" } else { "file" }.into(),
+                        size: if item.attrs.is_dir() { 0 } else { item.attrs.size.context("Missing file size")? },
+                        modified: item.attrs.mtime,
+                        revision: entry_revision(&item.attrs),
+                    });
+                }
+            }
+            self.checked_entry(path, revision).await?;
+            Ok(entries)
+        }.await;
+        let closed = self.raw.close(handle).await;
+        let entries = work?;
+        closed?;
+        Ok(entries)
+    }
+    async fn transfer_mkdir(&self, parent: &str, name: &str) -> Result<FileLocation> {
+        let path = crate::FileMutationService::make_directory(self, parent, name).await?;
+        Ok(sftp_location(path))
+    }
     async fn download(
         self: Arc<Self>,
         path: &str,
