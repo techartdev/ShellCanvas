@@ -15,6 +15,8 @@ Additional protocols are optional until these core workflows work well. Connecti
 
 ## Evidence and outstanding work
 
+- Window menus now expose keyboard move/resize and left/right tiling. Titlebars support F6 cycling and Shift+F10 menus. Browser geometry, cancellation, restore, edge bounds and desktop/tablet transition checks passed; see [window controls](window-management.md). Native keyboard and layout persistence checks remain separate.
+
 - Host details now renders provider-defined remote settings with individual availability, proposals, review/apply and conflict/uncertain-outcome handling. Linux hostname/timezone commands have controlled tests; live read-only inspection and desktop/tablet UI checks passed. Actual systemd mutations still require a disposable host. See [remote settings](remote-settings.md).
 
 - Regular-file upload/download now has native pickers, a bounded streaming broker, per-window queues, progress, cancellation and no-clobber publication. Automated cleanup/ownership/late-outcome checks, browser queue interactions, a disposable live SFTP probe and an 8 MiB Windows native dialog round trip passed. See [transfers](transfers.md). Resume, recursive transfers, permission-denied and physical-network interruption checks remain.

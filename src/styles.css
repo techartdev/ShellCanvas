@@ -531,6 +531,45 @@ button:active:not(:disabled) {
   border-radius: 0;
   resize: none;
 }
+@media (min-width: 900px) {
+  .app-window.tiled {
+    top: 0 !important;
+    width: 50% !important;
+    height: 100% !important;
+    max-width: 50%;
+    max-height: 100%;
+    border-radius: 0;
+    resize: none;
+  }
+  .app-window.tiled-left {
+    left: 0 !important;
+    right: auto !important;
+  }
+  .app-window.tiled-right {
+    left: 50% !important;
+    right: 0 !important;
+  }
+}
+.window-adjustment {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 12px;
+  flex-shrink: 0;
+  background: #263d46;
+  color: #c8e5da;
+  font-size: 10px;
+}
+.window-adjustment button {
+  padding: 3px 8px;
+  border-radius: 4px;
+  background: #a2cbbc20;
+}
+.window-titlebar:focus-visible {
+  outline: 2px solid #a2cbbc;
+  outline-offset: -3px;
+}
 .hidden-window {
   display: none !important;
 }
@@ -548,6 +587,8 @@ button:active:not(:disabled) {
   cursor: default;
 }
 .window-title {
+  min-width: 0;
+  overflow: hidden;
   display: flex;
   gap: 9px;
   align-items: center;
@@ -556,7 +597,13 @@ button:active:not(:disabled) {
   color: #d6e0e5;
 }
 .window-title > svg {
+  flex-shrink: 0;
   color: #a4b4bd;
+}
+.window-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .window-title small {
   font-size: 9px;
@@ -567,6 +614,7 @@ button:active:not(:disabled) {
   margin-left: 4px;
 }
 .window-controls {
+  flex-shrink: 0;
   display: flex;
   gap: 2px;
 }

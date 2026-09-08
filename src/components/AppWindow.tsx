@@ -2,11 +2,19 @@
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useRef,
   useState,
   type CSSProperties,
 } from "react";
-import { Maximize2, Minimize2, Minus, Plus, X } from "lucide-react";
+import {
+  Maximize2,
+  Minimize2,
+  Minus,
+  MoreHorizontal,
+  Plus,
+  X,
+} from "lucide-react";
 import type { AppContext, DesktopApp } from "../sdk";
 import { unavailableReason } from "../sdk";
 import { AppBoundary } from "./AppBoundary";
@@ -44,6 +52,58 @@ export function AppWindow({
     top: number;
   } | null>(null);
   const [maximized, setMaximized] = useState(false);
+  const [desktopLayout, setDesktopLayout] = useState(
+    () => window.innerWidth >= 900,
+  );
+  const [tiled, setTiled] = useState<"left" | "right" | null>(null);
+  const [size, setSize] = useState<{ width: number; height: number } | null>(
+    null,
+  );
+  const [adjustment, setAdjustment] = useState<{
+    mode: "move" | "resize";
+    left: number;
+    top: number;
+    width: number;
+    height: number;
+  } | null>(null);
+  const titlebar = useRef<HTMLElement>(null);
+  const arranged = maximized || !!tiled;
+  const restoreOrMaximize = () => {
+    setMaximized(!arranged);
+    setTiled(null);
+    setAdjustment(null);
+  };
+  const beginAdjustment = (mode: "move" | "resize") => {
+    const el = element.current;
+    if (!el || arranged || window.innerWidth < 900) return;
+    const rect = el.getBoundingClientRect();
+    const bounds = el.parentElement!.getBoundingClientRect();
+    // Freeze the rendered rectangle, including windows initially anchored at the right.
+    setPosition({ left: rect.left - bounds.left, top: rect.top - bounds.top });
+    setSize({ width: rect.width, height: rect.height });
+    setAdjustment({
+      mode,
+      left: rect.left - bounds.left,
+      top: rect.top - bounds.top,
+      width: rect.width,
+      height: rect.height,
+    });
+  };
+  useLayoutEffect(() => {
+    if (adjustment) titlebar.current?.focus({ preventScroll: true });
+  }, [adjustment]);
+  useEffect(() => {
+    if (!visible) setAdjustment(null);
+  }, [visible]);
+  useEffect(() => {
+    const query = window.matchMedia("(min-width: 900px)");
+    const changed = () => {
+      setDesktopLayout(query.matches);
+      if (!query.matches) setAdjustment(null);
+    };
+    query.addEventListener("change", changed);
+    return () => query.removeEventListener("change", changed);
+  }, []);
   const [confirmClose, setConfirmClose] = useState(false);
   const requestClose = () => {
     if (busy) return;
@@ -95,7 +155,7 @@ export function AppWindow({
     const parent = element.current?.parentElement;
     if (!parent) return;
     const observer = new ResizeObserver(() => {
-      if (window.innerWidth < 900 || !element.current || maximized || !visible)
+      if (window.innerWidth < 900 || !element.current || arranged || !visible)
         return;
       const width = element.current.offsetWidth;
       const height = element.current.offsetHeight;
@@ -116,7 +176,7 @@ export function AppWindow({
     });
     observer.observe(parent);
     return () => observer.disconnect();
-  }, [maximized, visible]);
+  }, [arranged, visible]);
   const Component = app.component;
   const Icon = app.icon;
   return (
@@ -125,7 +185,8 @@ export function AppWindow({
       style={
         {
           zIndex: order + 1,
-          ...(position && !maximized
+          ...(size ?? {}),
+          ...(position && !arranged
             ? {
                 left: position.left,
                 top: position.top,
@@ -136,12 +197,17 @@ export function AppWindow({
             : {}),
         } as CSSProperties
       }
-      className={`app-window window-${app.window?.layout ?? "standard"} ${focused ? "focused" : ""} ${maximized ? "maximized" : ""} ${!visible ? "hidden-window" : ""}`}
+      className={`app-window window-${app.window?.layout ?? "standard"} ${focused ? "focused" : ""} ${maximized ? "maximized" : ""} ${tiled ? `tiled tiled-${tiled}` : ""} ${!visible ? "hidden-window" : ""}`}
       onPointerDownCapture={focus}
       onFocusCapture={focus}
       aria-label={`${title} window`}
     >
       <header
+        ref={titlebar}
+        tabIndex={0}
+        data-window-titlebar
+        aria-label={`${title} window controls`}
+        title="Window actions: Shift+F10 · Next window: F6"
         className="window-titlebar"
         onContextMenu={(event) => {
           event.preventDefault();
@@ -149,6 +215,86 @@ export function AppWindow({
           setMenu({ x: event.clientX, y: event.clientY });
         }}
         onKeyDown={(event) => {
+          if (adjustment && event.target === event.currentTarget) {
+            if (event.key === "Escape" || event.key === "Enter") {
+              event.preventDefault();
+              event.stopPropagation();
+              if (event.key === "Escape") {
+                const parent = element.current!.parentElement!;
+                setPosition({
+                  left: Math.max(
+                    0,
+                    Math.min(
+                      adjustment.left,
+                      parent.clientWidth - adjustment.width,
+                    ),
+                  ),
+                  top: Math.max(
+                    0,
+                    Math.min(
+                      adjustment.top,
+                      parent.clientHeight - adjustment.height,
+                    ),
+                  ),
+                });
+                setSize({ width: adjustment.width, height: adjustment.height });
+              }
+              setAdjustment(null);
+              return;
+            }
+            if (
+              event.key.startsWith("Arrow") &&
+              element.current &&
+              window.innerWidth >= 900
+            ) {
+              event.preventDefault();
+              event.stopPropagation();
+              const el = element.current;
+              const parent = el.parentElement!;
+              const rect = el.getBoundingClientRect();
+              const bounds = parent.getBoundingClientRect();
+              const left = rect.left - bounds.left;
+              const top = rect.top - bounds.top;
+              const step = event.shiftKey ? 1 : 16;
+              const dx =
+                event.key === "ArrowRight"
+                  ? step
+                  : event.key === "ArrowLeft"
+                    ? -step
+                    : 0;
+              const dy =
+                event.key === "ArrowDown"
+                  ? step
+                  : event.key === "ArrowUp"
+                    ? -step
+                    : 0;
+              if (adjustment.mode === "move") {
+                setPosition({
+                  left: Math.max(
+                    0,
+                    Math.min(parent.clientWidth - rect.width, left + dx),
+                  ),
+                  top: Math.max(
+                    0,
+                    Math.min(parent.clientHeight - rect.height, top + dy),
+                  ),
+                });
+              } else {
+                const style = getComputedStyle(el);
+                setSize({
+                  width: Math.min(
+                    parent.clientWidth - left,
+                    Math.max(parseFloat(style.minWidth), rect.width + dx),
+                  ),
+                  height: Math.min(
+                    parent.clientHeight - top,
+                    Math.max(parseFloat(style.minHeight), rect.height + dy),
+                  ),
+                });
+              }
+              return;
+            }
+          }
           if (
             event.key !== "ContextMenu" &&
             !(event.shiftKey && event.key === "F10")
@@ -160,12 +306,13 @@ export function AppWindow({
           setMenu({ x: bounds.right - 220, y: bounds.bottom });
         }}
         onDoubleClick={(event) => {
-          if (!(event.target as HTMLElement).closest("button"))
-            setMaximized(!maximized);
+          if (desktopLayout && !(event.target as HTMLElement).closest("button"))
+            restoreOrMaximize();
         }}
         onPointerDown={(e) => {
           if (
-            maximized ||
+            arranged ||
+            e.button !== 0 ||
             window.innerWidth < 900 ||
             (e.target as HTMLElement).closest("button")
           )
@@ -180,6 +327,7 @@ export function AppWindow({
             top: rect.top - parent.top,
           };
           e.currentTarget.setPointerCapture(e.pointerId);
+          e.currentTarget.focus({ preventScroll: true });
         }}
         onPointerMove={(e) => {
           if (!drag.current || !element.current) return;
@@ -207,10 +355,13 @@ export function AppWindow({
         onPointerCancel={() => {
           drag.current = null;
         }}
+        onLostPointerCapture={() => {
+          drag.current = null;
+        }}
       >
         <span className="window-title">
           <Icon size={16} />
-          {title}
+          <span className="window-name">{title}</span>
           {dirty && (
             <span
               className="unsaved-dot"
@@ -223,6 +374,16 @@ export function AppWindow({
           )}
         </span>
         <div className="window-controls">
+          <button
+            title="Window actions"
+            aria-label={`${title} window actions`}
+            onClick={(event) => {
+              const bounds = event.currentTarget.getBoundingClientRect();
+              setMenu({ x: bounds.right - 220, y: bounds.bottom });
+            }}
+          >
+            <MoreHorizontal size={14} />
+          </button>
           {app.window?.multiple && (
             <button
               title={`New ${app.title} window`}
@@ -241,11 +402,12 @@ export function AppWindow({
             <Minus size={14} />
           </button>
           <button
-            title={maximized ? "Restore window" : "Maximize window"}
-            aria-label={maximized ? "Restore window" : "Maximize window"}
-            onClick={() => setMaximized(!maximized)}
+            title={arranged ? "Restore window" : "Maximize window"}
+            aria-label={arranged ? "Restore window" : "Maximize window"}
+            disabled={!desktopLayout}
+            onClick={restoreOrMaximize}
           >
-            {maximized ? <Minimize2 size={12} /> : <Maximize2 size={12} />}
+            {arranged ? <Minimize2 size={12} /> : <Maximize2 size={12} />}
           </button>
           <button
             title={`Close ${title}`}
@@ -257,6 +419,13 @@ export function AppWindow({
           </button>
         </div>
       </header>
+      {adjustment && (
+        <div className="window-adjustment" role="status">
+          {adjustment.mode === "move" ? "Move" : "Resize"}: arrow keys · Shift
+          for precision · Enter to finish · Esc to cancel
+          <button onClick={() => setAdjustment(null)}>Done</button>
+        </div>
+      )}
       <div className="window-content">
         {reason && !opened ? (
           <div className="app-empty">
@@ -305,8 +474,41 @@ export function AppWindow({
             { id: "minimize", label: "Minimize", run: minimize },
             {
               id: "maximize",
-              label: maximized ? "Restore" : "Maximize",
-              run: () => setMaximized(!maximized),
+              label: arranged ? "Restore" : "Maximize",
+              disabled: !desktopLayout,
+              run: restoreOrMaximize,
+            },
+            {
+              id: "move",
+              label: "Move with keyboard",
+              disabled: arranged || !desktopLayout,
+              run: () => beginAdjustment("move"),
+            },
+            {
+              id: "resize",
+              label: "Resize with keyboard",
+              disabled: arranged || !desktopLayout,
+              run: () => beginAdjustment("resize"),
+            },
+            {
+              id: "tile-left",
+              label: "Tile left",
+              disabled: !desktopLayout,
+              run: () => {
+                setMaximized(false);
+                setTiled("left");
+                setAdjustment(null);
+              },
+            },
+            {
+              id: "tile-right",
+              label: "Tile right",
+              disabled: !desktopLayout,
+              run: () => {
+                setMaximized(false);
+                setTiled("right");
+                setAdjustment(null);
+              },
             },
             {
               id: "close",

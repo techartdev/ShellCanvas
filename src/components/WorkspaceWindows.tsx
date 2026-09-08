@@ -50,6 +50,29 @@ export function WorkspaceWindows({
       hidden={!active}
       inert={!active}
       aria-label={`${workspace.label} workspace`}
+      onKeyDown={(event) => {
+        if (
+          event.key !== "F6" ||
+          !(event.target as HTMLElement).closest("[data-window-titlebar]")
+        )
+          return;
+        const bars = Array.from(
+          event.currentTarget.querySelectorAll<HTMLElement>(
+            ".app-window:not(.hidden-window) [data-window-titlebar]",
+          ),
+        );
+        const current = bars.indexOf(
+          (event.target as HTMLElement).closest<HTMLElement>(
+            "[data-window-titlebar]",
+          )!,
+        );
+        if (current < 0 || !bars.length) return;
+        event.preventDefault();
+        event.stopPropagation();
+        bars[
+          (current + (event.shiftKey ? -1 : 1) + bars.length) % bars.length
+        ].focus();
+      }}
     >
       {Object.keys(workspace.desktop.instances).map((id) => {
         const instance = workspace.desktop.instances[id];
