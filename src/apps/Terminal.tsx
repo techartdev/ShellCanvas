@@ -23,6 +23,8 @@ export function Terminal({
 }: AppContext) {
   const container = useRef<HTMLDivElement>(null);
   const instance = useRef<XTerminal | null>(null);
+  const connectionState = useRef(connected);
+  connectionState.current = connected;
   const { values: preferences } = usePreferences();
   const preferencesRef = useRef(preferences);
   preferencesRef.current = preferences;
@@ -165,18 +167,22 @@ export function Terminal({
     });
     setStatus("Opening shell…");
     const input = terminal.onData((data) => {
+      if (!connectionState.current || closed) return;
       void remote?.write(data).catch((e) => {
-        if (!disposed) setStatus(`Input failed: ${e}`);
+        if (!disposed && connectionState.current && !closed)
+          setStatus(`Input failed: ${e}`);
       });
     });
     const resize = terminal.onResize(({ cols, rows }) => {
+      if (!connectionState.current || closed) return;
       void remote?.resize(cols, rows).catch((e) => {
-        if (!disposed) setStatus(`Resize failed: ${e}`);
+        if (!disposed && connectionState.current && !closed)
+          setStatus(`Resize failed: ${e}`);
       });
     });
     void services
       .terminal(terminal.cols, terminal.rows, (event) => {
-        if (disposed) return;
+        if (disposed || !connectionState.current) return;
         if (event.type === "output") terminal.write(new Uint8Array(event.data));
         else if (event.type === "closed") {
           closed = true;
@@ -189,7 +195,7 @@ export function Terminal({
         }
       })
       .then(async (handle) => {
-        if (disposed) {
+        if (disposed || !connectionState.current) {
           await handle.close();
           return;
         }
@@ -204,7 +210,7 @@ export function Terminal({
         await handle.resize(terminal.cols, terminal.rows);
       })
       .catch((e) => {
-        if (!disposed) setStatus(String(e));
+        if (!disposed && connectionState.current) setStatus(String(e));
       });
     return () => {
       disposed = true;

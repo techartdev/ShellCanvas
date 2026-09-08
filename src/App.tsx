@@ -78,6 +78,9 @@ export default function App({
         service.state === "checking",
     );
   const [closeWorkspace, setCloseWorkspace] = useState<number | null>(null);
+  const [disconnecting, setDisconnecting] = useState<readonly number[]>([]);
+  const closingSessions = useRef(new Map<number, Promise<void>>());
+  const disconnectBusy = !!session && disconnecting.includes(session.id);
   const [closeApp, setCloseApp] = useState(false);
   const [hostKeyReview, setHostKeyReview] = useState<{
     challenge: HostKeyChallenge;
@@ -207,7 +210,7 @@ export default function App({
                 setToast(
                   `${w.label}: connection closed. Unsaved work remains available in this workspace.`,
                 );
-                await services.disconnect(w.session!.id);
+                await releaseSession(w.session!.id);
               }
             } catch (e) {
               if (!disposed) setToast(String(e));
@@ -260,6 +263,7 @@ export default function App({
     if (
       !session ||
       connected ||
+      disconnectBusy ||
       !workspace.connection ||
       Object.values(desktop.instances).some((instance) => instance.busy)
     )
@@ -366,8 +370,41 @@ export default function App({
       }
     }
   }
+  function releaseSession(id: number): Promise<void> {
+    const existing = closingSessions.current.get(id);
+    if (existing) return existing;
+    setDisconnecting((ids) => [...ids, id]);
+    const pending = Promise.resolve()
+      .then(() => services.disconnect(id))
+      .finally(() => {
+        closingSessions.current.delete(id);
+        setDisconnecting((ids) => ids.filter((pending) => pending !== id));
+      });
+    closingSessions.current.set(id, pending);
+    return pending;
+  }
   async function disconnect() {
     if (!session) return;
+    const id = session.id;
+    if (closingSessions.current.has(id)) return;
+    if (Object.values(desktop.instances).some((instance) => instance.busy))
+      return;
+    if (connected) {
+      // Release remote access immediately; local windows and drafts stay mounted.
+      update({ type: "lost", sessionId: id });
+      try {
+        await releaseSession(id);
+      } catch (error) {
+        setToast(
+          `Connection cleanup failed: ${error}. Your workspace is preserved.`,
+        );
+      }
+      return;
+    }
+    await closeCurrentWorkspace();
+  }
+  async function closeCurrentWorkspace() {
+    if (!session || closingSessions.current.has(session.id)) return;
     const id = session.id;
     if (Object.values(desktop.instances).some((instance) => instance.busy))
       return;
@@ -379,9 +416,19 @@ export default function App({
   }
   async function disconnectWorkspace(id: number) {
     setCloseWorkspace(null);
+    const current = workspaceState.current.items.find(
+      (item) => item.session?.id === id,
+    );
+    if (
+      !current ||
+      closingSessions.current.has(id) ||
+      Object.values(current.desktop.instances).some((instance) => instance.busy)
+    )
+      return;
     update({ type: "remove", sessionId: id });
+    if (current.connected === false) return;
     try {
-      await services.disconnect(id);
+      await releaseSession(id);
     } catch (e) {
       setToast(String(e));
     }
@@ -457,8 +504,39 @@ export default function App({
             {
               id: "reconnect",
               label: "Reconnect host",
-              disabled: connected || !workspace.connection || !session,
+              disabled:
+                connected ||
+                disconnectBusy ||
+                !workspace.connection ||
+                !session ||
+                Object.values(desktop.instances).some(
+                  (instance) => instance.busy,
+                ),
               run: reconnect,
+            },
+            {
+              id: "disconnect",
+              label: "Disconnect host",
+              disabled:
+                !connected ||
+                !isNative ||
+                disconnectBusy ||
+                Object.values(desktop.instances).some(
+                  (instance) => instance.busy,
+                ),
+              run: () => void disconnect(),
+            },
+            {
+              id: "close-workspace",
+              label: "Close workspace",
+              disabled:
+                !session ||
+                !isNative ||
+                disconnectBusy ||
+                Object.values(desktop.instances).some(
+                  (instance) => instance.busy,
+                ),
+              run: () => void closeCurrentWorkspace(),
             },
             {
               id: "settings",
@@ -600,6 +678,14 @@ export default function App({
           </div>
           <button
             className="workspace-connect"
+            disabled={
+              !connected &&
+              !!workspace.connection &&
+              (disconnectBusy ||
+                Object.values(desktop.instances).some(
+                  (instance) => instance.busy,
+                ))
+            }
             onClick={
               !connected && workspace.connection ? reconnect : showConnect
             }
@@ -831,14 +917,25 @@ export default function App({
         </nav>
         <button
           className="disconnect-button"
+          title={
+            connected
+              ? "Disconnect the host and keep windows and drafts"
+              : "Close this workspace"
+          }
           disabled={
             !session ||
             !isNative ||
+            disconnectBusy ||
             Object.values(desktop.instances).some((instance) => instance.busy)
           }
           onClick={() => void disconnect()}
         >
-          <Power size={13} /> {connected ? "Disconnect" : "Close workspace"}
+          <Power size={13} />{" "}
+          {disconnectBusy
+            ? "Disconnecting…"
+            : connected
+              ? "Disconnect"
+              : "Close workspace"}
         </button>
       </footer>
       {toast && (
@@ -881,8 +978,18 @@ export default function App({
       {closeWorkspace !== null && (
         <ConfirmDialog
           title="Close workspace with unsaved changes?"
-          message="Unsaved drafts and proposed settings in this workspace will be discarded. Save or copy your changes before disconnecting."
-          confirmLabel="Discard and disconnect"
+          disabled={
+            disconnecting.includes(closeWorkspace) ||
+            workspaces.items.some(
+              (item) =>
+                item.session?.id === closeWorkspace &&
+                Object.values(item.desktop.instances).some(
+                  (instance) => instance.busy,
+                ),
+            )
+          }
+          message="Unsaved drafts and proposed settings in this workspace will be discarded. Disconnecting a host keeps them; closing this workspace removes them."
+          confirmLabel="Discard and close"
           confirm={() => void disconnectWorkspace(closeWorkspace)}
           cancel={() => setCloseWorkspace(null)}
         />

@@ -7,6 +7,7 @@ import {
 } from "./desktop";
 import type { ConnectOptions, DesktopApp, HostProfile, Session } from "./sdk";
 import type { WorkspaceStatus } from "./sdk";
+import { capabilityLabels, capabilityStatus, type Capability } from "./sdk";
 export function connectionProfile(
   options: ConnectOptions,
   name: string,
@@ -183,7 +184,28 @@ export function updateWorkspaces(
       return {
         ...state,
         items: state.items.map((w) =>
-          w.session?.id === action.sessionId ? { ...w, connected: false } : w,
+          w.session?.id === action.sessionId
+            ? {
+                ...w,
+                connected: false,
+                session: {
+                  ...w.session,
+                  info: { ...w.session.info, capabilities: [] },
+                  services: (Object.keys(capabilityLabels) as Capability[]).map(
+                    (capability) => {
+                      const status = capabilityStatus(w.session!, capability);
+                      return status.state === "unsupported"
+                        ? status
+                        : {
+                            ...status,
+                            state: "disconnected" as const,
+                            reason: "Reconnect this host to use this service",
+                          };
+                    },
+                  ),
+                },
+              }
+            : w,
         ),
       };
     case "remove": {

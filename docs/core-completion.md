@@ -15,6 +15,8 @@ Additional protocols are optional until these core workflows work well. Connecti
 
 ## Evidence and outstanding work
 
+- Deliberate Disconnect now preserves the workspace, while Close workspace separately confirms removal of unsaved work. Delayed cleanup disables reconnect/close controls; failures retain drafts. Browser checks passed delayed/failing cleanup, draft retention, reconnect and subsequent save, plus disabled new-window controls and preserved terminal output. All 70 frontend tests and the Windows build passed. Native disconnect retained Files/Terminal/Editor windows and exited normally; unreliable native text-entry focus prevented the dirty-draft portion. See [connection recovery](connection-recovery.md).
+
 - Per-capability snapshots now reach native connect/poll, stable frontend service handles, launcher/window controls and Host details. Browser checks passed file loss with surviving console input, file recovery, console loss with surviving folder navigation, and source/status display. All 70 frontend tests, 54 Rust tests, Clippy and the Windows build passed. See [service availability](service-availability.md). Native push events, independent-leg reconnect and richer provider state reporting remain.
 
 - Native service bindings now route every production role through an explicit connection source and workspace lifetime. Shared connection leases close on last workspace release; late reads/handles are rejected or cleaned up and late writes report uncertainty. Mixed files/console and shared-owner fixtures passed, along with all 53 Rust tests, Clippy and the live bound SFTP/two-console probe. See [workspace bindings](workspace-bindings.md). Per-binding UI/status, service generations and independent-leg reconnect remain.

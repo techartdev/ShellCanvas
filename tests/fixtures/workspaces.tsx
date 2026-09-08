@@ -21,6 +21,9 @@ let nextWithoutFiles = false;
 let denyNextFileChange = false;
 let delayNextListing = false;
 let failNextListing = false;
+let delayNextDisconnect = false;
+let failNextDisconnect = false;
+let finishDisconnect: (() => void) | undefined;
 function checkFilePermission() {
   if (!denyNextFileChange) return;
   denyNextFileChange = false;
@@ -313,6 +316,19 @@ const backend: HostServices = {
   },
   disconnect: async (id) => {
     sessions.delete(id);
+    if (delayNextDisconnect) {
+      delayNextDisconnect = false;
+      log(`disconnecting ${id}`);
+      await new Promise<void>((resolve) => {
+        finishDisconnect = resolve;
+      });
+      finishDisconnect = undefined;
+    }
+    if (failNextDisconnect) {
+      failNextDisconnect = false;
+      log(`cleanup failed ${id}`);
+      throw new Error("Fixture transport cleanup unconfirmed");
+    }
     log(`disconnected ${id}`);
   },
   alive: async (id) => sessions.has(id),
@@ -380,6 +396,21 @@ function Fixture() {
         }}
       >
         <summary>Fixture events</summary>
+        <button
+          onClick={() => {
+            delayNextDisconnect = true;
+          }}
+        >
+          Delay next disconnect
+        </button>
+        <button onClick={() => finishDisconnect?.()}>Finish disconnect</button>
+        <button
+          onClick={() => {
+            failNextDisconnect = true;
+          }}
+        >
+          Fail next disconnect
+        </button>
         <button
           onClick={() => {
             delayNextListing = true;

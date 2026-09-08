@@ -118,6 +118,11 @@ describe("independent workspaces", () => {
     expect(lost.connected).toBe(false);
     expect(lost.desktop).toBe(desktop);
     expect(lost.desktop.instances.editor.dirty).toBe(true);
+    expect(lost.session!.info.capabilities).toEqual([]);
+    expect(
+      lost.session!.services?.find((item) => item.capability === "files.read")
+        ?.state,
+    ).toBe("disconnected");
     expect(state.active).toBe("session-5");
   });
   it("preserves app state when switching and only removes the selected session", () => {
