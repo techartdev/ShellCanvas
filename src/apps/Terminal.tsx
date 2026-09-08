@@ -7,6 +7,7 @@ import "@xterm/xterm/css/xterm.css";
 import type { AppContext, TerminalSession } from "../sdk";
 import { ContextMenu } from "../components/ContextMenu";
 import { clipboard } from "../clipboard";
+import { usePreferences } from "../preferences";
 export function Terminal({
   session,
   services,
@@ -16,6 +17,24 @@ export function Terminal({
 }: AppContext) {
   const container = useRef<HTMLDivElement>(null);
   const instance = useRef<XTerminal | null>(null);
+  const { values: preferences } = usePreferences();
+  const preferencesRef = useRef(preferences);
+  preferencesRef.current = preferences;
+  const refit = useRef<(() => void) | null>(null);
+  useEffect(() => {
+    const terminal = instance.current;
+    if (!terminal) return;
+    terminal.options.fontSize = preferences.terminalFontSize;
+    terminal.options.cursorStyle = preferences.terminalCursor;
+    terminal.options.cursorBlink = preferences.terminalBlink;
+    terminal.options.scrollback = preferences.terminalScrollback;
+    refit.current?.();
+  }, [
+    preferences.terminalFontSize,
+    preferences.terminalCursor,
+    preferences.terminalBlink,
+    preferences.terminalScrollback,
+  ]);
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
   const closeMenu = useCallback(() => setMenu(null), []);
   useEffect(() => {
@@ -54,12 +73,12 @@ export function Terminal({
     let closed = false;
     let remote: TerminalSession | undefined;
     const terminal = new XTerminal({
-      cursorBlink: true,
-      cursorStyle: "bar",
-      fontSize: 13,
+      cursorBlink: preferencesRef.current.terminalBlink,
+      cursorStyle: preferencesRef.current.terminalCursor,
+      fontSize: preferencesRef.current.terminalFontSize,
       fontFamily: '"Cascadia Code", "SFMono-Regular", Consolas, monospace',
       lineHeight: 1.35,
-      scrollback: 3000,
+      scrollback: preferencesRef.current.terminalScrollback,
       allowProposedApi: false,
       theme: {
         background: "#111b26",
@@ -94,6 +113,7 @@ export function Terminal({
       });
     };
     const observer = new ResizeObserver(scheduleFit);
+    refit.current = scheduleFit;
     observer.observe(container.current);
     fit.fit();
     void document.fonts.ready.then(() => {
@@ -173,6 +193,7 @@ export function Terminal({
     return () => {
       disposed = true;
       instance.current = null;
+      refit.current = null;
       cancelAnimationFrame(frame);
       observer.disconnect();
       input.dispose();

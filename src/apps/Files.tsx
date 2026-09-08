@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowLeft,
   ArrowUp,
@@ -19,6 +19,8 @@ import {
 import type { AppContext, Directory, FileEntry } from "../sdk";
 import { ContextMenu, type MenuAction } from "../components/ContextMenu";
 import { clipboard } from "../clipboard";
+import { usePreferences } from "../preferences";
+import { visibleFiles } from "../file-view";
 export function parentPath(path: string) {
   return path.replace(/\/+$/, "").split("/").slice(0, -1).join("/") || "/";
 }
@@ -37,6 +39,7 @@ export function Files({
   launch,
   openApp,
 }: AppContext) {
+  const { values: preferences, set: setPreference } = usePreferences();
   const [directory, setDirectory] = useState<Directory>({
     path: ".",
     entries: [],
@@ -142,9 +145,21 @@ export function Files({
       }
     }
   }
-  const entries = directory.entries.filter((entry) =>
-    entry.name.toLowerCase().includes(query.toLowerCase()),
+  const entries = useMemo(
+    () => visibleFiles(directory.entries, query, preferences),
+    [
+      directory.entries,
+      query,
+      preferences.filesShowHidden,
+      preferences.filesSort,
+      preferences.filesDescending,
+      preferences.filesFoldersFirst,
+    ],
   );
+  useEffect(() => {
+    if (selected && !entries.some((entry) => entry.path === selected))
+      setSelected(null);
+  }, [selected, directory, query, preferences.filesShowHidden]);
   function menuActions(entry?: FileEntry): MenuAction[] {
     return [
       ...(entry && entry.kind !== "directory" && openApp
@@ -223,11 +238,20 @@ export function Files({
         disabled: loading,
         run: () => void clipboardPath(),
       },
+      {
+        id: "hidden-files",
+        label: preferences.filesShowHidden
+          ? "Hide hidden files"
+          : "Show hidden files",
+        separatorBefore: true,
+        run: () =>
+          setPreference("filesShowHidden", !preferences.filesShowHidden),
+      },
     ];
   }
   return (
     <div
-      className="files-app"
+      className={`files-app ${preferences.filesCompact ? "compact-files" : ""}`}
       ref={root}
       onKeyDown={(event) => {
         const target = event.target as HTMLElement;
@@ -430,7 +454,11 @@ export function Files({
             ) : entries.length === 0 ? (
               <div className="file-message">
                 <Folder size={28} />
-                {query ? "No matching files" : "This folder is empty"}
+                {query
+                  ? "No matching files"
+                  : directory.entries.length
+                    ? "No visible files · hidden files are filtered"
+                    : "This folder is empty"}
               </div>
             ) : (
               entries.map((entry) => {

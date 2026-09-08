@@ -1223,8 +1223,7 @@ button:active:not(:disabled) {
   padding: 7px 10px;
   border-radius: 6px;
 }
-.launcher,
-.settings-popover {
+.launcher {
   position: absolute;
   bottom: 95px;
   z-index: 15;
@@ -1238,9 +1237,6 @@ button:active:not(:disabled) {
 }
 .launcher {
   left: calc(50% - 170px);
-}
-.settings-popover {
-  left: calc(50% - 30px);
 }
 .popover-heading {
   display: flex;
@@ -1323,21 +1319,6 @@ button:active:not(:disabled) {
 }
 .wallpaper-swatch svg {
   margin-top: -12px;
-}
-.settings-detail {
-  display: flex;
-  gap: 10px;
-  margin: 13px 0;
-  color: #abc0ca;
-  font-size: 11px;
-}
-.settings-note {
-  margin-top: 20px;
-  padding-top: 16px;
-  border-top: 1px solid #b2d1d01a;
-  color: #7d9aa9;
-  font-size: 9px;
-  line-height: 1.8;
 }
 .toast {
   position: absolute;
@@ -1803,12 +1784,6 @@ button:active:not(:disabled) {
   .landscape {
     position: fixed;
   }
-  .settings-popover {
-    position: fixed;
-    left: auto;
-    right: 20px;
-    bottom: 95px;
-  }
   .launcher {
     position: fixed;
     bottom: 95px;
@@ -1975,16 +1950,27 @@ button:active:not(:disabled) {
   .app-empty h2 {
     font-size: 15px;
   }
-  .settings-popover {
-    right: 13px;
-    width: min(330px, calc(100% - 26px));
-  }
 }
 @media (prefers-reduced-motion: reduce) {
   * {
     animation: none !important;
     transition: none !important;
   }
+}
+.reduce-motion *,
+.reduce-motion *::before,
+.reduce-motion *::after {
+  animation: none !important;
+  transition: none !important;
+  scroll-behavior: auto !important;
+}
+.files-app.compact-files .file-row {
+  height: 30px;
+  min-height: 30px;
+}
+.files-app.compact-files .file-row > span:first-child > svg {
+  width: 17px;
+  height: 17px;
 }
 @media (max-width: 560px) {
   .clock-date {

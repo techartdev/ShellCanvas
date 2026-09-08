@@ -32,6 +32,7 @@ import {
   serialiseText,
 } from "../editor-state";
 import "./Editor.css";
+import { usePreferences } from "../preferences";
 
 export function Editor({
   launch,
@@ -40,6 +41,7 @@ export function Editor({
   connected = true,
   setDocumentState,
 }: AppContext) {
+  const { values: preferences, set: setPreference } = usePreferences();
   const [document, setDocument] = useState<TextDocument | null>(null);
   const [buffer, edit] = useReducer(editBuffer, {
     text: "",
@@ -50,7 +52,7 @@ export function Editor({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [status, setStatus] = useState("Open a remote text file to begin");
-  const [wrap, setWrap] = useState(false);
+  const wrap = preferences.editorWrap;
   const [search, setSearch] = useState("");
   const [searchOpen, setSearchOpen] = useState(false);
   const [pendingPath, setPendingPath] = useState<string | null>(null);
@@ -59,6 +61,10 @@ export function Editor({
   const textarea = useRef<HTMLTextAreaElement>(null);
   const searchField = useRef<HTMLInputElement>(null);
   const gutter = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (gutter.current && textarea.current)
+      gutter.current.scrollTop = textarea.current.scrollTop;
+  }, [wrap, preferences.editorLineNumbers, preferences.editorFontSize]);
   const request = useRef(0);
   const currentText = useRef(buffer.text);
   currentText.current = buffer.text;
@@ -206,7 +212,8 @@ export function Editor({
     if (!wrap)
       el.scrollTop = Math.max(
         0,
-        buffer.text.slice(0, index).split("\n").length * 22 -
+        buffer.text.slice(0, index).split("\n").length *
+          (preferences.editorFontSize + 9) -
           el.clientHeight / 2,
       );
     setStatus(`Match at character ${index + 1}`);
@@ -298,7 +305,7 @@ export function Editor({
         <button
           aria-label="Toggle word wrap"
           aria-pressed={wrap}
-          onClick={() => setWrap(!wrap)}
+          onClick={() => setPreference("editorWrap", !wrap)}
         >
           <WrapText size={15} /> Wrap
         </button>
@@ -354,8 +361,16 @@ export function Editor({
         </div>
       )}
       <div className={`editor-buffer ${wrap ? "wrap" : ""}`}>
-        {!wrap && (
-          <div className="editor-lines" aria-hidden="true" ref={gutter}>
+        {!wrap && preferences.editorLineNumbers && (
+          <div
+            className="editor-lines"
+            aria-hidden="true"
+            ref={gutter}
+            style={{
+              fontSize: preferences.editorFontSize - 1,
+              lineHeight: `${preferences.editorFontSize + 9}px`,
+            }}
+          >
             {lineNumbers}
           </div>
         )}
@@ -367,6 +382,11 @@ export function Editor({
           placeholder="Open a remote file, or write a draft here…"
           spellCheck={false}
           wrap={wrap ? "soft" : "off"}
+          style={{
+            fontSize: preferences.editorFontSize,
+            lineHeight: `${preferences.editorFontSize + 9}px`,
+            tabSize: preferences.editorIndent === "2" ? 2 : 4,
+          }}
           onChange={(event) => change(event.target.value)}
           onScroll={(event) => {
             if (gutter.current)
@@ -391,11 +411,18 @@ export function Editor({
               const el = event.currentTarget,
                 start = el.selectionStart,
                 end = el.selectionEnd;
+              const indent =
+                preferences.editorIndent === "tab"
+                  ? "\t"
+                  : " ".repeat(Number(preferences.editorIndent));
               change(
-                buffer.text.slice(0, start) + "  " + buffer.text.slice(end),
+                buffer.text.slice(0, start) + indent + buffer.text.slice(end),
               );
               requestAnimationFrame(() =>
-                el.setSelectionRange(start + 2, start + 2),
+                el.setSelectionRange(
+                  start + indent.length,
+                  start + indent.length,
+                ),
               );
             } else if (
               event.key === "ContextMenu" ||

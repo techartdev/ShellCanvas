@@ -19,7 +19,9 @@ export function ConnectDialog({
   preview,
   save,
   remove,
+  initialProfile,
 }: {
+  initialProfile?: HostProfile;
   profiles: HostProfile[];
   busy: boolean;
   error: string;
@@ -64,7 +66,11 @@ export function ConnectDialog({
     setMethod(profile.keyPath ? "key" : "password");
   }
   useEffect(() => {
-    if (profiles[0]) {
+    if (initialProfile) {
+      select(initialProfile);
+      const index = profiles.indexOf(initialProfile);
+      setSelected(initialProfile.id ?? `import-${index}`);
+    } else if (profiles[0]) {
       select(profiles[0]);
       setSelected(profiles[0].id ?? "import-0");
     }

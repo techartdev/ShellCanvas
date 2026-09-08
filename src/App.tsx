@@ -7,13 +7,11 @@ import {
   Circle,
   Command,
   Grid2X2,
-  Moon,
   Plus,
   Power,
   Server,
   Settings2,
   ShieldCheck,
-  Sun,
   Wifi,
   X,
 } from "lucide-react";
@@ -24,6 +22,8 @@ import { WorkspaceWindows } from "./components/WorkspaceWindows";
 import { ContextMenu, type MenuAction } from "./components/ContextMenu";
 import { ConfirmDialog } from "./components/ConfirmDialog";
 import { ConnectDialog } from "./components/ConnectDialog";
+import { SettingsDialog } from "./components/SettingsDialog";
+import { usePreferences } from "./preferences";
 import { native, nativeServices } from "./services";
 import { previewServices, previewSession } from "./preview";
 import type {
@@ -116,16 +116,12 @@ export default function App({
   const [connecting, setConnecting] = useState(false);
   const [connectOpen, setConnectOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [editingProfile, setEditingProfile] = useState<HostProfile>();
   const [launcherOpen, setLauncherOpen] = useState(false);
   const [error, setError] = useState("");
   const [toast, setToast] = useState("");
   const [clock, setClock] = useState(new Date());
-  const [wallpaper, setWallpaper] = useState(
-    () =>
-      localStorage.getItem("shellcanvas.wallpaper") ||
-      localStorage.getItem("sshdesktop.wallpaper") ||
-      "fjord",
-  );
+  const { values: preferences } = usePreferences();
   useEffect(() => {
     void services
       .profiles()
@@ -140,8 +136,12 @@ export default function App({
     return () => clearTimeout(timer);
   }, [toast]);
   useEffect(() => {
-    localStorage.setItem("shellcanvas.wallpaper", wallpaper);
-  }, [wallpaper]);
+    document.documentElement.classList.toggle(
+      "reduce-motion",
+      preferences.reduceMotion,
+    );
+    return () => document.documentElement.classList.remove("reduce-motion");
+  }, [preferences.reduceMotion]);
   useEffect(() => {
     if (!isNative) return;
     let disposed = false;
@@ -202,6 +202,7 @@ export default function App({
   }, [switcherOpen]);
   const showConnect = useCallback(() => {
     setSwitcherOpen(false);
+    setEditingProfile(undefined);
     setError("");
     setConnectOpen(true);
   }, []);
@@ -274,7 +275,7 @@ export default function App({
   }
   return (
     <main
-      className={`desktop wallpaper-${wallpaper}`}
+      className={`desktop wallpaper-${preferences.wallpaper}`}
       onContextMenu={(event) => {
         if (
           (event.target as HTMLElement).closest(
@@ -413,6 +414,11 @@ export default function App({
               {clock.toLocaleTimeString(undefined, {
                 hour: "2-digit",
                 minute: "2-digit",
+                second: preferences.clockSeconds ? "2-digit" : undefined,
+                hour12:
+                  preferences.clockFormat === "system"
+                    ? undefined
+                    : preferences.clockFormat === "12",
               })}
             </b>
           </time>
@@ -528,47 +534,22 @@ export default function App({
         </div>
       )}
       {settingsOpen && (
-        <div className="settings-popover">
-          <div className="popover-heading">
-            <span>
-              <Settings2 size={16} /> Desktop settings
-            </span>
-            <button
-              className="icon-button"
-              aria-label="Close settings"
-              onClick={() => setSettingsOpen(false)}
-            >
-              <X size={16} />
-            </button>
-          </div>
-          <p className="eyebrow">WALLPAPER</p>
-          <div className="wallpaper-options">
-            {["fjord", "dusk", "sage"].map((name) => (
-              <button
-                key={name}
-                className={`wallpaper-swatch swatch-${name}`}
-                aria-label={`${name} wallpaper`}
-                onClick={() => setWallpaper(name)}
-              >
-                {wallpaper === name && <Check size={20} />}
-                <span>{name}</span>
-              </button>
-            ))}
-          </div>
-          <div className="settings-detail">
-            <Moon size={15} />
-            <span>Midnight interface</span>
-          </div>
-          <div className="settings-detail">
-            <Sun size={15} />
-            <span>Clock uses your local timezone</span>
-          </div>
-          <p className="settings-note">
-            ShellCanvas 0.1 · Early prototype
-            <br />
-            Bundled apps · Linux provider · MPL-2.0
-          </p>
-        </div>
+        <SettingsDialog
+          close={() => setSettingsOpen(false)}
+          profiles={profiles}
+          session={session}
+          connected={connected}
+          hostDetails={() => {
+            setSettingsOpen(false);
+            openApp("host-details");
+          }}
+          manageHost={(profile) => {
+            setSettingsOpen(false);
+            setEditingProfile(profile);
+            setError("");
+            setConnectOpen(true);
+          }}
+        />
       )}
       <footer className="bottom-bar">
         <span className="bottom-status">
@@ -692,6 +673,7 @@ export default function App({
       {connectOpen && (
         <ConnectDialog
           profiles={profiles}
+          initialProfile={editingProfile}
           busy={connecting}
           error={error}
           preview={!isNative}
