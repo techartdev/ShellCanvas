@@ -17,6 +17,8 @@ Objective: provide a small, coherent virtual-desktop API for bundled and communi
 
 ## Direction
 
+Operation availability checkpoint: native file status distinguishes browsing from text-document access. The broker and SDK discovery use this metadata, and bundled editor actions explain unsupported text access while preserving drafts. Targeted tests cover read-only text support and operation loss without invalidating directory reads. Both Windows probes passed 40 checks: the adapter probe covers browsing-only discovery, calls and editor controls; the installed-app probe checks the independently built example disables and restores its text action across reconnect acceptance. This does not complete the remaining service bridges or delivery gates.
+
 - Apps consume workspace services, not SSH sessions or OS-specific path syntax. Existing file/terminal/settings contracts remain useful; custom namespaced services must be possible without adding every vendor operation to the kernel.
 - Keep trusted bundled React modules working while the external package API is introduced. External code must not gain the bundled webview's unrestricted native privileges.
 - UI packages and native connection adapters have different execution/trust requirements. Avoid an unstable native dynamic-library ABI. A versioned process/service protocol is the candidate for adapters that need arbitrary networking, serial devices or platform libraries; the process trust model must be explicit.

@@ -10,6 +10,7 @@ import {
   capabilityStatus,
   capabilityReason,
   capabilityLabels,
+  capabilityOperationReason,
   transferCapability,
 } from "./sdk";
 import { notifyFileChanges, beginFileRelocation } from "./file-events";
@@ -27,6 +28,7 @@ export function bindSession(
   let closed = false;
   let generation = 0;
   let lifetimeEpoch = 0;
+  let textChangedAt = 0;
   let currentSession = session;
   const acceptedSources = new Map(
     (Object.keys(capabilityLabels) as Capability[]).map((cap) => [
@@ -84,6 +86,20 @@ export function bindSession(
     } catch {
       return false;
     }
+  }
+  function checkText(expected = generation) {
+    const id = check("files.read", expected);
+    if (expected < textChangedAt)
+      throw new Error(
+        "Text document access changed before the operation completed.",
+      );
+    const reason = capabilityOperationReason(
+      currentSession!,
+      "files.read",
+      "readText",
+    );
+    if (reason) throw new RpcError("unavailable", reason);
+    return id;
   }
   function mutationCompleted(
     capability: Capability,
@@ -370,8 +386,8 @@ export function bindSession(
     },
     readText: async (path) => {
       const expected = generation;
-      const result = await backend.readText(check("files.read"), path);
-      check("files.read", expected);
+      const result = await backend.readText(checkText(), path);
+      checkText(expected);
       return result;
     },
     saveText: async (path, text, revision) => {
@@ -428,6 +444,15 @@ export function bindSession(
     services,
     updateAvailability: (next: Session | null) => {
       if (!next || next.id !== session?.id) return;
+      const textChanged =
+        (currentSession
+          ? capabilityOperationReason(
+              currentSession,
+              "files.read",
+              "readText",
+            ) === null
+          : false) !==
+        (capabilityOperationReason(next, "files.read", "readText") === null);
       const changes = (Object.keys(capabilityLabels) as Capability[]).filter(
         (cap) => {
           const before =
@@ -441,8 +466,9 @@ export function bindSession(
         },
       );
       currentSession = next;
-      if (!changes.length) return;
+      if (!changes.length && !textChanged) return;
       ++generation;
+      if (textChanged) textChangedAt = generation;
       changes.forEach((cap) => changedAt.set(cap, generation));
       if (
         options.clipboardLifecycle !== false &&

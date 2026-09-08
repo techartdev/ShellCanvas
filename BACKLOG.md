@@ -6,6 +6,8 @@ Current BASE-11 checkpoint (2026-09-09): runtime app and adapter packages, share
 
 Public app file checkpoint: binding-aware remote text read/create/save, paged directory iteration and folder/rename/move/delete actions now run through the SDK and broker. The Windows installed-app probe passes 38 checks including stale revisions, multi-page listings, the file-action sequence, reconnect isolation and denied access. Terminal and transfer SDK APIs are still pending; see [runtime app files](docs/app-files.md). The current listing backend materializes a directory; paging is at the app boundary.
 
+Operation availability checkpoint: browsing-only adapters advertise directory access without text documents. Bundled controls and SDK discovery respect this distinction independently of read/write permissions. Both Windows integration probes now pass 40 checks, including editor controls and the installed example's reconnect availability refresh. The full BASE-11 goal remains active.
+
 ## Immediate delivery focus — everyday basics
 
 Prioritize a dependable working desktop over adding protocols or more bundled apps. Delivered: terminal containment/actions, saved host CRUD, independent host workspaces, Files context actions/clipboard, multiple app instances, existing-file text editing with unsaved guards, and persistent desktop/app preferences. Save As, explicit reconnect, provider-owned navigation, regular-file transfers and provider-defined host settings are also implemented. Next: remaining native integration and failure-handling gates. [Core completion work](docs/core-completion.md) tracks the active overnight goal. Keep the composite-adapter architecture as a constraint rather than building every adapter now.

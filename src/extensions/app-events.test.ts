@@ -2,9 +2,65 @@
 import { expect, it, vi } from "vitest";
 import { AppEventJournal, appEventClient } from "./app-events";
 import { RpcPeer, messagePortTransport, type Json } from "./rpc";
-import { discoverMethods } from "./environment";
+import { discoverMethods, methodAvailable } from "./environment";
+import type { RpcMethod } from "./rpc";
+import type { AppEnvironment } from "./environment-api";
 const signal = () => new AbortController().signal;
 const turn = () => new Promise((resolve) => setTimeout(resolve, 10));
+it("keeps permission distinct from per-operation availability and supports legacy metadata", () => {
+  const method: RpcMethod = {
+    grants: ["files.read"],
+    operations: { "files.read": ["readText"] },
+    invoke: () => null,
+  };
+  const state: AppEnvironment = {
+    apiVersion: 1,
+    connection: "connected",
+    binding: "one",
+    visible: true,
+    capabilities: ["files.read"],
+    operations: { "files.read": ["list", "preview"] },
+  };
+  const methods = new Map([
+    [
+      "system.files.readText",
+      {
+        ...method,
+        available: () => methodAvailable(method, state, ["files.read"]),
+      },
+    ],
+  ]);
+  expect(discoverMethods(methods, ["files.read"])[0]).toMatchObject({
+    granted: true,
+    available: false,
+  });
+  expect(
+    methodAvailable(
+      method,
+      { ...state, operations: { "files.read": ["readText"] } },
+      ["files.read"],
+    ),
+  ).toBe(true);
+  expect(
+    methodAvailable(method, { ...state, operations: undefined }, [
+      "files.read",
+    ]),
+  ).toBe(true);
+  expect(
+    methodAvailable(
+      method,
+      { ...state, connection: "review-required", operations: undefined },
+      ["files.read"],
+    ),
+  ).toBe(false);
+  expect(
+    methodAvailable(
+      { ...method, available: () => false },
+      { ...state, operations: undefined },
+      ["files.read"],
+    ),
+  ).toBe(false);
+});
 
 it("returns cloned snapshots and explicitly resets readers that fall behind bounded history", async () => {
   const events = new AppEventJournal(["acme.state", "system.environment"], 2);

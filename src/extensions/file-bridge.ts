@@ -29,9 +29,11 @@ export function fileMethods(
       services: AppFileSource["services"],
       params: Record<string, string>,
     ) => Promise<unknown>,
+    operations?: RpcMethod["operations"],
   ): RpcMethod {
     return {
       grants: [grant],
+      operations,
       async invoke(value: Json, signal: AbortSignal) {
         if (
           !value ||
@@ -140,8 +142,11 @@ export function fileMethods(
     ],
     [
       "system.files.readText",
-      method("files.read", ["binding", "path"], (services, p) =>
-        services.readText(p.path),
+      method(
+        "files.read",
+        ["binding", "path"],
+        (services, p) => services.readText(p.path),
+        { "files.read": ["readText"] },
       ),
     ],
     [

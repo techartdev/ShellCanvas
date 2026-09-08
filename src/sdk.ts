@@ -134,6 +134,8 @@ export interface ServiceStatus {
   state: "available" | "unsupported" | "checking" | "disconnected" | "denied";
   reason?: string | null;
   source?: ConnectionIdentity | null;
+  /** Optional operation support within this capability; absent means a legacy provider. */
+  operations?: readonly string[];
 }
 export interface WorkspaceStatus {
   sourceRevision?: number;
@@ -165,6 +167,18 @@ export function capabilityReason(
     : `Unavailable ${capabilityLabels[capability].toLowerCase()}: ${status.reason || status.state}`;
 }
 export type { FileEntry } from "../packages/app-sdk/src/files";
+export function capabilityOperationReason(
+  session: Session,
+  capability: Capability,
+  operation: string,
+): string | null {
+  const unavailable = capabilityReason(session, capability);
+  if (unavailable) return unavailable;
+  const operations = capabilityStatus(session, capability).operations;
+  return operations && !operations.includes(operation)
+    ? `This device does not provide ${operation === "readText" ? "text documents" : operation}.`
+    : null;
+}
 export interface FilePlace {
   path: string;
   name: string;

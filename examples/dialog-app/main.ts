@@ -52,7 +52,8 @@ async function start() {
       /* Older workbenches may only offer dialog services. */
     }
     let dirty = false;
-    const available = await client.services.list();
+    let available = await client.services.list();
+    let currentBinding = (await client.environment.get()).binding;
     const canCopy = available.some(
       (method) =>
         method.name === "system.clipboard.writeStart" &&
@@ -69,14 +70,19 @@ async function start() {
       button.id === "save-existing"
         ? !!remoteDocument &&
           remoteDocument.writable &&
+          remoteDocument.binding === currentBinding &&
           available.some(
             (method) =>
-              method.name === "system.files.saveText" && method.granted,
+              method.name === "system.files.saveText" &&
+              method.granted &&
+              method.available,
           )
         : button.id === "open-note"
           ? available.some(
               (method) =>
-                method.name === "system.files.readText" && method.granted,
+                method.name === "system.files.readText" &&
+                method.granted &&
+                method.available,
             )
           : button.id === "copy-note"
             ? canCopy
@@ -86,6 +92,37 @@ async function start() {
                 ? localAvailable
                 : true;
     let busy = false;
+    let discoveryVersion = 0;
+    client.events.subscribe((batch) => {
+      if (
+        !batch.events.some(
+          (event) =>
+            event.topic === "system.services" ||
+            event.topic === "system.environment",
+        )
+      )
+        return;
+      for (const event of batch.events)
+        if (event.topic === "system.environment")
+          currentBinding = (event.value as { binding: string | null }).binding;
+      const version = ++discoveryVersion;
+      void client.services
+        .list()
+        .then((methods) => {
+          if (version !== discoveryVersion) return;
+          available = methods;
+          buttons.forEach((button) => {
+            button.disabled = busy || !enabled(button);
+          });
+        })
+        .catch(() => {
+          if (version !== discoveryVersion) return;
+          available = [];
+          buttons.forEach((button) => {
+            button.disabled = busy || !enabled(button);
+          });
+        });
+    });
     const publish = () => client.window.setDocumentState({ dirty, busy });
     root.querySelector("textarea")!.addEventListener("input", () => {
       dirty = true;

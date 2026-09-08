@@ -8,6 +8,20 @@ window.addEventListener("message", async (event) => {
     const client = await connection;
     let value: unknown;
     switch (event.data.action) {
+      case "text":
+        value = await client.files.readText({
+          binding: (await client.environment.get()).binding!,
+          path: "fixture:note",
+        });
+        break;
+      case "browse":
+        for await (const page of client.files.list({
+          binding: (await client.environment.get()).binding!,
+        })) {
+          value = page.entries;
+          break;
+        }
+        break;
       case "list":
         value = await client.services.list();
         break;

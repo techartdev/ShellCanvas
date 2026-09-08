@@ -43,6 +43,24 @@ export function discoverMethods(
     }))
     .sort((a, b) => a.name.localeCompare(b.name));
 }
+export function methodAvailable(
+  method: RpcMethod,
+  state: AppEnvironment,
+  remote: readonly string[],
+) {
+  return (
+    (method.available?.() ?? true) &&
+    state.connection === "connected" &&
+    remote.every((capability) => state.capabilities.includes(capability)) &&
+    Object.entries(method.operations ?? {}).every(([capability, required]) => {
+      const supported = state.operations?.[capability];
+      return (
+        !supported ||
+        required.every((operation) => supported.includes(operation))
+      );
+    })
+  );
+}
 export function emptyOptions(params: Json) {
   if (
     params !== null &&

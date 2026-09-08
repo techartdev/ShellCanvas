@@ -15,6 +15,62 @@ import type { TransferOutcome } from "./sdk";
 import type { AdapterProfile } from "./adapters";
 
 const source = { instance: 1, generation: 1, adapter: "fixture-files" };
+it("separates text access from browsing and retires only in-flight text reads when operation support changes", async () => {
+  let finishText!: (
+    value: Awaited<ReturnType<typeof previewServices.readText>>,
+  ) => void;
+  let finishList!: (
+    value: Awaited<ReturnType<typeof previewServices.list>>,
+  ) => void;
+  const backend = {
+    ...previewServices,
+    readText: vi.fn(
+      () =>
+        new Promise<Awaited<ReturnType<typeof previewServices.readText>>>(
+          (resolve) => {
+            finishText = resolve;
+          },
+        ),
+    ),
+    list: vi.fn(
+      () =>
+        new Promise<Awaited<ReturnType<typeof previewServices.list>>>(
+          (resolve) => {
+            finishList = resolve;
+          },
+        ),
+    ),
+  };
+  const initial: Session = {
+    ...previewSession,
+    services: [
+      {
+        capability: "files.read",
+        state: "available",
+        source,
+        operations: ["list", "locate", "preview", "readText"],
+      },
+    ],
+  };
+  const bound = bindSession(backend, initial);
+  const text = bound.services.readText("opaque:text");
+  const listing = bound.services.list();
+  bound.updateAvailability({
+    ...initial,
+    services: [
+      { ...initial.services![0], operations: ["list", "locate", "preview"] },
+    ],
+  });
+  finishText(await previewServices.readText(0, "opaque:text"));
+  finishList(await previewServices.list(0));
+  await expect(text).rejects.toThrow("Text document access changed");
+  await expect(listing).resolves.toHaveProperty("entries");
+  await expect(bound.services.readText("opaque:text")).rejects.toMatchObject({
+    code: "unavailable",
+  });
+  expect(backend.readText).toHaveBeenCalledTimes(1);
+  bound.dispose();
+});
 it("accepts a source replacement once, preserves windows and other settings, and ignores earlier or unaccepted polls", () => {
   const initial = {
     ...session("available"),

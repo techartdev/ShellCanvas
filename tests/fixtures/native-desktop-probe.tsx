@@ -247,6 +247,7 @@ function ask(frame: HTMLIFrameElement, action = "snapshot") {
     text: string;
     status: string;
     ready: boolean;
+    openNoteEnabled: boolean;
     storage?: Record<string, unknown>;
     files?: Record<string, boolean>;
     environment?: AppEnvironment;
@@ -535,6 +536,8 @@ async function run() {
     reviewEnvironment.services?.find(
       (method) => method.name === "system.dialogs.openFile",
     )?.available === false;
+  await frameState(first, (state) => state.ready && !state.openNoteEnabled);
+  checks.exampleDisablesUnavailableText = true;
   await frameState(
     first,
     (state) =>
@@ -569,6 +572,8 @@ async function run() {
       initialEnvironment.environment?.binding;
   button("Cancel", fileDialog).click();
   const staleFiles = (await ask(first, "files-stale")).files;
+  await frameState(first, (state) => state.ready && state.openNoteEnabled);
+  checks.exampleRestoresTextAction = true;
   checks.sdkOldDocumentRejected =
     staleFiles?.rejected === true && fileWrites === 1;
   checks.sdkOldListingRejected = staleFiles?.listingRejected === true;

@@ -20,6 +20,8 @@ pub struct ServiceStatus {
     state: &'static str,
     reason: Option<String>,
     source: Option<ConnectionIdentity>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    operations: Option<Vec<&'static str>>,
 }
 #[derive(serde::Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -479,6 +481,13 @@ impl WorkspaceServices {
                 && source.is_some_and(|source| source.is_connected());
             ServiceStatus {
                 capability,
+                operations: (capability == "files.read").then(|| {
+                    let mut operations = vec!["list", "locate", "preview"];
+                    if self.text.is_some() {
+                        operations.push("readText");
+                    }
+                    operations
+                }),
                 state: if !supported {
                     "unsupported"
                 } else if available {

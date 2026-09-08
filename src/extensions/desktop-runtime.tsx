@@ -119,6 +119,11 @@ function RuntimeDocument({
           (capability) => !capabilityReason(context.session!, capability),
         )
       : [],
+    operations: Object.fromEntries(
+      (context.session?.services ?? [])
+        .filter((item) => item.operations !== undefined)
+        .map((item) => [item.capability, item.operations!]),
+    ),
   };
   const fileTarget = useRef({
     binding: state.binding,

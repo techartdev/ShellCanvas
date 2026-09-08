@@ -252,6 +252,8 @@ window.addEventListener("message", async (event) => {
       text: note.value,
       status: document.querySelector("output")!.textContent,
       ready: !document.querySelector<HTMLButtonElement>("#message")!.disabled,
+      openNoteEnabled:
+        !document.querySelector<HTMLButtonElement>("#open-note")!.disabled,
       storage,
       files,
       clipboard,

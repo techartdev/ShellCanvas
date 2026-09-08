@@ -16,6 +16,7 @@ import {
   RuntimeEnvironment,
   discoverMethods,
   emptyOptions,
+  methodAvailable,
 } from "./environment";
 import { capabilityLabels } from "../sdk";
 import type { ClipboardService } from "../clipboard";
@@ -118,12 +119,7 @@ export function ExtensionFrame({
             ...method,
             available: () => {
               const state = environment.snapshot();
-              return (
-                state.connection === "connected" &&
-                remote.every((capability) =>
-                  state.capabilities.includes(capability),
-                )
-              );
+              return methodAvailable(method, state, remote);
             },
           });
       }

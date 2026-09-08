@@ -30,6 +30,8 @@ export interface RpcTransport {
 export interface RpcMethod {
   /** All static grants must be held. Dynamic dispatchers must check their target's grants in invoke. */
   grants: readonly string[];
+  /** Operation support is independent of the permission to use a capability. */
+  operations?: Readonly<Record<string, readonly string[]>>;
   /** Live availability may change; the operation handler and its owner remain pinned. */
   available?(): boolean;
   invoke(params: Json, signal: AbortSignal): Promise<Json> | Json;

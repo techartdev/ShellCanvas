@@ -23,6 +23,7 @@ import {
   X,
 } from "lucide-react";
 import type { AppContext, TextDocument } from "../sdk";
+import { capabilityOperationReason } from "../sdk";
 import { clipboard } from "../clipboard";
 import { ContextMenu } from "../components/ContextMenu";
 import { ConfirmDialog } from "../components/ConfirmDialog";
@@ -49,6 +50,10 @@ export function Editor({
   unavailableReason,
   setDocumentState,
 }: AppContext) {
+  const readReason = session
+    ? capabilityOperationReason(session, "files.read", "readText")
+    : "Connect to a workspace first.";
+  const canRead = connected && !readReason;
   const { values: preferences, set: setPreference } = usePreferences();
   const [document, setDocument] = useState<TextDocument | null>(null);
   const sourceKey = fileSourceKey(session);
@@ -219,7 +224,7 @@ export function Editor({
     if (searchOpen) searchField.current?.focus();
   }, [searchOpen]);
   async function load(nextPath: string) {
-    if (!connected || relocatingRef.current || !nextPath.trim()) return;
+    if (!canRead || relocatingRef.current || !nextPath.trim()) return;
     const current = ++request.current;
     setBusy(true);
     setError("");
@@ -248,7 +253,7 @@ export function Editor({
     }
   }
   function open(nextPath: string) {
-    if (busy) return;
+    if (busy || !canRead) return;
     if (dirty && system) {
       const current = request.current;
       setBusy(true);
@@ -279,7 +284,7 @@ export function Editor({
     else void load(nextPath);
   }
   async function browseOpen() {
-    if (!system || busy || !connected) return;
+    if (!system || busy || !canRead) return;
     const current = request.current;
     setBusy(true);
     setError("");
@@ -520,13 +525,13 @@ export function Editor({
             disabled={busy}
             onChange={(event) => setPath(event.target.value)}
           />
-          <button disabled={busy || !connected || !path.trim()}>Open</button>
+          <button disabled={busy || !canRead || !path.trim()}>Open</button>
         </form>
         {system && (
           <button
             aria-label="Browse remote files"
             title="Browse remote files"
-            disabled={busy || !connected}
+            disabled={busy || !canRead}
             onClick={() => void browseOpen()}
           >
             <FolderOpen size={16} />
@@ -589,7 +594,7 @@ export function Editor({
         </button>
         <button
           aria-label="Reload remote file"
-          disabled={busy || !document || !connected || sourceChanged}
+          disabled={busy || !document || !canRead || sourceChanged}
           onClick={() => document && !sourceChanged && open(document.path)}
         >
           <RefreshCw size={14} /> Reload
@@ -639,6 +644,11 @@ export function Editor({
           {unavailableReason ||
             "Connection closed. Reconnect this host to continue."}{" "}
           Your draft is still here; copy it before closing this workspace.
+        </div>
+      )}
+      {connected && readReason && (
+        <div className="editor-offline">
+          {readReason} Your draft is still available here.
         </div>
       )}
       {error && (

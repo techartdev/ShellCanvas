@@ -51,6 +51,7 @@ import { TransferPanel } from "../components/TransferPanel";
 import { selectFiles } from "../file-selection";
 import { DeleteFilesDialog } from "../components/DeleteFilesDialog";
 import { fileSourceKey } from "../workspace-bindings";
+import { capabilityOperationReason } from "../sdk";
 function size(bytes: number) {
   return bytes >= 1024 * 1024
     ? `${(bytes / 1048576).toFixed(1)} MB`
@@ -985,7 +986,10 @@ export function Files({
             {
               id: "edit",
               label: "Open in text editor",
-              disabled: !connected,
+              disabled:
+                !connected ||
+                !session ||
+                !!capabilityOperationReason(session, "files.read", "readText"),
               run: () => openApp("editor", { path: entry.path }),
             },
           ]

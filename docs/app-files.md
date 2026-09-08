@@ -2,6 +2,8 @@
 
 Installed apps can read, create and revision-check text documents through `client.files`. These are brokered workspace operations; apps do not receive native session IDs, credentials or local filesystem access. Read, edit and create require `files.read`, `files.edit` and `files.create` respectively. Current capability availability is checked separately from permission.
 
+File browsing does not imply text-document access. Check that discovery reports `system.files.readText` as both `granted` and `available` before offering an editor action, and refresh on service/environment events. Operation metadata narrows `files.read` for limited providers; read-only text access does not require edit/create support. Existing drafts remain local when text access disappears. Calls still validate availability because it can change after discovery.
+
 ```ts
 import {
   connectToShellCanvas,

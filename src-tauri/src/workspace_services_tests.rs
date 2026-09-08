@@ -12,6 +12,75 @@ fn file_workspace(resource: &Arc<ConnectionResource>) -> WorkspaceServices {
 }
 
 #[tokio::test]
+async fn browsing_and_text_read_support_are_reported_independently_of_write_permission() {
+    struct ReadOnlyText;
+    #[async_trait]
+    impl TextFileService for ReadOnlyText {
+        async fn read_text(&self, path: &str) -> Result<TextDocument> {
+            Ok(TextDocument {
+                path: path.into(),
+                name: "note".into(),
+                parent: None,
+                text: "read only".into(),
+                revision: "r1".into(),
+                writable: false,
+            })
+        }
+        async fn create_text(&self, _: &str, _: &str, _: &str) -> Result<TextDocument> {
+            bail!("Read only")
+        }
+        async fn save_text(&self, _: &str, _: &str, _: &str) -> Result<TextDocument> {
+            bail!("Read only")
+        }
+    }
+    let (resource, _) = source(190, "fixture.read-only");
+    let mut workspace = file_workspace(&resource);
+    let status = workspace.status();
+    let read = status
+        .services
+        .iter()
+        .find(|service| service.capability == "files.read")
+        .unwrap();
+    assert_eq!(read.state, "available");
+    assert_eq!(
+        read.operations.as_ref().unwrap(),
+        &["list", "locate", "preview"]
+    );
+    workspace
+        .bind_text(&resource, Arc::new(ReadOnlyText))
+        .unwrap();
+    workspace.advertise_capabilities(&["files.read".into()]);
+    let status = workspace.status();
+    let read = status
+        .services
+        .iter()
+        .find(|service| service.capability == "files.read")
+        .unwrap();
+    assert!(read.operations.as_ref().unwrap().contains(&"readText"));
+    assert_eq!(
+        status
+            .services
+            .iter()
+            .find(|service| service.capability == "files.edit")
+            .unwrap()
+            .state,
+        "unsupported"
+    );
+    assert_eq!(
+        workspace
+            .text
+            .as_ref()
+            .unwrap()
+            .read_text("opaque:note")
+            .await
+            .unwrap()
+            .text,
+        "read only"
+    );
+    workspace.disconnect().await.unwrap();
+}
+
+#[tokio::test]
 async fn retirement_failure_is_post_commit_and_does_not_discard_the_new_source() {
     struct FailingCleanup;
     #[async_trait]

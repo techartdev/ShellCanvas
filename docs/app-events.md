@@ -36,6 +36,9 @@ unsubscribe();
 - `binding`: an opaque accepted-binding identity, or `null` for a local workspace. It is not a native session handle and is not comparable across app instances.
 - `visible`: whether this window is visible in the active workspace, including minimization.
 - `capabilities`: the host's current advertised capability names. Capability presence does not confer a permission.
+- `operations`: optional capability-to-operation lists. For example, `files.read` may list `list`, `locate`, and `preview` without `readText`. An absent list preserves the older capability contract; an explicit list restricts supported operations. Capability state and permissions still apply.
+
+Use method discovery to enable individual controls. Refresh discovery after `system.services` or `system.environment` events, and discard older asynchronous replies when a newer refresh has started. A browsing-only source does not offer text documents; a read-only text source can offer `readText` without granting editing. Losing text access retires pending text reads without invalidating unrelated directory reads.
 
 A reconnect preserves the document and its current binding identity but retires its old remote operations. While the desktop offers **Use reconnected host**, the environment is `review-required` and the affected remote methods are unavailable. Explicit acceptance creates a different binding identity for subsequent calls. Already dispatched work never changes its target. Local storage remains independent of that remote binding.
 

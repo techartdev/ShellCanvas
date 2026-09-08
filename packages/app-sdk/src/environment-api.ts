@@ -8,6 +8,8 @@ export interface AppEnvironment {
   readonly binding: string | null;
   readonly visible: boolean;
   readonly capabilities: readonly string[];
+  /** Optional supported operations within a capability; absent keys are legacy metadata. */
+  readonly operations?: Readonly<Record<string, readonly string[]>>;
 }
 export interface ServiceMethodInfo {
   readonly name: string;

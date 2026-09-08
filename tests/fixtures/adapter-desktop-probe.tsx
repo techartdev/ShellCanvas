@@ -384,7 +384,7 @@ async function installCustom(granted: boolean) {
             : "org.example.custom-denied",
           version: "1.0.0",
           title,
-          permissions: ["services.acme"],
+          permissions: ["services.acme", "files.read"],
           script: customScript,
           style: customStyle,
         }),
@@ -471,6 +471,29 @@ async function run() {
   checks.installedFiles =
     listing.entries.length > 0 &&
     (native ? listing.path === "device://inventory?root=main" : true);
+  if (native) {
+    await named("Open Text editor");
+    const editor = await until(
+      () => document.querySelector<HTMLElement>(".editor-app"),
+      "text editor",
+    );
+    checks.browsingOnlyEditor =
+      editor
+        .querySelector(".editor-offline")
+        ?.textContent?.includes("does not provide text documents") === true &&
+      editor.querySelector<HTMLButtonElement>(
+        'button[aria-label="Browse remote files"]',
+      )?.disabled === true &&
+      [...editor.querySelectorAll<HTMLButtonElement>("button")]
+        .filter((button) => button.textContent?.trim() === "Open")
+        .every((button) => button.disabled);
+    editor
+      .closest(".app-window")!
+      .querySelector<HTMLButtonElement>(
+        'button[aria-label^="Close Text editor"]',
+      )!
+      .click();
+  }
   await named("Open Terminal");
   const terminal = await until(
     () => terminals.get(sessions[0].id),
@@ -511,6 +534,18 @@ async function run() {
     customFrame = await installCustom(true);
     const catalog = (await askCustom(customFrame, "list"))
       .value as ServiceMethodInfo[];
+    checks.textOperationUnavailable =
+      catalog.find((method) => method.name === "system.files.readText")
+        ?.granted === true &&
+      catalog.find((method) => method.name === "system.files.readText")
+        ?.available === false &&
+      (await askCustom(customFrame, "text")).code === "unavailable";
+    const browsed = (await askCustom(customFrame, "browse")).value;
+    checks.browsingOperationAvailable =
+      catalog.find((method) => method.name === "system.files.listStart")
+        ?.available === true &&
+      Array.isArray(browsed) &&
+      browsed.length > 0;
     originalBinding = catalog.find((item) => item.name === "acme.echo")?.source;
     checks.customSdkEcho =
       JSON.stringify((await askCustom(customFrame, "call")).value) ===
