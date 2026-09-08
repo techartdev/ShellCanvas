@@ -826,6 +826,51 @@ button:active:not(:disabled) {
   background: #94bbaa13;
   border-color: #94bbaa22;
 }
+.file-row.cut-entry > span:first-child > svg {
+  opacity: 0.45;
+}
+.file-row.cut-entry > span:first-child > span {
+  color: #9aafb8;
+}
+.file-cut-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 14px 10px;
+  padding: 10px 12px;
+  border: 1px solid #a4c7b528;
+  border-radius: 8px;
+  background: #8eb9a40d;
+  color: #aacabb;
+  flex-shrink: 0;
+  font-size: 10px;
+}
+.file-cut-bar > svg,
+.file-cut-bar > button {
+  flex-shrink: 0;
+}
+.file-cut-description {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+.file-cut-description strong,
+.file-cut-description span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.file-cut-description span {
+  color: #8a9fa9;
+  font-size: 9px;
+}
+.file-cut-bar button {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 10px;
+}
 .file-row > span:first-child {
   display: flex;
   align-items: center;

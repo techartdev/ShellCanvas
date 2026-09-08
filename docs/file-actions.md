@@ -2,6 +2,8 @@
 
 The Files app now offers **New folder**, **Rename** (F2) and **Delete** (Delete key) through its context menu. A toolbar button opens New folder; Folder actions also opens a new text-editor draft in the current folder. Deletion requires a dialog that displays the exact remote path and explains permanence. Cancel does not call the provider. Files and editor operations update all Files windows in the same session while retaining their folder paths and filters.
 
+**Cut / Paste here** moves an item between Files windows within one workspace. A shared banner shows the pending item and allows cancellation before pasting. See [file clipboard behavior and verification](file-clipboard.md).
+
 The Editor supports **Save as new file** (Ctrl+Shift+S). Saving an unnamed draft (Ctrl+S) opens this form too. Choose an existing remote folder and one name. Name collisions retain the draft and report an error; this first Save As workflow does not replace existing destinations. After creation, the editor tracks the returned canonical path and revision, so subsequent Save uses existing-file conflict detection. Empty files are supported. UTF-8 size and binary bounds are the same as existing text editing.
 
 ## Provider behavior
@@ -18,7 +20,7 @@ The Editor supports **Save as new file** (Ctrl+Shift+S). Saving an unnamed draft
 
 ## Current limits
 
-Only files, symlinks and **empty** directories can be deleted. There is no recursive delete, remote trash, undo, cross-host move, copy/paste of remote file objects, or Save As overwrite confirmation yet. Already-open editors follow confirmed workspace rename/move results, including descendants of folders, while preserving drafts and conflict revisions; see [editor coordination](text-editor.md). [Files navigation, history and previews](file-navigation.md) also follow confirmed workspace relocations. Externally initiated moves are not tracked. Regular-file upload/download and cancellation are described in [transfers](transfers.md). Navigation is provider-owned; the production adapter still uses POSIX SFTP conventions. Other production providers and composite adapters remain backlog items.
+Only files, symlinks and **empty** directories can be deleted. There is no recursive delete, remote trash, undo, cross-host move, remote copy/duplicate, or Save As overwrite confirmation yet. Already-open editors follow confirmed workspace rename/move results, including descendants of folders, while preserving drafts and conflict revisions; see [editor coordination](text-editor.md). [Files navigation, history and previews](file-navigation.md) also follow confirmed workspace relocations. Externally initiated moves are not tracked. Regular-file upload/download and cancellation are described in [transfers](transfers.md). Navigation is provider-owned; the production adapter still uses POSIX SFTP conventions. Other production providers and composite adapters remain backlog items.
 
 The Windows native walkthrough browsed `/etc`, used Copy folder path from the Files menu, and pasted the exact path into an unsaved editor draft through the OS clipboard. The draft was discarded without a remote write. Selected-file/text copy and clipboard-path navigation still need native walkthroughs; their browser fixture checks remain separate.
 

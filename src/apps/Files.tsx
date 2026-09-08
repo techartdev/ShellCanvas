@@ -25,10 +25,13 @@ import {
   X,
   Upload,
   Download,
+  Scissors,
+  ClipboardPaste,
 } from "lucide-react";
 import type { AppContext, Directory, FileEntry } from "../sdk";
 import { ContextMenu, type MenuAction } from "../components/ContextMenu";
 import { clipboard } from "../clipboard";
+import { fileClipboard } from "../file-clipboard";
 import { usePreferences } from "../preferences";
 import { visibleFiles } from "../file-view";
 import { FileActionDialog } from "../components/FileActionDialog";
@@ -56,6 +59,13 @@ export function Files({
   setDocumentState,
 }: AppContext) {
   const { values: preferences, set: setPreference } = usePreferences();
+  const cutClipboard = useMemo(() => fileClipboard(services), [services]);
+  const cutState = useSyncExternalStore(
+    cutClipboard.subscribe,
+    cutClipboard.snapshot,
+  );
+  const currentServices = useRef(services);
+  currentServices.current = services;
   const [directory, setDirectory] = useState<Directory>({
     path: "",
     name: "Files",
@@ -158,9 +168,9 @@ export function Files({
   useEffect(() => {
     setDocumentState?.({
       dirty: false,
-      busy: busy || transferBusy || relocating,
+      busy: busy || transferBusy || relocating || cutState.working,
     });
-  }, [busy, transferBusy, relocating]);
+  }, [busy, transferBusy, relocating, cutState.working]);
   const [error, setError] = useState("");
   const [document, setDocument] = useState<{
     name: string;
@@ -257,6 +267,34 @@ export function Files({
       await clipboard.writeText(text);
     } catch (e) {
       setError(`Copy failed: ${e}`);
+    }
+  }
+  function cut(entry: FileEntry) {
+    if (!canMove || cutState.working || !entry.revision) return;
+    setError("");
+    cutClipboard.cut(entry, directory.path);
+  }
+  function canPasteInto(parent: string) {
+    return (
+      canMove &&
+      !transferBusy &&
+      !cutState.working &&
+      !!cutState.item &&
+      parent !== cutState.item.parent &&
+      parent !== cutState.item.entry.path
+    );
+  }
+  async function pasteInto(parent: string) {
+    if (!canPasteInto(parent)) return;
+    setError("");
+    try {
+      await cutClipboard.paste(parent);
+    } catch (error) {
+      if (
+        currentServices.current === services &&
+        !cutClipboard.snapshot().error
+      )
+        setError(String(error));
     }
   }
   async function clipboardPath() {
@@ -463,6 +501,13 @@ export function Files({
               run: () => void copyText(entry.path),
             },
             {
+              id: "cut",
+              label: "Cut",
+              shortcut: "Ctrl+X",
+              disabled: !canMove || !entry.revision || cutState.working,
+              run: () => cut(entry),
+            },
+            {
               id: "rename",
               label: "Rename",
               shortcut: "F2",
@@ -500,6 +545,18 @@ export function Files({
               run: () => void copyText(directory.path),
             },
           ]),
+      {
+        id: "paste-move",
+        label: entry?.kind === "directory" ? "Paste into folder" : "Paste here",
+        shortcut: entry?.kind === "directory" ? undefined : "Ctrl+V",
+        disabled: !canPasteInto(
+          entry?.kind === "directory" ? entry.path : directory.path,
+        ),
+        run: () =>
+          void pasteInto(
+            entry?.kind === "directory" ? entry.path : directory.path,
+          ),
+      },
       {
         id: "back",
         label: "Back",
@@ -544,6 +601,31 @@ export function Files({
     <div
       className={`files-app ${preferences.filesCompact ? "compact-files" : ""}`}
       ref={root}
+      onCut={(event) => {
+        if (
+          document ||
+          (event.target as HTMLElement).closest(
+            'input,textarea,[role="menu"],dialog',
+          )
+        )
+          return;
+        event.preventDefault();
+        event.stopPropagation();
+        const entry = entries.find((entry) => entry.path === selected);
+        if (entry) cut(entry);
+      }}
+      onPaste={(event) => {
+        if (
+          document ||
+          (event.target as HTMLElement).closest(
+            'input,textarea,[role="menu"],dialog',
+          )
+        )
+          return;
+        event.preventDefault();
+        event.stopPropagation();
+        void pasteInto(directory.path);
+      }}
       onKeyDown={(event) => {
         const target = event.target as HTMLElement;
         if (target.closest('[role="menu"],dialog')) return;
@@ -562,6 +644,21 @@ export function Files({
               selected ||
               directory.path,
           );
+        } else if (command && event.key.toLowerCase() === "x" && !document) {
+          event.preventDefault();
+          const entry = entries.find((entry) => entry.path === selected);
+          if (entry) cut(entry);
+        } else if (command && event.key.toLowerCase() === "v" && !document) {
+          event.preventDefault();
+          void pasteInto(directory.path);
+        } else if (
+          event.key === "Escape" &&
+          !document &&
+          cutState.item &&
+          !cutState.working
+        ) {
+          event.preventDefault();
+          cutClipboard.clear();
         } else if (
           (event.key === "F2" || event.key === "Delete") &&
           canManage &&
@@ -759,9 +856,45 @@ export function Files({
             />
           </label>
         </div>
-        {error && (
+        {(cutState.item || cutState.working) && (
+          <div className="file-cut-bar" role="status">
+            {cutState.working ? (
+              <LoaderCircle size={15} className="spin" />
+            ) : (
+              <Scissors size={15} />
+            )}
+            <div className="file-cut-description">
+              <strong>
+                {cutState.working
+                  ? "Moving item…"
+                  : `Ready to move · ${cutState.item!.entry.name}`}
+              </strong>
+              {cutState.item && (
+                <span title={cutState.item.entry.path}>
+                  {cutState.item.entry.path}
+                </span>
+              )}
+            </div>
+            <button
+              disabled={!canPasteInto(directory.path)}
+              onClick={() => void pasteInto(directory.path)}
+            >
+              <ClipboardPaste size={14} /> Paste here
+            </button>
+            <button
+              className="icon-button"
+              aria-label="Cancel cut"
+              title="Cancel cut · Esc"
+              disabled={cutState.working}
+              onClick={() => cutClipboard.clear()}
+            >
+              <X size={15} />
+            </button>
+          </div>
+        )}
+        {(error || cutState.error) && (
           <div role="alert" className="inline-error">
-            {error}
+            {error || cutState.error}
           </div>
         )}
         {document ? (
@@ -832,7 +965,7 @@ export function Files({
                       : FileText;
                 return (
                   <button
-                    className={`file-row ${selected === entry.path ? "active" : ""}`}
+                    className={`file-row ${selected === entry.path ? "active" : ""} ${cutState.item?.entry.path === entry.path ? "cut-entry" : ""}`}
                     key={entry.path}
                     onClick={() => setSelected(entry.path)}
                     onFocus={() => setSelected(entry.path)}
@@ -879,6 +1012,9 @@ export function Files({
                         }
                       />
                       <span>{entry.name}</span>
+                      {cutState.item?.entry.path === entry.path && (
+                        <small>cut</small>
+                      )}
                       {entry.kind === "symlink" && <small>link</small>}
                     </span>
                     <span>

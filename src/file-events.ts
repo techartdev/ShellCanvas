@@ -42,7 +42,10 @@ export function watchFileLocations(
   };
 }
 /** Freeze tracked views for one confirmed operation; drafts never reload. */
-export function beginFileRelocation(sessionId: number) {
+export function beginFileRelocation(
+  sessionId: number,
+  additionalPaths: string[] = [],
+) {
   if (relocating.has(sessionId))
     throw new Error(
       "Another file move is still running. Try again when it finishes.",
@@ -53,7 +56,9 @@ export function beginFileRelocation(sessionId: number) {
     throw new Error(
       "Wait for file transfers and editor operations or dialogs to finish before moving or renaming files.",
     );
-  const tracked = [...new Set(snapshots.flatMap((s) => s.paths))];
+  const tracked = [
+    ...new Set([...snapshots.flatMap((s) => s.paths), ...additionalPaths]),
+  ];
   if (tracked.length > 256)
     throw new Error(
       "Too many open file locations to follow this move (maximum 256).",

@@ -15,6 +15,8 @@ Additional protocols are optional until these core workflows work well. Connecti
 
 ## Evidence and outstanding work
 
+- Workspace-scoped Cut/Paste now moves one item between Files windows through the existing no-replacement move service. Shared indicators, keyboard/native edit events, cancellation, revision retention, source-window closure, opaque tokens and collision retry passed browser checks; 54 frontend tests and the normal Windows build passed. Disconnect/late-result isolation and relocation/deletion invalidation have unit coverage. Native GUI Cut/Paste and remote copy remain open; see [file clipboard](file-clipboard.md).
+
 - Files windows now follow confirmed workspace relocations through their current folder, Back history, places, selections and previews. Mapping happens before refresh, pending reads cannot restore old paths, typed addresses/filters survive background refresh, and failed Back remains retryable. Two-window/delayed-read/opaque-preview browser checks and 47 frontend tests passed; see [Files navigation](file-navigation.md). Native GUI navigation and clipboard walkthroughs remain separate.
 
 - Open editors now follow provider-supplied rename/move mappings, including files inside moved folders, while preserving independent buffers, undo history and conflict revisions. Browser file/folder/opaque-ID checks, 45 frontend tests, 42 Rust tests, Clippy and live disposable SFTP mapping/save/cleanup probes passed. Failed/late moves do not retarget drafts. A native GUI relocation walkthrough remains open; see [editor behavior](text-editor.md).

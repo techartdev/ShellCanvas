@@ -7,6 +7,7 @@ import type {
   TransferTicket,
 } from "./sdk";
 import { notifyFileChanges, beginFileRelocation } from "./file-events";
+import { fileClipboard } from "./file-clipboard";
 
 /** Lifetime and capability checks complement native ownership checks; not a sandbox. */
 export function bindSession(
@@ -146,7 +147,10 @@ export function bindSession(
     renameEntry: async (path, name, revision) => {
       const expected = generation;
       const id = check("files.manage");
-      const follow = beginFileRelocation(id);
+      const follow = beginFileRelocation(
+        id,
+        fileClipboard(services).trackedPaths(),
+      );
       try {
         const result = await backend.renameEntry(
           id,
@@ -155,7 +159,10 @@ export function bindSession(
           revision,
           follow.tracked,
         );
-        mutationCompleted("files.manage", expected, () => follow.apply(result));
+        mutationCompleted("files.manage", expected, () => {
+          fileClipboard(services).relocated(result);
+          follow.apply(result);
+        });
         return result.path;
       } finally {
         follow.finish();
@@ -165,11 +172,15 @@ export function bindSession(
       const expected = generation;
       await backend.removeEntry(check("files.manage"), path, revision);
       mutationCompleted("files.manage", expected);
+      fileClipboard(services).removed(path);
     },
     moveEntry: async (path, parent, revision) => {
       const expected = generation;
       const id = check("files.move");
-      const follow = beginFileRelocation(id);
+      const follow = beginFileRelocation(
+        id,
+        fileClipboard(services).trackedPaths(),
+      );
       try {
         const result = await backend.moveEntry(
           id,
@@ -178,7 +189,10 @@ export function bindSession(
           revision,
           follow.tracked,
         );
-        mutationCompleted("files.move", expected, () => follow.apply(result));
+        mutationCompleted("files.move", expected, () => {
+          fileClipboard(services).relocated(result);
+          follow.apply(result);
+        });
         return result.path;
       } finally {
         follow.finish();
@@ -244,10 +258,12 @@ export function bindSession(
     services,
     activate: () => {
       closed = false;
+      fileClipboard(services).activate();
     },
     dispose: () => {
       closed = true;
       ++generation;
+      fileClipboard(services).dispose();
       for (const id of tickets.keys())
         void backend
           .cancelTransfer(session!.id, id)
