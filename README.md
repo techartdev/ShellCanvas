@@ -37,6 +37,8 @@ Windows output: `target/debug/shellcanvas.exe`. This debug build is for local ev
 - An xterm.js terminal with binary output streaming, input, PTY resize, and independent SSH channels.
 - Terminal right-click menu: Copy, Paste, Select all, Clear scrollback and New shell. Ctrl+Shift+C/V (or Cmd+C/V on macOS) handles clipboard actions; Ctrl+C remains the remote interrupt. Shift+F10 opens the menu. The terminal viewport stays contained above its footer while resizing.
 - Read-only SFTP directory browsing, filtering, parent/back navigation, and UTF-8 file previews up to 256 KiB.
+- Files context menus for open/preview, open folder in a new window, copy name/path/text, navigation and clipboard-path access. Shift+F10 opens menus; Ctrl+C copies a selected path, Ctrl+L focuses the path field, F5 refreshes, and Alt+Left/Up navigates. A folder-actions button provides pointer/touch access.
+- Multiple Files and Terminal instances per workspace, with numbered titles, independent buffers/navigation and close/minimize behavior. The titlebar plus button creates another instance; the dock context menu lists existing windows. Desktop and titlebar context menus provide common window actions.
 - Linux detection behind a system-provider interface; generic SSH fallback when no provider matches.
 - A bundled app registry with local/host scope and capability requirements. No calculator is included.
 - Versioned bundled app manifests, generic window layouts, per-app render failure recovery, and a Host details reference app. Minimize preserves an app; close releases it (closing Terminal ends its shell).
@@ -44,7 +46,7 @@ Windows output: `target/debug/shellcanvas.exe`. This debug build is for local ev
 
 ## Current boundaries
 
-- One instance of each app per workspace, including one terminal. Workspace state survives switching during this app run; it is not restored after closing the workspace or restarting the app. Reconnecting starts a new session and shell; it does not restore remote processes.
+- Files and Terminal support multiple instances; other apps opt in through their manifest. Workspace state survives switching during this app run; it is not restored after closing the workspace or restarting the app. Reconnecting starts a new session and shell; it does not restore remote processes.
 - The file explorer does not yet upload, download, edit, rename, or delete files. **The terminal is a real shell with all permissions of the authenticated account**, including root when selected.
 - Passwords and key passphrases are not persisted. Key files remain in their existing location. Named SSH profiles are stored as versioned `hosts.json` in Tauri's app data directory (Windows: `%APPDATA%/dev.shellcanvas.client`), with atomic replacement and a cross-process lock. Unrecognized/corrupt files are reported and preserved. Secure credential-vault integration remains future work. Wallpaper preference is stored in local storage.
 - The importer is not a full OpenSSH configuration interpreter: `Include`, `Match`, wildcard defaults, `ProxyCommand`, `ProxyJump`, SSH agents, hardware keys, and host certificates are unsupported. Imported fields are editable before connecting.

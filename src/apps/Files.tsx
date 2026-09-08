@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ArrowLeft,
   ArrowUp,
@@ -10,12 +10,15 @@ import {
   Folder,
   Home,
   LoaderCircle,
+  MoreHorizontal,
   RefreshCw,
   Search,
   Server,
   X,
 } from "lucide-react";
 import type { AppContext, Directory, FileEntry } from "../sdk";
+import { ContextMenu, type MenuAction } from "../components/ContextMenu";
+import { clipboard } from "../clipboard";
 export function parentPath(path: string) {
   return path.replace(/\/+$/, "").split("/").slice(0, -1).join("/") || "/";
 }
@@ -26,7 +29,14 @@ function size(bytes: number) {
       ? `${(bytes / 1024).toFixed(1)} KB`
       : `${bytes} B`;
 }
-export function Files({ session, services, preview }: AppContext) {
+export function Files({
+  session,
+  services,
+  preview,
+  active = true,
+  launch,
+  openApp,
+}: AppContext) {
   const [directory, setDirectory] = useState<Directory>({
     path: ".",
     entries: [],
@@ -43,6 +53,43 @@ export function Files({ session, services, preview }: AppContext) {
   const [history, setHistory] = useState<string[]>([]);
   const request = useRef(0);
   const previewRequest = useRef(0);
+  const root = useRef<HTMLDivElement>(null);
+  const pathField = useRef<HTMLInputElement>(null);
+  const [menu, setMenu] = useState<{
+    x: number;
+    y: number;
+    entry?: FileEntry;
+  } | null>(null);
+  const closeMenu = useCallback(() => setMenu(null), []);
+  useEffect(() => {
+    if (!active) closeMenu();
+  }, [active, closeMenu]);
+  function back() {
+    const previous = history.at(-1);
+    if (previous && !loading) {
+      setHistory(history.slice(0, -1));
+      void navigate(previous, false);
+    }
+  }
+  async function copyText(text: string) {
+    try {
+      await clipboard.writeText(text);
+    } catch (e) {
+      setError(`Copy failed: ${e}`);
+    }
+  }
+  async function clipboardPath() {
+    const current = request.current;
+    try {
+      const path = (await clipboard.readText()).trim();
+      if (current !== request.current) return;
+      if (!path || path.length > 4096 || /[\0\r\n]/.test(path))
+        throw new Error("The clipboard must contain one file or folder path.");
+      void navigate(path);
+    } catch (e) {
+      setError(`Cannot open clipboard path: ${e}`);
+    }
+  }
   async function navigate(path: string, remember = true) {
     if (!session) return;
     const current = ++request.current;
@@ -65,7 +112,7 @@ export function Files({ session, services, preview }: AppContext) {
     }
   }
   useEffect(() => {
-    void navigate(session?.info.home || ".", false);
+    void navigate(launch?.path || session?.info.home || ".", false);
     return () => {
       ++request.current;
       ++previewRequest.current;
@@ -93,8 +140,118 @@ export function Files({ session, services, preview }: AppContext) {
   const entries = directory.entries.filter((entry) =>
     entry.name.toLowerCase().includes(query.toLowerCase()),
   );
+  function menuActions(entry?: FileEntry): MenuAction[] {
+    return [
+      ...(entry
+        ? [
+            {
+              id: "open",
+              label:
+                entry.kind === "directory" ? "Open folder" : "Preview file",
+              shortcut: "Enter",
+              run: () => void open(entry),
+            },
+            ...(entry.kind === "directory" && openApp
+              ? [
+                  {
+                    id: "new-window",
+                    label: "Open in new window",
+                    run: () => openApp("files", { path: entry.path }),
+                  },
+                ]
+              : []),
+            {
+              id: "copy-name",
+              label: "Copy name",
+              run: () => void copyText(entry.name),
+            },
+            {
+              id: "copy-path",
+              label: "Copy path",
+              shortcut: "Ctrl+C",
+              run: () => void copyText(entry.path),
+            },
+          ]
+        : [
+            {
+              id: "copy-folder",
+              label: "Copy folder path",
+              shortcut: "Ctrl+C",
+              run: () => void copyText(directory.path),
+            },
+          ]),
+      {
+        id: "back",
+        label: "Back",
+        shortcut: "Alt+←",
+        separatorBefore: true,
+        disabled: !history.length || loading,
+        run: back,
+      },
+      {
+        id: "parent",
+        label: "Parent folder",
+        shortcut: "Alt+↑",
+        disabled: loading || directory.path === "/",
+        run: () => void navigate(parentPath(directory.path)),
+      },
+      {
+        id: "refresh",
+        label: "Refresh",
+        shortcut: "F5",
+        disabled: loading,
+        run: () => void navigate(directory.path, false),
+      },
+      {
+        id: "clipboard-path",
+        label: "Go to clipboard path",
+        separatorBefore: true,
+        disabled: loading,
+        run: () => void clipboardPath(),
+      },
+    ];
+  }
   return (
-    <div className="files-app">
+    <div
+      className="files-app"
+      ref={root}
+      onKeyDown={(event) => {
+        const target = event.target as HTMLElement;
+        if (target.closest('[role="menu"]')) return;
+        const command = event.ctrlKey || event.metaKey;
+        if (command && event.key.toLowerCase() === "l") {
+          event.preventDefault();
+          pathField.current?.focus();
+          pathField.current?.select();
+          return;
+        }
+        if (target.closest("input,textarea")) return;
+        if (command && event.key.toLowerCase() === "c") {
+          event.preventDefault();
+          void copyText(selected ?? directory.path);
+        } else if (event.key === "F5") {
+          event.preventDefault();
+          if (!loading) void navigate(directory.path, false);
+        } else if (event.altKey && event.key === "ArrowLeft") {
+          event.preventDefault();
+          back();
+        } else if (event.altKey && event.key === "ArrowUp") {
+          event.preventDefault();
+          if (!loading) void navigate(parentPath(directory.path));
+        } else if (
+          event.key === "ContextMenu" ||
+          (event.shiftKey && event.key === "F10")
+        ) {
+          event.preventDefault();
+          const bounds = target.getBoundingClientRect();
+          setMenu({
+            x: bounds.left + 12,
+            y: bounds.bottom,
+            entry: entries.find((e) => e.path === selected),
+          });
+        }
+      }}
+    >
       <aside className="file-sidebar">
         <p className="eyebrow">PLACES</p>
         <button
@@ -127,13 +284,7 @@ export function Files({ session, services, preview }: AppContext) {
             title="Back"
             aria-label="Back"
             disabled={!history.length || loading}
-            onClick={() => {
-              const previous = history.at(-1);
-              if (previous) {
-                setHistory(history.slice(0, -1));
-                void navigate(previous, false);
-              }
-            }}
+            onClick={back}
           >
             <ArrowLeft size={17} />
           </button>
@@ -155,6 +306,7 @@ export function Files({ session, services, preview }: AppContext) {
           >
             <Folder size={15} />
             <input
+              ref={pathField}
               aria-label="Remote path"
               value={pathInput}
               onChange={(e) => setPathInput(e.target.value)}
@@ -168,6 +320,17 @@ export function Files({ session, services, preview }: AppContext) {
             onClick={() => void navigate(directory.path, false)}
           >
             <RefreshCw size={16} className={loading ? "spin" : ""} />
+          </button>
+          <button
+            className="icon-button"
+            aria-label="Folder actions"
+            title="Folder actions"
+            onClick={(event) => {
+              const bounds = event.currentTarget.getBoundingClientRect();
+              setMenu({ x: bounds.left, y: bounds.bottom });
+            }}
+          >
+            <MoreHorizontal size={17} />
           </button>
         </div>
         <div className="folder-heading">
@@ -216,10 +379,26 @@ export function Files({ session, services, preview }: AppContext) {
                 <X size={16} />
               </button>
             </div>
-            <pre>{document.text}</pre>
+            <pre
+              onContextMenu={(event) => {
+                event.preventDefault();
+                setMenu({ x: event.clientX, y: event.clientY });
+              }}
+            >
+              {document.text}
+            </pre>
           </div>
         ) : (
-          <div className="file-table" aria-busy={loading}>
+          <div
+            className="file-table"
+            aria-busy={loading}
+            onContextMenu={(event) => {
+              if ((event.target as HTMLElement).closest(".file-row")) return;
+              event.preventDefault();
+              setSelected(null);
+              setMenu({ x: event.clientX, y: event.clientY });
+            }}
+          >
             <div className="file-table-head">
               <span>Name</span>
               <span>Modified</span>
@@ -248,11 +427,37 @@ export function Files({ session, services, preview }: AppContext) {
                     className={`file-row ${selected === entry.path ? "active" : ""}`}
                     key={entry.path}
                     onClick={() => setSelected(entry.path)}
+                    onFocus={() => setSelected(entry.path)}
+                    aria-pressed={selected === entry.path}
+                    onContextMenu={(event) => {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      setSelected(entry.path);
+                      event.currentTarget.focus();
+                      setMenu({ x: event.clientX, y: event.clientY, entry });
+                    }}
                     onDoubleClick={() => void open(entry)}
                     onKeyDown={(e) => {
                       if (e.key === "Enter") {
                         e.preventDefault();
                         void open(entry);
+                      }
+                      const index = entries.indexOf(entry);
+                      const next =
+                        e.key === "ArrowDown"
+                          ? Math.min(entries.length - 1, index + 1)
+                          : e.key === "ArrowUp" && !e.altKey
+                            ? Math.max(0, index - 1)
+                            : e.key === "Home"
+                              ? 0
+                              : e.key === "End"
+                                ? entries.length - 1
+                                : -1;
+                      if (next >= 0) {
+                        e.preventDefault();
+                        root.current
+                          ?.querySelectorAll<HTMLButtonElement>(".file-row")
+                          [next]?.focus();
                       }
                     }}
                   >
@@ -300,6 +505,40 @@ export function Files({ session, services, preview }: AppContext) {
           <span>Read-only explorer</span>
         </footer>
       </div>
+      {menu && (
+        <ContextMenu
+          {...menu}
+          label={document ? "Preview actions" : "File actions"}
+          close={closeMenu}
+          actions={
+            document
+              ? [
+                  {
+                    id: "copy-text",
+                    label: "Copy text",
+                    run: () =>
+                      void copyText(
+                        window.getSelection()?.toString() || document.text,
+                      ),
+                  },
+                  {
+                    id: "copy-document-path",
+                    label: "Copy file path",
+                    run: () => void copyText(selected ?? directory.path),
+                  },
+                  {
+                    id: "close-preview",
+                    label: "Close preview",
+                    run: () => {
+                      ++previewRequest.current;
+                      setDocument(null);
+                    },
+                  },
+                ]
+              : menuActions(menu.entry)
+          }
+        />
+      )}
     </div>
   );
 }

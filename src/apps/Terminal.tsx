@@ -211,6 +211,7 @@ export function Terminal({
       </div>
       {menu && (
         <ContextMenu
+          label="Terminal actions"
           {...menu}
           close={closeMenu}
           actions={[

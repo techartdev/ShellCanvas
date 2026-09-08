@@ -52,6 +52,27 @@ describe("bundled app contract", () => {
 });
 
 describe("desktop lifecycle", () => {
+  it("creates independent instances, restores one, and never reuses closed identities", () => {
+    const multiple = defineApps([
+      { ...local, window: { multiple: true, openOnStart: true } },
+    ]);
+    let state = initialDesktop(multiple);
+    const update = (action: DesktopAction) => {
+      state = updateDesktop(state, action, multiple);
+    };
+    update({ type: "new", id: local.id });
+    const second = focusedApp(state)!;
+    expect(second).not.toBe(local.id);
+    update({ type: "minimize", id: local.id });
+    update({ type: "close", id: second });
+    expect(state.open).toEqual([local.id]);
+    expect(state.minimized).toContain(local.id);
+    update({ type: "open", id: local.id });
+    expect(state.minimized).toEqual([]);
+    update({ type: "new", id: local.id });
+    expect(focusedApp(state)).not.toBe(second);
+    expect(Object.keys(state.instances)).toHaveLength(2);
+  });
   it("retains minimized instances and restores them from the launcher", () => {
     const state = act(initialDesktop(apps), {
       type: "minimize",

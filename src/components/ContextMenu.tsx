@@ -7,6 +7,7 @@ export interface MenuAction {
   label: string;
   shortcut?: string;
   disabled?: boolean;
+  separatorBefore?: boolean;
   run(): void;
 }
 export function ContextMenu({
@@ -14,11 +15,13 @@ export function ContextMenu({
   y,
   actions,
   close,
+  label = "Actions",
 }: {
   x: number;
   y: number;
   actions: MenuAction[];
   close(): void;
+  label?: string;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const [position, setPosition] = useState({ x, y });
@@ -49,7 +52,7 @@ export function ContextMenu({
       ref={ref}
       className="context-menu"
       role="menu"
-      aria-label="Terminal actions"
+      aria-label={label}
       style={{ left: position.x, top: position.y }}
       onContextMenu={(e) => e.preventDefault()}
       onKeyDown={(e) => {
@@ -88,6 +91,7 @@ export function ContextMenu({
           role="menuitem"
           key={action.id}
           disabled={action.disabled}
+          className={action.separatorBefore ? "menu-group-start" : undefined}
           onClick={() => {
             close();
             action.run();

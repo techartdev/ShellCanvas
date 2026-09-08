@@ -2,6 +2,7 @@
 import { StrictMode, useState } from "react";
 import { createRoot } from "react-dom/client";
 import App from "../../src/App";
+import { clipboard } from "../../src/clipboard";
 import { previewServices, previewSession } from "../../src/preview";
 import type { HostServices, Session } from "../../src/sdk";
 import "../../src/styles.css";
@@ -14,6 +15,10 @@ const first: Session = {
 sessions.set(first.id, first);
 let next = 101;
 let log: (text: string) => void = () => {};
+clipboard.writeText = async (text) => {
+  log(`copied: ${text}`);
+};
+clipboard.readText = async () => "/from-clipboard";
 const backend: HostServices = {
   ...previewServices,
   profiles: async () =>

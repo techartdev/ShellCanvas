@@ -43,6 +43,8 @@ An app's `services` is now a `SessionServices` handle: `list(path)`, `preview(pa
 
 ## Acceptance checklist
 
+Apps can opt into `window.multiple: true`. `context.openApp(appId, { path })` creates another eligible instance in the same workspace; its initial payload is available through `context.launch`. Launch payloads contain navigation intent only, never commands or credentials. The dock's normal click focuses an existing instance, while its menu and the titlebar plus button create a new one. Each instance has independent component state and terminal cleanup.
+
 - Render meaningful loading, empty, unavailable and failure states.
 - Keep keyboard focus, accessible button labels and narrow-screen behavior usable.
 - Cancel or disregard late async results after unmount/host replacement; close handles that finish opening after the app closes.

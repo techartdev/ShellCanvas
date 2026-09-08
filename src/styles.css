@@ -958,6 +958,8 @@ button:active:not(:disabled) {
   white-space: nowrap;
 }
 .context-menu {
+  max-height: calc(100dvh - 16px);
+  overflow-y: auto;
   position: fixed;
   z-index: 1000;
   width: 236px;
@@ -982,6 +984,25 @@ button:active:not(:disabled) {
 .context-menu button:focus-visible {
   background: #91b3c020;
   outline: 1px solid #9cc6c280;
+}
+.context-menu button.menu-group-start {
+  border-top: 1px solid #96b7c225;
+  margin-top: 4px;
+  border-radius: 0 0 6px 6px;
+}
+.dock-count {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  background: #c2e3d4;
+  color: #193329;
+  border: 2px solid #283d48;
+  border-radius: 10px;
+  min-width: 17px;
+  height: 17px;
+  font-size: 9px;
+  display: grid;
+  place-items: center;
 }
 .context-menu kbd {
   font: inherit;

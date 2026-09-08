@@ -72,6 +72,8 @@ export interface SessionServices {
   ): Promise<TerminalSession>;
 }
 export interface AppContext {
+  launch?: { path?: string };
+  openApp?(appId: string, launch?: { path?: string }): void;
   session: Session | null;
   services: SessionServices;
   active?: boolean;
@@ -92,6 +94,7 @@ export interface DesktopApp {
   window?: {
     layout?: "primary" | "secondary" | "standard";
     openOnStart?: boolean;
+    multiple?: boolean;
   };
 }
 

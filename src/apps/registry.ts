@@ -14,7 +14,7 @@ export const apps = defineApps([
     requires: ["files.read"],
     icon: FolderClosed,
     component: Files,
-    window: { layout: "primary", openOnStart: true },
+    window: { layout: "primary", openOnStart: true, multiple: true },
   },
   {
     apiVersion: 1,
@@ -25,7 +25,7 @@ export const apps = defineApps([
     requires: ["terminal"],
     icon: SquareTerminal,
     component: Terminal,
-    window: { layout: "secondary", openOnStart: true },
+    window: { layout: "secondary", openOnStart: true, multiple: true },
   },
   {
     apiVersion: 1,

@@ -21,10 +21,17 @@ import { apps } from "./apps/registry";
 import type { DesktopAction } from "./desktop";
 import { initialWorkspaces, updateWorkspaces } from "./workspaces";
 import { WorkspaceWindows } from "./components/WorkspaceWindows";
+import { ContextMenu, type MenuAction } from "./components/ContextMenu";
 import { ConnectDialog } from "./components/ConnectDialog";
 import { native, nativeServices } from "./services";
 import { previewServices, previewSession } from "./preview";
-import type { ConnectOptions, HostProfile, HostServices, Session } from "./sdk";
+import type {
+  ConnectOptions,
+  DesktopApp,
+  HostProfile,
+  HostServices,
+  Session,
+} from "./sdk";
 import { unavailableReason } from "./sdk";
 const defaultServices = native ? nativeServices : previewServices;
 export default function App({
@@ -49,6 +56,14 @@ export default function App({
   const dispatch = (action: DesktopAction) =>
     update({ type: "desktop", key: workspace.key, action });
   const [switcherOpen, setSwitcherOpen] = useState(false);
+  const [menu, setMenu] = useState<{
+    x: number;
+    y: number;
+    actions: MenuAction[];
+    label: string;
+  } | null>(null);
+  const closeMenu = useCallback(() => setMenu(null), []);
+  useEffect(closeMenu, [workspace.key, closeMenu]);
   const switcher = useRef<HTMLDivElement>(null);
   const [profiles, setProfiles] = useState<HostProfile[]>([]);
   const [connecting, setConnecting] = useState(false);
@@ -171,8 +186,79 @@ export default function App({
     dispatch({ type: "open", id });
     setLauncherOpen(false);
   }
+  function dockMenu(app: DesktopApp, x: number, y: number) {
+    const ids = desktop.open.filter(
+      (id) => desktop.instances[id].appId === app.id,
+    );
+    setMenu({
+      x,
+      y,
+      label: `${app.title} windows`,
+      actions: [
+        {
+          id: "open",
+          label: app.window?.multiple
+            ? `New ${app.title} window`
+            : `Open ${app.title}`,
+          disabled: !!unavailableReason(app, session),
+          run: () => dispatch({ type: "new", id: app.id }),
+        },
+        ...ids.map((id) => ({
+          id,
+          label: `${app.title}${desktop.instances[id].ordinal > 1 ? ` ${desktop.instances[id].ordinal}` : ""}${desktop.minimized.includes(id) ? " · Minimized" : ""}`,
+          run: () => dispatch({ type: "focus", id }),
+        })),
+      ],
+    });
+  }
   return (
-    <main className={`desktop wallpaper-${wallpaper}`}>
+    <main
+      className={`desktop wallpaper-${wallpaper}`}
+      onContextMenu={(event) => {
+        if (
+          (event.target as HTMLElement).closest(
+            ".app-window,.system-bar,.dock,.modal-backdrop,.context-menu,input,button",
+          )
+        )
+          return;
+        event.preventDefault();
+        setMenu({
+          x: event.clientX,
+          y: event.clientY,
+          label: "Desktop actions",
+          actions: [
+            {
+              id: "terminal",
+              label: "New terminal",
+              disabled: !session?.info.capabilities.includes("terminal"),
+              run: () => dispatch({ type: "new", id: "terminal" }),
+            },
+            {
+              id: "files",
+              label: "New Files window",
+              disabled: !session?.info.capabilities.includes("files.read"),
+              run: () => dispatch({ type: "new", id: "files" }),
+            },
+            {
+              id: "show-desktop",
+              label: "Show / restore desktop",
+              run: () => dispatch({ type: "show-desktop" }),
+            },
+            {
+              id: "connect",
+              label: "Connect another host",
+              separatorBefore: true,
+              run: showConnect,
+            },
+            {
+              id: "settings",
+              label: "Desktop settings",
+              run: () => setSettingsOpen(true),
+            },
+          ],
+        });
+      }}
+    >
       <div className="landscape" aria-hidden="true">
         <div className="sky-glow" />
         <div className="mountain mountain-far" />
@@ -447,13 +533,45 @@ export default function App({
               }
               aria-label={`Open ${app.title}`}
               disabled={!!session && !!unavailableReason(app, session)}
-              className={desktop.open.includes(app.id) ? "running" : ""}
+              className={
+                desktop.open.some(
+                  (id) => desktop.instances[id].appId === app.id,
+                )
+                  ? "running"
+                  : ""
+              }
               onClick={() => openApp(app.id)}
+              onContextMenu={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                dockMenu(app, event.clientX, event.clientY);
+              }}
+              onKeyDown={(event) => {
+                if (
+                  event.key !== "ContextMenu" &&
+                  !(event.shiftKey && event.key === "F10")
+                )
+                  return;
+                event.preventDefault();
+                const bounds = event.currentTarget.getBoundingClientRect();
+                dockMenu(app, bounds.left, bounds.top);
+              }}
             >
               <span className={`dock-app-icon ${app.id}`}>
                 <app.icon size={25} />
               </span>
               <span className="dock-tooltip">{app.title}</span>
+              {desktop.open.filter(
+                (id) => desktop.instances[id].appId === app.id,
+              ).length > 1 && (
+                <span className="dock-count">
+                  {
+                    desktop.open.filter(
+                      (id) => desktop.instances[id].appId === app.id,
+                    ).length
+                  }
+                </span>
+              )}
             </button>
           ))}
           <span className="dock-divider" />
@@ -516,6 +634,7 @@ export default function App({
           submit={(options, name) => void connect(options, name)}
         />
       )}
+      {menu && <ContextMenu {...menu} close={closeMenu} />}
     </main>
   );
 }

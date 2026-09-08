@@ -3,7 +3,7 @@ import { useLayoutEffect, useState } from "react";
 import { apps } from "../apps/registry";
 import { focusedApp, type DesktopAction } from "../desktop";
 import { bindSession } from "../session-services";
-import type { HostServices } from "../sdk";
+import type { AppContext, HostServices } from "../sdk";
 import type { Workspace } from "../workspaces";
 import { AppWindow } from "./AppWindow";
 
@@ -30,13 +30,14 @@ export function WorkspaceWindows({
     binding.activate();
     return binding.dispose;
   }, [binding]);
-  const context = {
+  const context: AppContext = {
     session: workspace.session,
     services: binding.services,
     preview,
     active,
     connect,
     reportError,
+    openApp: (id, launch) => dispatch({ type: "new", id, launch }),
   };
   return (
     <div
@@ -45,21 +46,33 @@ export function WorkspaceWindows({
       inert={!active}
       aria-label={`${workspace.label} workspace`}
     >
-      {apps
-        .filter((app) => workspace.desktop.open.includes(app.id))
-        .map((app) => (
+      {Object.keys(workspace.desktop.instances).map((id) => {
+        const instance = workspace.desktop.instances[id];
+        const app = apps.find((app) => app.id === instance.appId)!;
+        return (
           <AppWindow
-            key={app.id}
+            key={id}
             app={app}
-            context={context}
-            focused={active && focusedApp(workspace.desktop) === app.id}
-            focus={() => dispatch({ type: "focus", id: app.id })}
-            visible={active && !workspace.desktop.minimized.includes(app.id)}
-            order={workspace.desktop.open.indexOf(app.id)}
-            minimize={() => dispatch({ type: "minimize", id: app.id })}
-            close={() => dispatch({ type: "close", id: app.id })}
+            title={
+              instance.ordinal > 1
+                ? `${app.title} ${instance.ordinal}`
+                : app.title
+            }
+            cascade={instance.ordinal - 1}
+            context={{
+              ...context,
+              active: active && !workspace.desktop.minimized.includes(id),
+              launch: instance.launch,
+            }}
+            focused={active && focusedApp(workspace.desktop) === id}
+            focus={() => dispatch({ type: "focus", id })}
+            visible={active && !workspace.desktop.minimized.includes(id)}
+            order={workspace.desktop.open.indexOf(id)}
+            minimize={() => dispatch({ type: "minimize", id })}
+            close={() => dispatch({ type: "close", id })}
           />
-        ))}
+        );
+      })}
     </div>
   );
 }
