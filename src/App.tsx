@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
-import { useEffect, useReducer, useState } from "react";
+import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import {
   ArrowUpRight,
   Check,
@@ -18,18 +18,38 @@ import {
   X,
 } from "lucide-react";
 import { apps } from "./apps/registry";
-import { focusedApp, initialDesktop, updateDesktop } from "./desktop";
-import { AppWindow } from "./components/AppWindow";
+import type { DesktopAction } from "./desktop";
+import { initialWorkspaces, updateWorkspaces } from "./workspaces";
+import { WorkspaceWindows } from "./components/WorkspaceWindows";
 import { ConnectDialog } from "./components/ConnectDialog";
 import { native, nativeServices } from "./services";
 import { previewServices, previewSession } from "./preview";
-import type { AppContext, ConnectOptions, HostProfile, Session } from "./sdk";
+import type { ConnectOptions, HostProfile, HostServices, Session } from "./sdk";
 import { unavailableReason } from "./sdk";
-const services = native ? nativeServices : previewServices;
-export default function App() {
-  const [session, setSession] = useState<Session | null>(
-    native ? null : previewSession,
+const defaultServices = native ? nativeServices : previewServices;
+export default function App({
+  services = defaultServices,
+  initialSession = native ? null : previewSession,
+  isNative = native,
+}: {
+  services?: HostServices;
+  initialSession?: Session | null;
+  isNative?: boolean;
+} = {}) {
+  const [workspaces, update] = useReducer(
+    (
+      state: ReturnType<typeof initialWorkspaces>,
+      action: Parameters<typeof updateWorkspaces>[1],
+    ) => updateWorkspaces(state, action, apps),
+    initialSession,
+    (session) => initialWorkspaces(apps, session),
   );
+  const workspace = workspaces.items.find((w) => w.key === workspaces.active)!;
+  const { session, label, desktop } = workspace;
+  const dispatch = (action: DesktopAction) =>
+    update({ type: "desktop", key: workspace.key, action });
+  const [switcherOpen, setSwitcherOpen] = useState(false);
+  const switcher = useRef<HTMLDivElement>(null);
   const [profiles, setProfiles] = useState<HostProfile[]>([]);
   const [connecting, setConnecting] = useState(false);
   const [connectOpen, setConnectOpen] = useState(false);
@@ -37,16 +57,6 @@ export default function App() {
   const [launcherOpen, setLauncherOpen] = useState(false);
   const [error, setError] = useState("");
   const [toast, setToast] = useState("");
-  const [label, setLabel] = useState(native ? "No host connected" : "atlas");
-  const [desktop, dispatch] = useReducer(
-    (
-      state: ReturnType<typeof initialDesktop>,
-      action: Parameters<typeof updateDesktop>[1],
-    ) => updateDesktop(state, action, apps),
-    apps,
-    initialDesktop,
-  );
-  const focused = focusedApp(desktop);
   const [clock, setClock] = useState(new Date());
   const [wallpaper, setWallpaper] = useState(
     () =>
@@ -61,7 +71,7 @@ export default function App() {
       .catch((e) => setToast(String(e)));
     const timer = setInterval(() => setClock(new Date()), 1000);
     return () => clearInterval(timer);
-  }, []);
+  }, [services]);
   useEffect(() => {
     if (!toast) return;
     const timer = setTimeout(() => setToast(""), 8000);
@@ -71,52 +81,88 @@ export default function App() {
     localStorage.setItem("shellcanvas.wallpaper", wallpaper);
   }, [wallpaper]);
   useEffect(() => {
-    if (!native || !session) return;
+    if (!isNative) return;
     let disposed = false;
+    let checking = false;
     const timer = setInterval(() => {
-      void services
-        .alive(session.id)
-        .then((alive) => {
-          if (!alive && !disposed) {
-            setSession(null);
-            setLabel("Connection lost");
-            setToast(
-              "The SSH connection closed. Reconnect to open a new workspace.",
-            );
-          }
-        })
-        .catch((e) => {
-          if (!disposed) setToast(String(e));
-        });
+      if (checking) return;
+      checking = true;
+      void Promise.all(
+        workspaces.items
+          .filter((w) => w.session)
+          .map(async (w) => {
+            try {
+              const alive = await services.alive(w.session!.id);
+              if (!alive && !disposed) {
+                update({ type: "remove", sessionId: w.session!.id });
+                setToast(
+                  `${w.label}: connection closed. Other workspaces remain connected.`,
+                );
+                await services.disconnect(w.session!.id);
+              }
+            } catch (e) {
+              if (!disposed) setToast(String(e));
+            }
+          }),
+      ).finally(() => {
+        checking = false;
+      });
     }, 4000);
     return () => {
       disposed = true;
       clearInterval(timer);
     };
-  }, [session?.id]);
+  }, [isNative, services, workspaces.items.map((w) => w.key).join(",")]);
+  useEffect(() => {
+    if (!switcherOpen) return;
+    const outside = (event: PointerEvent) => {
+      if (!switcher.current?.contains(event.target as Node))
+        setSwitcherOpen(false);
+    };
+    const escape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setSwitcherOpen(false);
+        switcher.current
+          ?.querySelector<HTMLButtonElement>(".host-pill")
+          ?.focus();
+      }
+    };
+    window.addEventListener("pointerdown", outside);
+    window.addEventListener("keydown", escape);
+    return () => {
+      window.removeEventListener("pointerdown", outside);
+      window.removeEventListener("keydown", escape);
+    };
+  }, [switcherOpen]);
+  const showConnect = useCallback(() => {
+    setSwitcherOpen(false);
+    setError("");
+    setConnectOpen(true);
+  }, []);
   async function connect(options: ConnectOptions, name: string) {
     setConnecting(true);
     setError("");
-    setSession(null);
     try {
       const result = await services.connect(options);
-      setSession(result);
-      setLabel(name);
+      update({
+        type: "connected",
+        session: result,
+        label: name || result.info.hostname,
+      });
       setConnectOpen(false);
-      dispatch({ type: "host-connected" });
       if (result.info.notices.length) setToast(result.info.notices.join(" "));
     } catch (e) {
       setError(String(e));
-      setLabel("No host connected");
     } finally {
       setConnecting(false);
     }
   }
   async function disconnect() {
-    setSession(null);
-    setLabel("No host connected");
+    if (!session) return;
+    const id = session.id;
+    update({ type: "remove", sessionId: id });
     try {
-      await services.disconnect();
+      await services.disconnect(id);
     } catch (e) {
       setToast(String(e));
     }
@@ -125,16 +171,6 @@ export default function App() {
     dispatch({ type: "open", id });
     setLauncherOpen(false);
   }
-  const context: AppContext = {
-    session,
-    services,
-    preview: !native,
-    connect: () => {
-      setError("");
-      setConnectOpen(true);
-    },
-    reportError: setToast,
-  };
   return (
     <main className={`desktop wallpaper-${wallpaper}`}>
       <div className="landscape" aria-hidden="true">
@@ -155,17 +191,56 @@ export default function App() {
           </span>
           ShellCanvas<span className="alpha-tag">PREVIEW</span>
         </button>
-        <button
-          className={`host-pill ${session ? "connected" : ""}`}
-          onClick={context.connect}
-        >
-          <span className="status-dot" />
-          {label}
-          <ChevronDown size={12} />
-        </button>
+        <div className="host-switcher" ref={switcher}>
+          <button
+            className={`host-pill ${session ? "connected" : ""}`}
+            onClick={() => setSwitcherOpen(!switcherOpen)}
+            aria-label="Switch workspace"
+            aria-expanded={switcherOpen}
+          >
+            <span className="status-dot" />
+            {label}
+            <ChevronDown size={12} />
+          </button>
+          {switcherOpen && (
+            <div className="workspace-switcher" aria-label="Workspaces">
+              <div className="popover-heading">
+                <span>Workspaces</span>
+                <small>
+                  {workspaces.items.filter((w) => w.session).length} connected
+                </small>
+              </div>
+              {workspaces.items.map((w) => (
+                <button
+                  key={w.key}
+                  className={`workspace-choice ${w.key === workspace.key ? "selected" : ""}`}
+                  aria-pressed={w.key === workspace.key}
+                  onClick={() => {
+                    update({ type: "select", key: w.key });
+                    setSwitcherOpen(false);
+                  }}
+                >
+                  <Server size={17} />
+                  <span>
+                    <strong>{w.label}</strong>
+                    <small>
+                      {w.session
+                        ? `${w.session.info.hostname} · Session ${w.session.id}`
+                        : "On this device"}
+                    </small>
+                  </span>
+                  {w.key === workspace.key && <Check size={15} />}
+                </button>
+              ))}
+              <button className="launcher-connect" onClick={showConnect}>
+                <Plus size={16} /> Connect another host
+              </button>
+            </div>
+          )}
+        </div>
         <div className="system-indicators">
           <span className="preview-label">
-            {!native
+            {!isNative
               ? "Design preview · sample data"
               : session
                 ? "SSH workspace"
@@ -193,7 +268,7 @@ export default function App() {
         <div className="desktop-heading">
           <div>
             <p className="eyebrow">
-              {!native
+              {!isNative
                 ? "DESIGN PREVIEW"
                 : session
                   ? "YOUR REMOTE WORKSPACE"
@@ -213,9 +288,9 @@ export default function App() {
               )}
             </h1>
           </div>
-          <button className="workspace-connect" onClick={context.connect}>
+          <button className="workspace-connect" onClick={showConnect}>
             <Plus size={15} />
-            {session ? "Switch host" : "Connect a host"}
+            {session ? "Add host" : "Connect a host"}
             <ArrowUpRight size={14} />
           </button>
         </div>
@@ -223,7 +298,7 @@ export default function App() {
           <span>
             <ShieldCheck size={13} />
             {session
-              ? native
+              ? isNative
                 ? "Known host verified"
                 : "No remote connection"
               : "SSH. Nothing extra on your host."}
@@ -231,21 +306,20 @@ export default function App() {
           <span>{session?.info.system || "Terminal · Files · Your space"}</span>
         </div>
         <div className="windows-area">
-          {apps
-            .filter((app) => desktop.open.includes(app.id))
-            .map((app) => (
-              <AppWindow
-                key={app.id}
-                app={app}
-                context={context}
-                focused={focused === app.id}
-                focus={() => dispatch({ type: "focus", id: app.id })}
-                visible={!desktop.minimized.includes(app.id)}
-                order={desktop.open.indexOf(app.id)}
-                minimize={() => dispatch({ type: "minimize", id: app.id })}
-                close={() => dispatch({ type: "close", id: app.id })}
-              />
-            ))}
+          {workspaces.items.map((w) => (
+            <WorkspaceWindows
+              key={w.key}
+              workspace={w}
+              backend={services}
+              active={w.key === workspace.key}
+              preview={!isNative}
+              dispatch={(action) =>
+                update({ type: "desktop", key: w.key, action })
+              }
+              connect={showConnect}
+              reportError={setToast}
+            />
+          ))}
         </div>
         <div className="desktop-caption">
           <span className="caption-line" />
@@ -291,7 +365,7 @@ export default function App() {
             className="launcher-connect"
             onClick={() => {
               setLauncherOpen(false);
-              context.connect();
+              showConnect();
             }}
           >
             <Plus size={16} />
@@ -346,7 +420,7 @@ export default function App() {
         <span className="bottom-status">
           <Circle size={6} fill="currentColor" />
           {session
-            ? !native
+            ? !isNative
               ? "Preview mode"
               : "Connected over SSH"
             : "Ready when you are"}
@@ -386,7 +460,7 @@ export default function App() {
           <button
             title="Connections"
             aria-label="Connections"
-            onClick={context.connect}
+            onClick={showConnect}
           >
             <span className="dock-app-icon connections">
               <Server size={24} />
@@ -404,7 +478,7 @@ export default function App() {
         </nav>
         <button
           className="disconnect-button"
-          disabled={!session || !native}
+          disabled={!session || !isNative}
           onClick={() => void disconnect()}
         >
           <Power size={13} /> Disconnect
@@ -428,7 +502,7 @@ export default function App() {
           profiles={profiles}
           busy={connecting}
           error={error}
-          preview={!native}
+          preview={!isNative}
           save={async (profile) => {
             const saved = await services.saveProfile(profile);
             setProfiles(await services.profiles());

@@ -39,7 +39,7 @@ With a connected device, unavailable apps are disabled in the dock/launcher and 
 - **Host change/disconnect:** remounts or unmounts host content so it cannot retain the previous host's resources. Local content keeps its instance. All operations must use the session ID supplied with the request; the backend rejects stale sessions.
 - **Failure:** a React error boundary contains rendering/lifecycle failures and offers reopen. Handle rejected promises and event-handler failures explicitly with app state or `reportError`; React boundaries do not catch those.
 
-Do not call `connect`, `profiles` or other administration functions from an app's `services` merely because today's broad HostServices interface exposes them. BASE-05 will split and scope this API. Capability declarations currently control availability, not security: bundled modules still share native webview access.
+An app's `services` is now a `SessionServices` handle: `list(path)`, `preview(path)` and `terminal(cols, rows, onEvent)`. It captures the owning workspace; apps cannot pass another session ID or access profile/connection administration through this handle. Unavailable services and disposed handles reject calls. Check `active` for UI such as portal menus that should disappear when the workspace is hidden; switching workspaces does not unmount the app. Capability declarations control availability, not security: bundled modules still share native webview access. Per-extension grants and composite service bindings remain future work.
 
 ## Acceptance checklist
 

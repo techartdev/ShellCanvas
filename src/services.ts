@@ -7,7 +7,7 @@ export const nativeServices: HostServices = {
   saveProfile: (profile) => invoke("save_profile", { profile }),
   removeProfile: (id) => invoke("remove_profile", { id }),
   connect: (options) => invoke("connect", { options }),
-  disconnect: () => invoke("disconnect"),
+  disconnect: (sessionId) => invoke("disconnect", { sessionId }),
   alive: (sessionId) => invoke("session_alive", { sessionId }),
   list: (sessionId, path) => invoke("list_directory", { sessionId, path }),
   preview: (sessionId, path) => invoke("preview_file", { sessionId, path }),
@@ -28,6 +28,7 @@ export const nativeServices: HostServices = {
         pending = pending.then(async () => {
           for (let offset = 0; offset < bytes.length; offset += 16384) {
             await invoke("terminal_input", {
+              sessionId,
               terminalId,
               data: Array.from(bytes.subarray(offset, offset + 16384)),
             });
@@ -36,8 +37,8 @@ export const nativeServices: HostServices = {
         return pending;
       },
       resize: (cols, rows) =>
-        invoke("terminal_resize", { terminalId, cols, rows }),
-      close: () => invoke("close_terminal", { terminalId }),
+        invoke("terminal_resize", { sessionId, terminalId, cols, rows }),
+      close: () => invoke("close_terminal", { sessionId, terminalId }),
     };
   },
 };

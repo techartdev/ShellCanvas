@@ -4,7 +4,7 @@ import { createRoot } from "react-dom/client";
 import { Terminal } from "../../src/apps/Terminal";
 import { clipboard } from "../../src/clipboard";
 import { previewServices, previewSession } from "../../src/preview";
-import type { HostServices } from "../../src/sdk";
+import type { SessionServices } from "../../src/sdk";
 import "../../src/styles.css";
 
 // Real terminal/menu components with fake I/O and clipboard. No native access.
@@ -17,9 +17,10 @@ function Fixture() {
     setCopied(text.includes("fixture line"));
   };
   clipboard.readText = async () => "fixture paste";
-  const [services] = useState<HostServices>(() => ({
-    ...previewServices,
-    terminal: async (_, __, ___, event) => {
+  const [services] = useState<SessionServices>(() => ({
+    list: (path) => previewServices.list(previewSession.id, path),
+    preview: (path) => previewServices.preview(previewSession.id, path),
+    terminal: async (_, __, event) => {
       event({
         type: "output",
         data: Array.from(

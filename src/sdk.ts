@@ -50,7 +50,7 @@ export interface HostServices {
   saveProfile(profile: HostProfile): Promise<HostProfile>;
   removeProfile(id: string): Promise<void>;
   connect(options: ConnectOptions): Promise<Session>;
-  disconnect(): Promise<void>;
+  disconnect(sessionId: number): Promise<void>;
   alive(sessionId: number): Promise<boolean>;
   list(sessionId: number, path: string): Promise<Directory>;
   preview(sessionId: number, path: string): Promise<string>;
@@ -61,9 +61,20 @@ export interface HostServices {
     onEvent: (event: TerminalEvent) => void,
   ): Promise<TerminalSession>;
 }
+/** Apps receive a fixed session handle, never connection administration. */
+export interface SessionServices {
+  list(path: string): Promise<Directory>;
+  preview(path: string): Promise<string>;
+  terminal(
+    cols: number,
+    rows: number,
+    onEvent: (event: TerminalEvent) => void,
+  ): Promise<TerminalSession>;
+}
 export interface AppContext {
   session: Session | null;
-  services: HostServices;
+  services: SessionServices;
+  active?: boolean;
   preview: boolean;
   connect(): void;
   reportError(message: string): void;

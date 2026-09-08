@@ -30,6 +30,7 @@ Windows output: `target/debug/shellcanvas.exe`. This debug build is for local ev
 - A custom desktop shell with mountain wallpapers, a dock, launcher, local clock, and floating app windows.
 - Move, resize, maximize, minimize, and reopen windows across the full desktop between the top toolbar and bottom dock. Windows can cover desktop widgets, which remain clickable when uncovered. Narrow displays use stacked layouts.
 - Real SSH connections with private-key/passphrase or password authentication.
+- Multiple simultaneous host workspaces. Use the host pill in the top bar to switch; each workspace keeps its Files navigation, terminal buffer and window layout. Add host opens another connection; Disconnect closes only the selected host.
 - Strict verification against the user's existing `~/.ssh/known_hosts`. Unknown and changed keys are refused. No automatic trust enrollment or security downgrade.
 - Import of basic, explicit `Host` blocks from `~/.ssh/config`. Select the profile and supply any missing username.
 - Save, edit and remove named host profiles in the native connection dialog. Saved entries live in the application data directory, independently of SSH config; passwords and passphrases are excluded. Use **Save host** before connecting if you want to keep an entry.
@@ -43,7 +44,7 @@ Windows output: `target/debug/shellcanvas.exe`. This debug build is for local ev
 
 ## Current boundaries
 
-- One connected host workspace and one terminal app at a time. Reconnecting starts a new shell; it does not restore remote processes.
+- One instance of each app per workspace, including one terminal. Workspace state survives switching during this app run; it is not restored after closing the workspace or restarting the app. Reconnecting starts a new session and shell; it does not restore remote processes.
 - The file explorer does not yet upload, download, edit, rename, or delete files. **The terminal is a real shell with all permissions of the authenticated account**, including root when selected.
 - Passwords and key passphrases are not persisted. Key files remain in their existing location. Named SSH profiles are stored as versioned `hosts.json` in Tauri's app data directory (Windows: `%APPDATA%/dev.shellcanvas.client`), with atomic replacement and a cross-process lock. Unrecognized/corrupt files are reported and preserved. Secure credential-vault integration remains future work. Wallpaper preference is stored in local storage.
 - The importer is not a full OpenSSH configuration interpreter: `Include`, `Match`, wildcard defaults, `ProxyCommand`, `ProxyJump`, SSH agents, hardware keys, and host certificates are unsupported. Imported fields are editable before connecting.

@@ -12,11 +12,15 @@ export function Terminal({
   services,
   preview,
   reportError,
+  active = true,
 }: AppContext) {
   const container = useRef<HTMLDivElement>(null);
   const instance = useRef<XTerminal | null>(null);
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
   const closeMenu = useCallback(() => setMenu(null), []);
+  useEffect(() => {
+    if (!active) closeMenu();
+  }, [active, closeMenu]);
   const [ready, setReady] = useState(false);
   const [status, setStatus] = useState("Opening shell…");
   const [attempt, setAttempt] = useState(0);
@@ -135,7 +139,7 @@ export function Terminal({
       });
     });
     void services
-      .terminal(session.id, terminal.cols, terminal.rows, (event) => {
+      .terminal(terminal.cols, terminal.rows, (event) => {
         if (disposed) return;
         if (event.type === "output") terminal.write(new Uint8Array(event.data));
         else if (event.type === "closed") {

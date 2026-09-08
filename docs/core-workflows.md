@@ -18,6 +18,14 @@ Storage performs validation under a cross-process advisory lock, writes a same-d
 - Native OS clipboard round-trip testing is separate from the fake clipboard fixture. Multiple real host workspaces, Files context menus, transfers and remote writes are not delivered in this slice.
 - Validation on Windows: 9 Rust tests, 11 frontend tests, Clippy with warnings denied, and the Tauri debug build passed. The rebuilt native app was launched and its desktop rendered successfully. Live remote clipboard use remains unverified.
 
-## Next slice
+## Multiple host workspaces
 
-CORE-07 introduces a host-session registry and workspace switcher. The current singleton connection must be removed before presenting simultaneous host sessions. Each window and terminal must own a session-specific service handle; switching, closing or reconnecting one host must not affect another. This concrete workflow should drive the next service-interface changes.
+CORE-07 replaces the singleton native connection with a registry and adds a top-bar workspace switcher. Connect adds an independent session, including a separate session for the same host if desired. A failed connection preserves existing workspaces. Disconnect and transport loss remove only the affected workspace; a reconnect has a fresh ID. Background workspace windows stay mounted but hidden/inert, preserving their terminal buffers, file navigation and window geometry. Local apps currently have one instance per workspace too; cross-workspace local app windows remain a future design choice.
+
+App services capture a fixed session and omit profile/connection administration. The native registry checks terminal ownership on input/resize/close and rechecks a terminal's parent session after opening it. A disconnect while a terminal opens cannot attach the late terminal to another host. File operations capture their provider; disposed UI bindings reject late results. The Rust transport layer remains SSH-specific; this slice does not claim full composite adapter support or external-extension security.
+
+`/tests/fixtures/workspaces.html` runs the real desktop with two fake hosts under React StrictMode. Browser checks exercised independent shell input and file paths, switching without reopening shells, failed connection preservation, and disconnecting the first host while the second kept receiving input. Native registry tests cover cross-host terminal rejection, close isolation and late terminal registration. Session-binding tests cover stale results, unsupported capabilities and late shell cleanup. This is fixture validation; simultaneous connections to two real devices remain unverified.
+
+The remaining terminal black strip was xterm's default black viewport visible below whole-height text rows. Its background now explicitly matches the terminal theme; checks at multiple heights confirm that the spare pixels blend in above the footer.
+
+Next: CORE-08 Files context actions and clipboard, followed by transfers and remote write workflows.

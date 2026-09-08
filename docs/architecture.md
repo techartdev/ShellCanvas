@@ -8,7 +8,8 @@ The target architecture is a composable remote-device desktop. SSH is the first 
 Desktop shell (React / TypeScript)
   ├─ bundled apps: Files, Terminal, Host details
   ├─ app registry: identity, scope, capabilities, component
-  └─ HostServices interface
+  ├─ workspace registry: independent window state, mounted inactive workspaces
+  └─ session-bound SessionServices (HostServices administration stays in the shell)
          ├─ Browser preview: synthetic data only
          └─ Tauri IPC
                ├─ session lifecycle and stale-session rejection
@@ -35,12 +36,14 @@ Future external extensions need an isolated execution surface, permission-enforc
 
 Provider selection accepts an ordered provider list and a total time budget. `ProbeContext` supplies optional independent command access through `CommandProbe`; Linux detection no longer takes a concrete SSH connection. A connector without exec keeps its fallback information and capabilities. The current SSH entry point supplies LinuxProvider, while fixture tests cover limited/no-command access. This is the first interface seam, not yet a full connection adapter registry.
 
-Next come generic service handles, composite workspace bindings, per-service capability states, scoped app services and provider-owned filesystem navigation. See [provider requirements and actual compatibility](providers.md). macOS, Windows, Raspberry Pi OS, appliances and additional connection protocols are roadmap targets, not verified support claims.
+Apps now receive session-bound services without connection/profile administration or session-ID arguments. File and terminal requests capture their workspace identity; disposed handles reject new calls and late results. This is a trusted-code API boundary, not extension isolation. Next come connection-neutral Rust contracts, composite workspace bindings, per-service capability states and provider-owned filesystem navigation. See [provider requirements and actual compatibility](providers.md). macOS, Windows, Raspberry Pi OS, appliances and additional connection protocols are roadmap targets, not verified support claims.
 
 ## Lifecycle
 
 - Session IDs prevent commands from accidentally acting on a replacement host.
-- A transition lock serializes connect/disconnect/terminal creation.
+- A native registry keeps independent connections and terminal owners under a short mutex. Network connection setup does not remove or block an existing host. Terminal creation rechecks ownership after its network await, so disconnecting during creation cannot register an orphan.
+- Terminal input, resize and close IPC carry both session and terminal IDs. A mismatched owner is refused (close is an idempotent no-op). IDs monotonically increase during the process and are never reassigned to a reconnect.
+- The UI keeps inactive workspaces mounted and inert, preserving Files navigation, terminal buffers, focus order and window geometry. Disconnect removes only that workspace. Transport health checks cover background sessions too. Window/app state is in-memory; only explicit host profiles and wallpaper settings persist across app restarts.
 - File operations clone their provider under a short lock, then run independently of the terminal.
 - Each terminal owns a channel and bounded input queue. Closing the app process drops the connection; minimizing a window keeps its shell alive. Closing the Terminal window cleans up that channel.
 - New-shell actions explicitly close the old channel. Remote processes may end when their shell closes; no `tmux` dependency or remote installation is introduced.

@@ -51,7 +51,7 @@ export function Files({ session, services, preview }: AppContext) {
     setError("");
     setDocument(null);
     try {
-      const result = await services.list(session.id, path);
+      const result = await services.list(path);
       if (current !== request.current) return;
       if (remember && directory.path !== result.path)
         setHistory((previous) => [...previous, directory.path]);
@@ -80,7 +80,7 @@ export function Files({ session, services, preview }: AppContext) {
     setError("");
     setDocument({ name: entry.name, text: "Loading preview…" });
     try {
-      const text = await services.preview(session!.id, entry.path);
+      const text = await services.preview(entry.path);
       if (current === previewRequest.current)
         setDocument({ name: entry.name, text });
     } catch (e) {
