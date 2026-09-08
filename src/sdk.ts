@@ -119,6 +119,7 @@ export interface ConnectionIdentity {
   adapter: string;
 }
 export interface Session {
+  sourceRevision?: number;
   id: number;
   info: HostInfo;
   /** Established connector identities; absent in older/synthetic backends. Not a trust claim. */
@@ -135,6 +136,7 @@ export interface ServiceStatus {
   source?: ConnectionIdentity | null;
 }
 export interface WorkspaceStatus {
+  sourceRevision?: number;
   connected: boolean;
   services: readonly ServiceStatus[];
   customSources?: Readonly<Record<string, ConnectionIdentity>>;

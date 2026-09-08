@@ -72,9 +72,11 @@ async fn source_replacement_preserves_live_console_and_other_workspace_lease() {
     let terminal = workspace.terminal.clone().unwrap();
     let mut stream = terminal.open(TerminalSize::new(80, 24)).await.unwrap();
     let prepared = file_workspace(&fresh);
+    assert_eq!(workspace.status().source_revision, 0);
     // Preparing a replacement has no effect on current services.
     old_files.list(Some("opaque@files")).await.unwrap();
     let retired = workspace.replace_source(old.identity(), prepared).unwrap();
+    assert_eq!(workspace.status().source_revision, 1);
     assert!(workspace
         .check_source(&ServiceRole::Files, Some(old.identity()))
         .is_err());

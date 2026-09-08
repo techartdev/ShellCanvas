@@ -20,6 +20,7 @@ interface SourceForm {
 export function ConnectAdapterDialog({
   services,
   initial,
+  replacing = false,
   busy,
   error,
   close,
@@ -29,6 +30,7 @@ export function ConnectAdapterDialog({
 }: {
   services: AdapterServices;
   initial?: AdapterProfile;
+  replacing?: boolean;
   busy: boolean;
   error: string;
   close(): void;
@@ -156,11 +158,16 @@ export function ConnectAdapterDialog({
         </div>
         <p className="eyebrow">A WORKSPACE, YOUR WAY</p>
         <h1 id="adapter-connect-title">
-          {initial ? "Reconnect your workspace." : "Choose your connections."}
+          {replacing
+            ? "Replace this connection."
+            : initial
+              ? "Reconnect your workspace."
+              : "Choose your connections."}
         </h1>
         <p className="dialog-intro">
-          Use one adapter for everything, or combine separate file and terminal
-          connections.
+          {replacing
+            ? "The selected services will use this connection. Other connections stay open, and editor drafts are preserved."
+            : "Use one adapter for everything, or combine separate file and terminal connections."}
         </p>
         {(error || failure) && (
           <p className="inline-error" role="alert">
@@ -213,16 +220,19 @@ export function ConnectAdapterDialog({
           }}
         >
           <fieldset disabled={locked}>
-            <label className="form-field">
-              Workspace name
-              <input
-                required
-                maxLength={200}
-                value={name}
-                onChange={(event) => setName(event.target.value)}
-                placeholder="My device workspace"
-              />
-            </label>
+            {!replacing && (
+              <label className="form-field">
+                Workspace name
+                <input
+                  required
+                  maxLength={200}
+                  value={name}
+                  readOnly={replacing}
+                  onChange={(event) => setName(event.target.value)}
+                  placeholder="My device workspace"
+                />
+              </label>
+            )}
             {sources.map((source, index) => {
               const item = installed.find((item) => item.id === source.id);
               return (
@@ -232,7 +242,19 @@ export function ConnectAdapterDialog({
                   aria-label={`Connection ${index + 1}`}
                 >
                   <div className="adapter-source-heading">
-                    <h3>Connection {index + 1}</h3>
+                    <h3>
+                      {replacing
+                        ? source.roles
+                            .map((role) =>
+                              role === "files"
+                                ? "Files"
+                                : role === "console"
+                                  ? "Terminal"
+                                  : role,
+                            )
+                            .join(" + ")
+                        : `Connection ${index + 1}`}
+                    </h3>
                     {!initial && sources.length > 1 && (
                       <button
                         type="button"
@@ -251,7 +273,7 @@ export function ConnectAdapterDialog({
                   <label className="form-field">
                     Adapter
                     <select
-                      disabled={!!initial}
+                      disabled={!!initial && !replacing}
                       value={source.id}
                       onChange={(event) => {
                         const selected = installed.find(
@@ -282,56 +304,61 @@ export function ConnectAdapterDialog({
                         ))}
                     </select>
                   </label>
-                  <div className="adapter-roles">
-                    {(["files", "console"] as const).map((role) => (
-                      <label key={role}>
-                        <input
-                          type="checkbox"
-                          disabled={!!initial}
-                          checked={source.roles.includes(role)}
-                          onChange={(event) =>
-                            change(source.key, {
-                              roles: event.target.checked
-                                ? [...source.roles, role]
-                                : source.roles.filter(
-                                    (value) => value !== role,
-                                  ),
-                            })
-                          }
-                        />
-                        {role === "files" ? "Files" : "Terminal"}
-                      </label>
-                    ))}
-                  </div>
-                  <label className="form-field">
-                    Additional services
-                    <input
-                      disabled={!!initial}
-                      placeholder="Service IDs, separated by commas"
-                      value={
-                        source.customInput ??
-                        source.roles
-                          .filter(
-                            (role) => role !== "files" && role !== "console",
-                          )
-                          .join(", ")
-                      }
-                      onChange={(event) =>
-                        change(source.key, {
-                          customInput: event.target.value,
-                          roles: [
-                            ...source.roles.filter(
-                              (role) => role === "files" || role === "console",
-                            ),
-                            ...event.target.value
-                              .split(",")
-                              .map((role) => role.trim())
-                              .filter(Boolean),
-                          ],
-                        })
-                      }
-                    />
-                  </label>
+                  {!replacing && (
+                    <div className="adapter-roles">
+                      {(["files", "console"] as const).map((role) => (
+                        <label key={role}>
+                          <input
+                            type="checkbox"
+                            disabled={!!initial}
+                            checked={source.roles.includes(role)}
+                            onChange={(event) =>
+                              change(source.key, {
+                                roles: event.target.checked
+                                  ? [...source.roles, role]
+                                  : source.roles.filter(
+                                      (value) => value !== role,
+                                    ),
+                              })
+                            }
+                          />
+                          {role === "files" ? "Files" : "Terminal"}
+                        </label>
+                      ))}
+                    </div>
+                  )}
+                  {!replacing && (
+                    <label className="form-field">
+                      Additional services
+                      <input
+                        disabled={!!initial}
+                        placeholder="Service IDs, separated by commas"
+                        value={
+                          source.customInput ??
+                          source.roles
+                            .filter(
+                              (role) => role !== "files" && role !== "console",
+                            )
+                            .join(", ")
+                        }
+                        onChange={(event) =>
+                          change(source.key, {
+                            customInput: event.target.value,
+                            roles: [
+                              ...source.roles.filter(
+                                (role) =>
+                                  role === "files" || role === "console",
+                              ),
+                              ...event.target.value
+                                .split(",")
+                                .map((role) => role.trim())
+                                .filter(Boolean),
+                            ],
+                          })
+                        }
+                      />
+                    </label>
+                  )}
                   {item?.configuration.map((field) => (
                     <label className="form-field" key={field.id}>
                       {field.label}
@@ -425,9 +452,11 @@ export function ConnectAdapterDialog({
           >
             {busy
               ? "Connecting…"
-              : initial
-                ? "Reconnect workspace"
-                : "Open workspace"}
+              : replacing
+                ? "Replace connection"
+                : initial
+                  ? "Reconnect workspace"
+                  : "Open workspace"}
             <ArrowUpRight size={17} />
           </button>
           {busy && (

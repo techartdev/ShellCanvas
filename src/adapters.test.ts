@@ -99,3 +99,43 @@ it("does not start an already canceled adapter connection", async () => {
   ).rejects.toThrow(/canceled/);
   expect(invoke).not.toHaveBeenCalled();
 });
+it("delivers a committed source replacement after late cancellation without disconnecting the workspace", async () => {
+  let finish!: (value: unknown) => void;
+  invoke.mockReset().mockImplementation((method: string) => {
+    if (method === "begin_connect") return Promise.resolve(28);
+    if (method === "replace_adapter_source")
+      return new Promise((resolve) => {
+        finish = resolve;
+      });
+    return Promise.resolve();
+  });
+  const expected = { instance: 4, generation: 1, adapter: installed.id };
+  const controller = new AbortController();
+  const pending = nativeAdapterServices.replaceSource!(
+    77,
+    expected,
+    options,
+    controller.signal,
+  );
+  await vi.waitFor(() =>
+    expect(invoke).toHaveBeenCalledWith("replace_adapter_source", {
+      sessionId: 77,
+      expected,
+      options,
+      requestId: 28,
+    }),
+  );
+  controller.abort();
+  const result = {
+    connected: true,
+    sourceRevision: 1,
+    services: [],
+    connections: [],
+  };
+  finish(result);
+  await expect(pending).resolves.toEqual(result);
+  expect(invoke.mock.calls.some(([method]) => method === "disconnect")).toBe(
+    false,
+  );
+  expect(invoke).toHaveBeenCalledWith("cancel_connect", { requestId: 28 });
+});

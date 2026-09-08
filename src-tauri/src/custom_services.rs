@@ -65,6 +65,7 @@ pub fn cancel_custom_call(request_id: String, calls: State<'_, CustomRequests>) 
 #[tauri::command]
 pub async fn list_custom_services(
     session_id: u64,
+    sources: Option<std::collections::BTreeMap<String, shellcanvas_services::ConnectionIdentity>>,
     state: State<'_, crate::DesktopState>,
 ) -> Result<Vec<CustomMethodInfo>, String> {
     let registry = state.registry.lock().await;
@@ -72,7 +73,7 @@ pub async fn list_custom_services(
         .sessions
         .get(&session_id)
         .ok_or("Workspace is closed")?;
-    Ok(workspace.custom_methods())
+    Ok(workspace.accepted_custom_methods(sources.as_ref()))
 }
 #[tauri::command]
 pub async fn call_custom_service(

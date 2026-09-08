@@ -8,6 +8,8 @@ import {
   nativeAdapterServices,
   type AdapterInfo,
   type AdapterServices,
+  type AdapterConnectionOptions,
+  type SourceReplacement,
 } from "../../src/adapters";
 import { nativeServices } from "../../src/services";
 import { previewServices, previewSession } from "../../src/preview";
@@ -27,6 +29,8 @@ const native = isTauri(),
   sessions: Session[] = [],
   terminals = new Map<number, TerminalSession>(),
   output = new Map<number, string>();
+const connectionOptions: AdapterConnectionOptions[] = [];
+const replacements: SourceReplacement[] = [];
 let version = 1,
   installed: AdapterInfo[] = [];
 const packageId = "dev.shellcanvas.adapter-probe";
@@ -74,6 +78,9 @@ const sample = (): AdapterInfo => ({
   ],
 });
 const fake: AdapterServices = {
+  replaceSource: async () => {
+    throw new Error("Use the Windows fixture to apply a replacement.");
+  },
   list: async () => installed,
   review: async (requestId) => ({
     requestId,
@@ -126,8 +133,20 @@ const adapterServices: AdapterServices = {
       signal,
     );
     sessions.push(session);
+    connectionOptions.push(options);
     return session;
   },
+  ...(native
+    ? {
+        replaceSource: async (
+          ...args: Parameters<NonNullable<AdapterServices["replaceSource"]>>
+        ) => {
+          const result = await nativeAdapterServices.replaceSource!(...args);
+          replacements.push(result);
+          return result;
+        },
+      }
+    : {}),
 };
 const transport: HostServices = native
   ? nativeServices
@@ -280,6 +299,25 @@ async function closeApps() {
     )
   ).click();
 }
+async function replacementForm(labelText: string) {
+  await named("Switch workspace");
+  const choice = await until(
+    () =>
+      [
+        ...document.querySelectorAll<HTMLButtonElement>(
+          ".workspace-switcher button",
+        ),
+      ].find(
+        (button) => button.querySelector("strong")?.textContent === labelText,
+      ),
+    "replace source choice",
+  );
+  choice.click();
+  return until(
+    () => document.querySelector<HTMLDialogElement>(".adapter-connect"),
+    "source replacement form",
+  );
+}
 async function cleanup() {
   for (const session of sessions)
     await services.disconnect(session.id).catch(() => {});
@@ -409,7 +447,11 @@ async function run() {
   await click("Connection adapters");
   await install();
   await stage("installed");
-  if (!native && new URL(location.href).searchParams.has("inspect")) {
+  if (
+    !native &&
+    new URL(location.href).searchParams.get("inspect") &&
+    new URL(location.href).searchParams.get("inspect") !== "replacement"
+  ) {
     document.body.dataset.probeStage = "installed";
     return;
   }
@@ -563,6 +605,34 @@ async function run() {
       method.source !== originalBinding &&
       method.available &&
       !(await askCustom(customFrame, "call")).error;
+    const accepted = nativeServices.bindSources!(sessions[1]);
+    const before = replacements.length;
+    const replaceForm = await replacementForm(
+      "Replace Files + Terminal + acme connection",
+    );
+    checks.replacementOmitsSecrets =
+      (await label("Example private token", replaceForm)).value === "";
+    await click("Replace connection", replaceForm);
+    await until(
+      () =>
+        replacements.length === before + 1 &&
+        !document.querySelector(".adapter-connect"),
+      "custom source replaced",
+    );
+    checks.customOldDiscoveryCannotFollow =
+      (await accepted.custom!.list(sessions[1].id)).length === 0;
+    checks.customReplacementNeedsReview =
+      (await askCustom(customFrame, "call")).code === "unavailable";
+    await click("Use reconnected host");
+    const replacementMethods = (await askCustom(customFrame, "list"))
+      .value as ServiceMethodInfo[];
+    checks.customReplacementAccepted =
+      replacementMethods.some(
+        (item) =>
+          item.name === "acme.echo" &&
+          item.source !== method?.source &&
+          item.available,
+      ) && !(await askCustom(customFrame, "call")).error;
     (
       await until(
         () =>
@@ -643,6 +713,83 @@ async function run() {
     () => output.get(sessions[2].id)?.includes("mixed echo"),
     "mixed console output",
   );
+  if (
+    !native &&
+    new URL(location.href).searchParams.get("inspect") === "replacement"
+  ) {
+    await replacementForm("Replace Files connection");
+    document.body.dataset.probeStage = "replacement-form";
+    return;
+  }
+  if (native) {
+    const original = sessions[2];
+    const source = original.connections![0];
+    const options = connectionOptions[2];
+    const selected = options.sources[0];
+    const candidate = {
+      ...options,
+      sources: [selected],
+      bindings: { files: selected.key },
+    };
+    const before = await services.status!(original.id);
+    checks.failedReplacementPreservesWorkspace =
+      await nativeAdapterServices.replaceSource!(
+        original.id,
+        { ...source, generation: source.generation + 1 },
+        candidate,
+      ).then(
+        () => false,
+        () => true,
+      );
+    const afterFailure = await services.status!(original.id);
+    checks.failedReplacementKeepsRevision =
+      before?.sourceRevision === afterFailure?.sourceRevision;
+    const controller = new AbortController();
+    controller.abort();
+    checks.canceledReplacementPreservesWorkspace =
+      await nativeAdapterServices.replaceSource!(
+        original.id,
+        source,
+        candidate,
+        controller.signal,
+      ).then(
+        () => false,
+        () => true,
+      );
+    const count = replacements.length;
+    const form = await replacementForm("Replace Files connection");
+    input(await label("Sample file count", form), "7");
+    await click("Replace connection", form);
+    await until(
+      () =>
+        replacements.length === count + 1 &&
+        !document.querySelector(".adapter-connect"),
+      "file source replaced",
+    );
+    const result = replacements.at(-1)!;
+    checks.independentReplacementIdentity =
+      result.sourceRevision === 1 &&
+      result.connections[0].instance !== source.instance &&
+      result.connections[1].instance === original.connections![1].instance;
+    checks.independentReplacementKeepsTerminal =
+      terminals.get(original.id) === mixed;
+    await mixed.write("after file replacement\r\n");
+    await until(
+      () => output.get(original.id)?.includes("after file replacement"),
+      "surviving terminal after source replacement",
+    );
+    checks.independentReplacementConsoleIO = true;
+    const rebound = nativeServices.bindSources!({ ...original, ...result });
+    checks.replacementFileContents =
+      (await rebound.list(original.id)).entries.length === 7;
+    checks.oldFileBindingRetired = await nativeServices.bindSources!(original)
+      .list(original.id)
+      .then(
+        () => false,
+        () => true,
+      );
+    await stage("source-replacement");
+  }
   if (native) {
     const item = (await adapterServices.list()).find(
       (item) => item.id === packageId,

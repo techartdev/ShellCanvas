@@ -24,6 +24,7 @@ pub struct ServiceStatus {
 #[derive(serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct WorkspaceStatus {
+    pub source_revision: u64,
     pub connected: bool,
     pub services: Vec<ServiceStatus>,
     pub custom_sources: std::collections::BTreeMap<String, ConnectionIdentity>,
@@ -105,6 +106,7 @@ impl ServiceRole {
 }
 
 pub struct WorkspaceServices {
+    source_revision: u64,
     alive: Arc<AtomicBool>,
     connections: Vec<OwnedSource>,
     generations: HashMap<u64, u64>,
@@ -164,6 +166,7 @@ impl WorkspaceServices {
             });
         }
         Ok(Self {
+            source_revision: 0,
             alive: Arc::new(AtomicBool::new(true)),
             generations: connections
                 .iter()
@@ -226,6 +229,11 @@ impl WorkspaceServices {
         .check()
         .map_err(|error| error.to_string())
     }
+    pub fn is_source_for(&self, identity: &ConnectionIdentity, role: &ServiceRole) -> bool {
+        self.selected
+            .get(role)
+            .is_some_and(|source| source.identity() == identity)
+    }
     pub fn select_service(
         &mut self,
         source: &Arc<ConnectionResource>,
@@ -251,13 +259,6 @@ impl WorkspaceServices {
     /// The caller closes the returned lease outside its registry lock. A cleanup
     /// failure occurs after commit and must not be treated as a failed replacement.
     /// IPC callers must capture/validate source generations before using this API.
-    #[cfg_attr(
-        not(test),
-        expect(
-            dead_code,
-            reason = "Desktop replacement must first coordinate app acceptance"
-        )
-    )]
     pub fn replace_source(
         &mut self,
         expected: &ConnectionIdentity,
@@ -266,6 +267,10 @@ impl WorkspaceServices {
         if !self.alive.load(Ordering::Acquire) {
             return Err("The workspace is closed".into());
         }
+        let next_revision = self
+            .source_revision
+            .checked_add(1)
+            .ok_or("Workspace revision exhausted")?;
         let index = self
             .connections
             .iter()
@@ -369,6 +374,7 @@ impl WorkspaceServices {
             self.selected.insert(role, fresh.clone());
         }
         self.advertised = Some(capabilities);
+        self.source_revision = next_revision;
         Ok(retired.lease)
     }
     pub fn bind_custom(
@@ -405,6 +411,30 @@ impl WorkspaceServices {
             .filter_map(|(role, source)| match role {
                 ServiceRole::Custom(id) => Some((id.clone(), source.identity().clone())),
                 _ => None,
+            })
+            .collect()
+    }
+
+    /// Discovery must not grant a replacement's method bindings before the
+    /// caller accepts its source. Unrelated selected services remain visible.
+    pub fn accepted_custom_methods(
+        &self,
+        accepted: Option<&std::collections::BTreeMap<String, ConnectionIdentity>>,
+    ) -> Vec<crate::custom_binding::CustomMethodInfo> {
+        self.custom_methods()
+            .into_iter()
+            .filter(|method| {
+                let expected = accepted.and_then(|sources| sources.get(&method.service));
+                if accepted.is_some() && expected.is_none() {
+                    return false;
+                }
+                let role = ServiceRole::Custom(method.service.clone());
+                self.selected
+                    .get(&role)
+                    .is_some_and(|source| match expected {
+                        Some(identity) => source.identity() == identity,
+                        None => !self.replaced.contains(&role),
+                    })
             })
             .collect()
     }
@@ -470,6 +500,7 @@ impl WorkspaceServices {
         })
         .collect();
         WorkspaceStatus {
+            source_revision: self.source_revision,
             connected: self.is_connected(),
             services,
             custom_sources: self.custom_sources(),

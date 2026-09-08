@@ -2,7 +2,31 @@
 import { it, expect, vi } from "vitest";
 const { invoke } = vi.hoisted(() => ({ invoke: vi.fn() }));
 vi.mock("@tauri-apps/api/core", () => ({ invoke }));
-import { nativeCustomServices } from "./custom-services";
+import {
+  createNativeCustomServices,
+  nativeCustomServices,
+} from "./custom-services";
+it("captures custom discovery sources and refuses foreign workspaces before IPC", async () => {
+  invoke.mockReset();
+  invoke.mockResolvedValue([]);
+  const source = { instance: 8, generation: 1, adapter: "fixture" };
+  const services = createNativeCustomServices({
+    sessionId: 4,
+    sources: { acme: source },
+  });
+  source.instance = 9;
+  await services.list(4);
+  expect(invoke).toHaveBeenCalledWith("list_custom_services", {
+    sessionId: 4,
+    sources: { acme: { ...source, instance: 8 } },
+  });
+  invoke.mockClear();
+  await expect(services.list(5)).rejects.toMatchObject({ code: "closed" });
+  await expect(
+    services.call(5, "binding", "acme.echo", null),
+  ).rejects.toMatchObject({ code: "closed" });
+  expect(invoke).not.toHaveBeenCalled();
+});
 it("allocates cancellation identity before dispatch and retains uncertain outcomes", async () => {
   invoke.mockReset();
   invoke.mockImplementation(async (name: string) => {

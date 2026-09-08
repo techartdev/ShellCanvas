@@ -44,6 +44,7 @@ struct DesktopState {
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct SessionInfo {
+    source_revision: u64,
     id: u64,
     info: HostInfo,
     connections: Vec<ConnectionIdentity>,
@@ -240,6 +241,7 @@ async fn connect_session(
     let custom_sources = active.custom_sources();
     state.registry.lock().await.sessions.insert(id, active);
     Ok(SessionInfo {
+        source_revision: 0,
         id,
         info,
         connections,
@@ -666,6 +668,7 @@ pub fn run() {
                 custom_services::cancel_custom_call,
                 custom_services::call_custom_service,
                 adapters::connect_adapters,
+                adapters::replace_adapter_source,
                 adapters::review_adapter,
                 adapters::cancel_adapter_review,
                 adapters::install_adapter,

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 import { invoke, isTauri } from "@tauri-apps/api/core";
-import type { Session } from "./sdk";
+import type { Session, ConnectionIdentity, WorkspaceStatus } from "./sdk";
 export type Configuration = Record<string, string | number | boolean>;
 export interface AdapterField {
   id: string;
@@ -43,6 +43,12 @@ export interface AdapterProfile extends AdapterConnectionOptions {
   kind: "adapters";
 }
 export interface AdapterServices {
+  replaceSource?(
+    sessionId: number,
+    expected: ConnectionIdentity,
+    options: AdapterConnectionOptions,
+    signal?: AbortSignal,
+  ): Promise<SourceReplacement>;
   list(): Promise<AdapterInfo[]>;
   review(requestId: string): Promise<AdapterReview | null>;
   cancelReview(requestId: string): Promise<void>;
@@ -57,6 +63,11 @@ export interface AdapterServices {
     options: AdapterConnectionOptions,
     signal?: AbortSignal,
   ): Promise<Session>;
+}
+export interface SourceReplacement extends WorkspaceStatus {
+  sourceRevision: number;
+  connections: readonly ConnectionIdentity[];
+  cleanupWarning?: string | null;
 }
 export function adapterProfile(
   options: AdapterConnectionOptions,
@@ -91,6 +102,28 @@ export function adapterProfile(
   };
 }
 export const nativeAdapterServices: AdapterServices = {
+  async replaceSource(sessionId, expected, options, signal) {
+    if (signal?.aborted) throw new Error("Connection canceled");
+    const requestId = await invoke<number>("begin_connect");
+    const cancel = () => {
+      void invoke("cancel_connect", { requestId }).catch(() => {});
+    };
+    signal?.addEventListener("abort", cancel, { once: true });
+    try {
+      if (signal?.aborted) throw new Error("Connection canceled");
+      // A successful result is already committed. Even late cancellation must
+      // deliver it; disconnecting would destroy unrelated workspace services.
+      return await invoke<SourceReplacement>("replace_adapter_source", {
+        sessionId,
+        expected,
+        options,
+        requestId,
+      });
+    } finally {
+      signal?.removeEventListener("abort", cancel);
+      cancel();
+    }
+  },
   list: () => invoke("list_adapters"),
   review: (requestId) => invoke("review_adapter", { requestId }),
   cancelReview: (requestId) => invoke("cancel_adapter_review", { requestId }),

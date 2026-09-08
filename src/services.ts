@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 import { Channel, invoke as nativeInvoke, isTauri } from "@tauri-apps/api/core";
-import { nativeCustomServices } from "./custom-services";
+import { createNativeCustomServices } from "./custom-services";
 import type {
   HostServices,
   ConnectionIdentity,
@@ -15,8 +15,9 @@ type SourcePins = {
   files?: ConnectionIdentity;
   console?: ConnectionIdentity;
   settings?: ConnectionIdentity;
+  custom: Readonly<Record<string, ConnectionIdentity>>;
 };
-const commandRoles: Record<string, keyof Omit<SourcePins, "sessionId">> = {
+const commandRoles: Record<string, "files" | "console" | "settings"> = {
   paste_system_files: "files",
   cut_system_file: "files",
   copy_system_files: "files",
@@ -74,9 +75,12 @@ function createNativeServices(pins?: SourcePins): HostServices {
         files: capture("files"),
         console: capture("console"),
         settings: capture("settings"),
+        custom: structuredClone(session.customSources ?? {}),
       });
     },
-    custom: nativeCustomServices,
+    custom: createNativeCustomServices(
+      pins ? { sessionId: pins.sessionId, sources: pins.custom } : undefined,
+    ),
     cancelClipboardPreparation: (sessionId, operation) =>
       invoke("cancel_clipboard_preparation", { sessionId, operation }),
     systemClipboardSequence: () => invoke("system_clipboard_sequence"),

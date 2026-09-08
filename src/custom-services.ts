@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 import { invoke } from "@tauri-apps/api/core";
+import type { ConnectionIdentity } from "./sdk";
 import { RpcError, type RpcCode, type Json } from "./extensions/rpc";
 export interface CustomMethodInfo {
   name: string;
@@ -67,46 +68,66 @@ function failure(error: unknown): RpcError {
   }
   return new RpcError("failed", "Custom service request failed");
 }
-export const nativeCustomServices: CustomBackend = {
-  async list(sessionId, signal) {
-    aborted(signal);
-    const result = await invoke<CustomMethodInfo[]>("list_custom_services", {
-      sessionId,
-    });
-    aborted(signal);
-    return result;
-  },
-  async call(sessionId, binding, method, params, signal) {
-    aborted(signal);
-    const requestId = await invoke<string>("begin_custom_call").catch(
-      (error) => {
-        throw failure(error);
-      },
-    );
-    const cancel = () => {
-      void invoke("cancel_custom_call", { requestId }).catch(() => {});
-    };
-    signal?.addEventListener("abort", cancel, { once: true });
-    try {
+export function createNativeCustomServices(pins?: {
+  sessionId: number;
+  sources: Readonly<Record<string, ConnectionIdentity>>;
+}): CustomBackend {
+  // Copy at acceptance; callers cannot repin existing handles by mutating metadata.
+  const accepted = pins
+    ? { sessionId: pins.sessionId, sources: structuredClone(pins.sources) }
+    : undefined;
+  function check(sessionId: number) {
+    if (accepted && accepted.sessionId !== sessionId)
+      throw new RpcError(
+        "closed",
+        "Service binding belongs to another workspace",
+      );
+  }
+  return {
+    async list(sessionId, signal) {
+      check(sessionId);
       aborted(signal);
-      const result = await invoke<Json>("call_custom_service", {
+      const result = await invoke<CustomMethodInfo[]>("list_custom_services", {
         sessionId,
-        requestId,
-        binding,
-        method,
-        params,
+        ...(accepted ? { sources: accepted.sources } : {}),
       });
-      if (signal?.aborted)
-        throw new RpcError(
-          "aborted",
-          "Service call canceled; dispatched effects may have occurred.",
-        );
+      aborted(signal);
       return result;
-    } catch (error) {
-      throw failure(error);
-    } finally {
-      signal?.removeEventListener("abort", cancel);
-      cancel();
-    }
-  },
-};
+    },
+    async call(sessionId, binding, method, params, signal) {
+      check(sessionId);
+      aborted(signal);
+      const requestId = await invoke<string>("begin_custom_call").catch(
+        (error) => {
+          throw failure(error);
+        },
+      );
+      const cancel = () => {
+        void invoke("cancel_custom_call", { requestId }).catch(() => {});
+      };
+      signal?.addEventListener("abort", cancel, { once: true });
+      try {
+        aborted(signal);
+        const result = await invoke<Json>("call_custom_service", {
+          sessionId,
+          requestId,
+          binding,
+          method,
+          params,
+        });
+        if (signal?.aborted)
+          throw new RpcError(
+            "aborted",
+            "Service call canceled; dispatched effects may have occurred.",
+          );
+        return result;
+      } catch (error) {
+        throw failure(error);
+      } finally {
+        signal?.removeEventListener("abort", cancel);
+        cancel();
+      }
+    },
+  };
+}
+export const nativeCustomServices = createNativeCustomServices();

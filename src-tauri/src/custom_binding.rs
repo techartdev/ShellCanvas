@@ -241,6 +241,8 @@ mod tests {
         let old_service = Service::new();
         workspace.bind_custom(&old, old_service.clone()).unwrap();
         workspace.bind_custom(&other, other_service).unwrap();
+        let accepted = workspace.custom_sources();
+        assert_eq!(workspace.accepted_custom_methods(Some(&accepted)).len(), 2);
         let infos = workspace.custom_methods();
         let original = infos.iter().find(|info| info.service == "acme").unwrap();
         let unaffected = infos.iter().find(|info| info.service == "other").unwrap();
@@ -262,6 +264,22 @@ mod tests {
         let retired = workspace
             .replace_source(old.identity(), replacement)
             .unwrap();
+        // A discovery request accepted before commit must not reveal the new
+        // binding while the frontend still displays its previous source.
+        let visible = workspace.accepted_custom_methods(Some(&accepted));
+        assert_eq!(visible.len(), 1);
+        assert_eq!(visible[0].service, "other");
+        assert_eq!(workspace.accepted_custom_methods(None).len(), 1);
+        let newly_accepted = workspace.custom_sources();
+        assert_eq!(
+            workspace
+                .accepted_custom_methods(Some(&newly_accepted))
+                .len(),
+            2
+        );
+        assert!(workspace
+            .accepted_custom_methods(Some(&Default::default()))
+            .is_empty());
         assert!(workspace
             .custom_method(&original.name, &original.binding)
             .is_none());

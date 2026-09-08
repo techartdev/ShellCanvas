@@ -80,6 +80,96 @@ async fn connect_workspace(
     app: tauri::AppHandle,
     state: &crate::DesktopState,
 ) -> Result<crate::SessionInfo, String> {
+    let (active, info) = prepare_workspace(options, app, state).await?;
+    let connections = active.identities();
+    let status = active.status();
+    let id = state.next_id.fetch_add(1, Ordering::Relaxed) + 1;
+    state.registry.lock().await.sessions.insert(id, active);
+    Ok(crate::SessionInfo {
+        id,
+        info,
+        connections,
+        services: status.services,
+        custom_sources: status.custom_sources,
+        source_revision: status.source_revision,
+    })
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SourceReplacement {
+    #[serde(flatten)]
+    status: crate::workspace_services::WorkspaceStatus,
+    connections: Vec<ConnectionIdentity>,
+    cleanup_warning: Option<String>,
+}
+
+#[tauri::command]
+pub async fn replace_adapter_source(
+    session_id: u64,
+    expected: ConnectionIdentity,
+    options: AdapterConnectionOptions,
+    request_id: u64,
+    app: tauri::AppHandle,
+    state: State<'_, crate::DesktopState>,
+) -> Result<SourceReplacement, String> {
+    options.validate()?;
+    if options.sources.len() != 1 {
+        return Err("Replace one connection source at a time".into());
+    }
+    let canceled = state.attempts.lock().await.claim(request_id)?;
+    // Only preparation/lock acquisition is cancelable. Once committed, a late
+    // cancel cannot hide the accepted result or disconnect the whole workspace.
+    let prepared = crate::connection_attempts::cancellable(
+        canceled.clone(),
+        prepare_workspace(options, app, &state),
+    )
+    .await;
+    let result = async {
+        let (candidate, _) = prepared?;
+        let mut registry = crate::connection_attempts::cancellable(canceled.clone(), async {
+            Ok(state.registry.lock().await)
+        })
+        .await?;
+        let mut transfers = crate::connection_attempts::cancellable(canceled.clone(), async {
+            Ok(state.transfers.lock().await)
+        })
+        .await?;
+        if *canceled.borrow() {
+            return Err("Connection canceled".into());
+        }
+        let workspace = registry
+            .sessions
+            .get_mut(&session_id)
+            .ok_or("Workspace is closed")?;
+        let replaces_files =
+            workspace.is_source_for(&expected, &crate::workspace_services::ServiceRole::Files);
+        let retired = workspace.replace_source(&expected, candidate)?;
+        if replaces_files {
+            transfers.close_session(session_id);
+        }
+        let mut result = SourceReplacement {
+            status: workspace.status(),
+            connections: workspace.identities(),
+            cleanup_warning: None,
+        };
+        drop(transfers);
+        drop(registry);
+        result.cleanup_warning = retired.close().await.err().map(|error| {
+            format!("Connection replaced, but closing the previous connection failed: {error}")
+        });
+        Ok(result)
+    }
+    .await;
+    state.attempts.lock().await.finish(request_id);
+    result
+}
+
+async fn prepare_workspace(
+    options: AdapterConnectionOptions,
+    app: tauri::AppHandle,
+    state: &crate::DesktopState,
+) -> Result<(crate::workspace_services::WorkspaceServices, HostInfo), String> {
     let catalog = catalog(&app)?;
     let mut connections = Vec::new();
     for source in options.sources {
@@ -155,9 +245,6 @@ async fn connect_workspace(
         }
     }
     active.advertise_capabilities(&capabilities);
-    let connections = active.identities();
-    let services = active.status().services;
-    let custom_sources = active.custom_sources();
     let info = HostInfo {
         provider: "adapters".into(),
         system: "Adapter workspace".into(),
@@ -166,15 +253,7 @@ async fn connect_workspace(
         capabilities,
         notices,
     };
-    let id = state.next_id.fetch_add(1, Ordering::Relaxed) + 1;
-    state.registry.lock().await.sessions.insert(id, active);
-    Ok(crate::SessionInfo {
-        id,
-        info,
-        connections,
-        services,
-        custom_sources,
-    })
+    Ok((active, info))
 }
 
 struct Job {

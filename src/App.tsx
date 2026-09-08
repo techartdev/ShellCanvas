@@ -39,7 +39,12 @@ import { ContextMenu, type MenuAction } from "./components/ContextMenu";
 import { ConfirmDialog } from "./components/ConfirmDialog";
 import { ConnectDialog } from "./components/ConnectDialog";
 import { ConnectAdapterDialog } from "./components/ConnectAdapterDialog";
-import { defaultAdapterServices, type AdapterServices } from "./adapters";
+import {
+  defaultAdapterServices,
+  type AdapterServices,
+  type AdapterProfile,
+  type AdapterConnectionOptions,
+} from "./adapters";
 import { isAdapterProfile, type WorkspaceConnection } from "./workspaces";
 import { SettingsDialog } from "./components/SettingsDialog";
 import { usePreferences } from "./preferences";
@@ -52,6 +57,7 @@ import type {
   HostServices,
   HostKeyChallenge,
   Session,
+  ConnectionIdentity,
 } from "./sdk";
 import { unavailableReason } from "./sdk";
 import { SystemDialogHost } from "./components/SystemDialogHost";
@@ -199,9 +205,21 @@ export default function App({
     sessionId: number;
     connection: WorkspaceConnection;
   } | null>(null);
+  const [sourceTarget, setSourceTarget] = useState<{
+    sessionId: number;
+    sourceKey: string;
+    expected: ConnectionIdentity;
+    profile: AdapterProfile;
+  } | null>(null);
+  const sourceAttempt = useRef<{
+    sessionId: number;
+    controller: AbortController;
+  } | null>(null);
+  const [replacingSource, setReplacingSource] = useState(false);
   useEffect(
     () => () => {
       attempt.current?.abort();
+      sourceAttempt.current?.controller.abort();
       attempt.current = null;
     },
     [],
@@ -273,6 +291,19 @@ export default function App({
                 status === undefined
                   ? await services.alive(w.session!.id)
                   : !!status?.connected;
+              const current = workspaceState.current.items.find(
+                (item) => item.session?.id === w.session!.id,
+              );
+              if (
+                !current?.session ||
+                sourceAttempt.current?.sessionId === w.session!.id ||
+                (current.session.sourceRevision ?? 0) !==
+                  (w.session!.sourceRevision ?? 0) ||
+                (status &&
+                  (status.sourceRevision ?? 0) !==
+                    (current.session.sourceRevision ?? 0))
+              )
+                return;
               if (status && !disposed)
                 update({ type: "status", sessionId: w.session!.id, status });
               if (!alive && !disposed) {
@@ -298,7 +329,10 @@ export default function App({
     isNative,
     services,
     workspaces.items
-      .map((w) => `${w.key}:${w.session?.id}:${w.connected}`)
+      .map(
+        (w) =>
+          `${w.key}:${w.session?.id}:${w.connected}:${w.session?.sourceRevision}`,
+      )
       .join(","),
   ]);
   useEffect(() => {
@@ -353,6 +387,80 @@ export default function App({
     setSwitcherOpen(false);
     setError("");
     setConnectOpen(true);
+  }
+  function chooseSource(sourceKey: string) {
+    if (
+      !session ||
+      !connected ||
+      !workspace.connection ||
+      !isAdapterProfile(workspace.connection) ||
+      !adapterServices?.replaceSource ||
+      replacingSource ||
+      disconnectBusy ||
+      Object.values(desktop.instances).some((item) => item.busy)
+    )
+      return;
+    const index = workspace.connection.sources.findIndex(
+      (source) => source.key === sourceKey,
+    );
+    const expected = session.connections?.[index];
+    if (!expected) return;
+    const profile = {
+      ...workspace.connection,
+      sources: [workspace.connection.sources[index]],
+      bindings: Object.fromEntries(
+        Object.entries(workspace.connection.bindings).filter(
+          ([, key]) => key === sourceKey,
+        ),
+      ),
+    };
+    setSourceTarget({ sessionId: session.id, sourceKey, expected, profile });
+    setSwitcherOpen(false);
+    setError("");
+  }
+  async function replaceSource(
+    options: AdapterConnectionOptions,
+    profile: AdapterProfile,
+  ) {
+    const target = sourceTarget;
+    if (!target || !adapterServices?.replaceSource || sourceAttempt.current)
+      return;
+    const controller = new AbortController();
+    sourceAttempt.current = { sessionId: target.sessionId, controller };
+    setReplacingSource(true);
+    setError("");
+    try {
+      const result = await adapterServices.replaceSource(
+        target.sessionId,
+        target.expected,
+        options,
+        controller.signal,
+      );
+      update({
+        type: "source-replaced",
+        sessionId: target.sessionId,
+        sourceKey: target.sourceKey,
+        expected: target.expected,
+        profile,
+        result,
+      });
+      setSourceTarget(null);
+      setToast(
+        result.cleanupWarning ||
+          "Connection replaced. Other connections remain open.",
+      );
+    } catch (error) {
+      setError(String(error));
+    } finally {
+      sourceAttempt.current = null;
+      setReplacingSource(false);
+    }
+  }
+  function cancelSourceReplacement() {
+    sourceAttempt.current?.controller.abort();
+    setError(
+      "Canceling connection preparation. A replacement already applied will remain connected.",
+    );
   }
   function cancelConnection() {
     attempt.current?.abort();
@@ -700,6 +808,52 @@ export default function App({
                   {w.key === workspace.key && <Check size={15} />}
                 </button>
               ))}
+              {session &&
+                workspace.connection &&
+                isAdapterProfile(workspace.connection) &&
+                adapterServices?.replaceSource && (
+                  <>
+                    <div className="popover-heading">
+                      <span>Current connections</span>
+                    </div>
+                    {workspace.connection.sources.map((source) => (
+                      <button
+                        key={source.key}
+                        className="workspace-choice"
+                        disabled={
+                          !connected ||
+                          disconnectBusy ||
+                          replacingSource ||
+                          Object.values(desktop.instances).some(
+                            (item) => item.busy,
+                          )
+                        }
+                        onClick={() => chooseSource(source.key)}
+                      >
+                        <RotateCcw size={17} />
+                        <span>
+                          <strong>
+                            Replace{" "}
+                            {Object.entries(
+                              (workspace.connection as AdapterProfile).bindings,
+                            )
+                              .filter(([, key]) => key === source.key)
+                              .map(([role]) =>
+                                role === "console"
+                                  ? "Terminal"
+                                  : role === "files"
+                                    ? "Files"
+                                    : role,
+                              )
+                              .join(" + ")}{" "}
+                            connection
+                          </strong>
+                          <small>{source.id}</small>
+                        </span>
+                      </button>
+                    ))}
+                  </>
+                )}
               <button className="launcher-connect" onClick={showConnect}>
                 <Plus size={16} /> Connect another host
               </button>
@@ -1094,6 +1248,26 @@ export default function App({
               adapterServices.connect(options, signal),
             )
           }
+        />
+      )}
+      {sourceTarget && adapterServices && (
+        <ConnectAdapterDialog
+          services={adapterServices}
+          initial={sourceTarget.profile}
+          replacing
+          busy={replacingSource}
+          error={error}
+          cancel={cancelSourceReplacement}
+          close={() => {
+            if (!replacingSource) setSourceTarget(null);
+          }}
+          manage={() => {
+            if (!replacingSource) {
+              setSourceTarget(null);
+              openApp("apps");
+            }
+          }}
+          submit={replaceSource}
         />
       )}
       {menu && <ContextMenu {...menu} close={closeMenu} />}

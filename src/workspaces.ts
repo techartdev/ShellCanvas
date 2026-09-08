@@ -6,7 +6,8 @@ import {
   type DesktopState,
 } from "./desktop";
 import type { ConnectOptions, DesktopApp, HostProfile, Session } from "./sdk";
-import type { AdapterProfile } from "./adapters";
+import type { AdapterProfile, SourceReplacement } from "./adapters";
+import type { ConnectionIdentity } from "./sdk";
 export type WorkspaceConnection = HostProfile | AdapterProfile;
 export function isAdapterProfile(
   connection: WorkspaceConnection,
@@ -67,6 +68,14 @@ export interface Workspaces {
 }
 export type WorkspaceAction =
   | {
+      type: "source-replaced";
+      sessionId: number;
+      sourceKey: string;
+      expected: ConnectionIdentity;
+      result: SourceReplacement;
+      profile: AdapterProfile;
+    }
+  | {
       type: "connected";
       session: Session;
       label: string;
@@ -116,12 +125,73 @@ export function updateWorkspaces(
   apps: readonly DesktopApp[],
 ): Workspaces {
   switch (action.type) {
+    case "source-replaced": {
+      const target = state.items.find(
+        (w) => w.session?.id === action.sessionId,
+      );
+      if (
+        !target?.session ||
+        !target.connection ||
+        !isAdapterProfile(target.connection)
+      )
+        return state;
+      const index = target.connection.sources.findIndex(
+        (source) => source.key === action.sourceKey,
+      );
+      if (
+        index < 0 ||
+        JSON.stringify(target.session.connections?.[index]) !==
+          JSON.stringify(action.expected) ||
+        action.result.sourceRevision <= (target.session.sourceRevision ?? 0)
+      )
+        return state;
+      const replacement = action.profile.sources.find(
+        (source) => source.key === action.sourceKey,
+      );
+      if (!replacement) return state;
+      const connection: AdapterProfile = {
+        ...target.connection,
+        sources: target.connection.sources.map((source, i) =>
+          i === index ? replacement : source,
+        ),
+      };
+      return {
+        ...state,
+        items: state.items.map((w) =>
+          w !== target
+            ? w
+            : {
+                ...w,
+                connection,
+                connected: action.result.connected,
+                session: {
+                  ...target.session!,
+                  sourceRevision: action.result.sourceRevision,
+                  connections: action.result.connections,
+                  services: action.result.services,
+                  customSources: action.result.customSources,
+                  info: {
+                    ...target.session!.info,
+                    capabilities: action.result.services
+                      .filter((item) => item.state === "available")
+                      .map((item) => item.capability),
+                  },
+                },
+              },
+        ),
+      };
+    }
     case "status": {
       const target = state.items.find(
         (w) => w.session?.id === action.sessionId,
       );
       // A late poll must never revive a closed or replaced workspace.
       if (!target?.session || target.connected === false) return state;
+      if (
+        (target.session.sourceRevision ?? 0) !==
+        (action.status.sourceRevision ?? 0)
+      )
+        return state;
       if (
         target.connected === action.status.connected &&
         JSON.stringify(target.session.services) ===

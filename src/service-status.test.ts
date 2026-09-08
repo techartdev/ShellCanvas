@@ -12,8 +12,84 @@ import {
 } from "./sdk";
 import { initialWorkspaces, updateWorkspaces } from "./workspaces";
 import type { TransferOutcome } from "./sdk";
+import type { AdapterProfile } from "./adapters";
 
 const source = { instance: 1, generation: 1, adapter: "fixture-files" };
+it("accepts a source replacement once, preserves windows and other settings, and ignores earlier or unaccepted polls", () => {
+  const initial = {
+    ...session("available"),
+    sourceRevision: 0,
+    connections: [source, { ...source, instance: 2 }],
+  };
+  const profile: AdapterProfile = {
+    kind: "adapters",
+    name: "Mixed",
+    sources: [
+      {
+        key: "file",
+        id: "files",
+        revision: "v1",
+        configuration: { address: "old" },
+      },
+      {
+        key: "console",
+        id: "console",
+        revision: "v1",
+        configuration: { address: "unchanged" },
+      },
+    ],
+    bindings: { files: "file", console: "console" },
+  };
+  let state = initialWorkspaces(apps, initial, profile);
+  const desktop = state.items[1].desktop;
+  const result = {
+    sourceRevision: 1,
+    connected: true,
+    services: initial.services!,
+    customSources: {},
+    connections: [{ ...source, instance: 50 }, initial.connections[1]],
+  };
+  expect(
+    updateWorkspaces(
+      state,
+      { type: "status", sessionId: initial.id, status: result },
+      apps,
+    ),
+  ).toBe(state);
+  const action = {
+    type: "source-replaced" as const,
+    sessionId: initial.id,
+    sourceKey: "file",
+    expected: source,
+    result,
+    profile: {
+      ...profile,
+      sources: [{ ...profile.sources[0], configuration: { address: "new" } }],
+    },
+  };
+  state = updateWorkspaces(state, action, apps);
+  expect(state.items[1].desktop).toBe(desktop);
+  expect((state.items[1].connection as AdapterProfile).sources[1]).toEqual(
+    profile.sources[1],
+  );
+  expect(
+    (state.items[1].connection as AdapterProfile).sources[0].configuration
+      .address,
+  ).toBe("new");
+  expect(state.items[1].session!.sourceRevision).toBe(1);
+  expect(updateWorkspaces(state, action, apps)).toBe(state);
+  expect(
+    updateWorkspaces(
+      state,
+      {
+        type: "status",
+        sessionId: initial.id,
+        status: { ...result, sourceRevision: 0, connected: false },
+      },
+      apps,
+    ),
+  ).toBe(state);
+});
 it("carries custom source changes without rebuilding the desktop and preserves metadata omitted by older backends", () => {
   const initial = {
     ...session("available"),

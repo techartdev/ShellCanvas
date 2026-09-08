@@ -2,7 +2,7 @@
 
 `crates/adapter-runtime` can launch a separately compiled, trusted executable and consume its services without linking its protocol implementation into the host. It supplies version negotiation, service discovery, concurrent calls, cancellation, process teardown, and bridges to the existing `ConnectionLifecycle`, `FileSystemProvider` and `TerminalService` interfaces.
 
-The desktop now provides [reviewed adapter installation and connection configuration](adapter-packages.md), including independent file and console sources. Custom-service routing into runtime app permissions and independent workspace binding replacement remain to be integrated. The synthetic adapter implements neither FTP nor serial.
+The desktop provides [reviewed adapter installation and connection configuration](adapter-packages.md), independent file and console sources, custom-service routing into runtime app permissions and independent source replacement. The synthetic adapter implements neither FTP nor serial.
 
 ## Launch and trust
 
@@ -107,4 +107,4 @@ cargo clippy -p shellcanvas-adapter-runtime --all-targets --locked -- -D warning
 
 The tests compile and launch `fixture-adapter` as a separate executable. They cover version/catalog rejection, oversized/malformed output, process exit, out-of-order/late replies, cancellation, concurrency capacity recovery, shared close results, independent processes, 20,000 paged file entries, opaque locations, binary consoles, simultaneous read/write, fixed-size consoles and abandoned-open cleanup. These are real local processes with fake device data, not in-process service mocks or tests of a live remote protocol. The fixture binary is test scaffolding, not an adapter to install in production.
 
-Reviewed packages and configuration UI now connect these service objects to production workspace composition. Selected [custom services](custom-services.md) also route to installed apps with explicit grants and connection ownership. Next steps include text/mutation/transfer/settings bridges, independent service generation replacement, a standalone adapter SDK/schema/starter and cross-platform process evidence. The full [kernel roadmap](kernel-roadmap.md) remains active.
+Reviewed packages and configuration UI connect these service objects to production workspace composition and independent source replacement. Selected [custom services](custom-services.md) route to installed apps with explicit grants and connection ownership. Next steps include text/mutation/transfer/settings bridges, a standalone adapter SDK/schema/starter and cross-platform process evidence. The full [kernel roadmap](kernel-roadmap.md) remains active.
