@@ -26,6 +26,7 @@ pub struct ServiceStatus {
 pub struct WorkspaceStatus {
     pub connected: bool,
     pub services: Vec<ServiceStatus>,
+    pub custom_sources: std::collections::BTreeMap<String, ConnectionIdentity>,
 }
 
 #[derive(Clone)]
@@ -398,6 +399,15 @@ impl WorkspaceServices {
             .flat_map(|binding| binding.methods())
             .collect()
     }
+    pub fn custom_sources(&self) -> std::collections::BTreeMap<String, ConnectionIdentity> {
+        self.selected
+            .iter()
+            .filter_map(|(role, source)| match role {
+                ServiceRole::Custom(id) => Some((id.clone(), source.identity().clone())),
+                _ => None,
+            })
+            .collect()
+    }
     pub fn custom_method(
         &self,
         method: &str,
@@ -462,6 +472,7 @@ impl WorkspaceServices {
         WorkspaceStatus {
             connected: self.is_connected(),
             services,
+            custom_sources: self.custom_sources(),
         }
     }
     /// Discovery can narrow an interface's operation support (for example,

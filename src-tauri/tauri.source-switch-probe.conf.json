@@ -1,0 +1,20 @@
+{
+  "productName": "ShellCanvas Source Probe",
+  "identifier": "dev.shellcanvas.extensionprobe",
+  "build": {
+    "beforeBuildCommand": "node scripts/build-extension-probe.mjs",
+    "frontendDist": "../.local/native-extension-probe/dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "ShellCanvas source switching probe",
+        "url": "tests/fixtures/source-switch-probe.html",
+        "width": 1360,
+        "height": 900,
+        "visible": false
+      }
+    ]
+  }
+}

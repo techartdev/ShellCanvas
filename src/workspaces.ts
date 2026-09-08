@@ -125,7 +125,11 @@ export function updateWorkspaces(
       if (
         target.connected === action.status.connected &&
         JSON.stringify(target.session.services) ===
-          JSON.stringify(action.status.services)
+          JSON.stringify(action.status.services) &&
+        JSON.stringify(target.session.customSources) ===
+          JSON.stringify(
+            action.status.customSources ?? target.session.customSources,
+          )
       )
         return state;
       return {
@@ -139,6 +143,9 @@ export function updateWorkspaces(
                 session: {
                   ...target.session!,
                   services: action.status.services,
+                  customSources:
+                    action.status.customSources ??
+                    target.session!.customSources,
                   info: {
                     ...target.session!.info,
                     capabilities: action.status.services

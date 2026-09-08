@@ -86,8 +86,9 @@ it("availability updates cannot silently repin an accepted app service", async (
     services: [{ capability: "files.read", state: "available", source: next }],
   };
   owner.updateAvailability(replaced);
-  await owner.services.list();
-  expect(invoke.mock.lastCall?.[1].binding).toEqual(first);
+  const before = invoke.mock.calls.length;
+  await expect(owner.services.list()).rejects.toThrow("no longer connected");
+  expect(invoke.mock.calls.length).toBe(before);
   const accepted = bindSession(nativeServices, replaced);
   await accepted.services.list();
   expect(invoke.mock.lastCall?.[1].binding).toEqual(next);

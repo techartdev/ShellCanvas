@@ -28,6 +28,8 @@ export function Terminal({
   const { values: preferences } = usePreferences();
   const preferencesRef = useRef(preferences);
   preferencesRef.current = preferences;
+  const reportErrorRef = useRef(reportError);
+  reportErrorRef.current = reportError;
   const refit = useRef<(() => void) | null>(null);
   useEffect(() => {
     const terminal = instance.current;
@@ -221,9 +223,11 @@ export function Terminal({
       input.dispose();
       resize.dispose();
       terminal.dispose();
-      void remote?.close().catch((error) => reportError(String(error)));
+      void remote
+        ?.close()
+        .catch((error) => reportErrorRef.current(String(error)));
     };
-  }, [session?.id, services, attempt, reportError]);
+  }, [session?.id, services, attempt]);
   return (
     <div className="terminal-app">
       <div className="terminal-tabs">

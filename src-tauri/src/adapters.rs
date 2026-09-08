@@ -157,6 +157,7 @@ async fn connect_workspace(
     active.advertise_capabilities(&capabilities);
     let connections = active.identities();
     let services = active.status().services;
+    let custom_sources = active.custom_sources();
     let info = HostInfo {
         provider: "adapters".into(),
         system: "Adapter workspace".into(),
@@ -172,6 +173,7 @@ async fn connect_workspace(
         info,
         connections,
         services,
+        custom_sources,
     })
 }
 

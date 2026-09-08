@@ -2,6 +2,7 @@
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useReducer,
   useRef,
@@ -36,6 +37,7 @@ import "./Editor.css";
 import { usePreferences } from "../preferences";
 import { SaveAsDialog } from "../components/SaveAsDialog";
 import { watchFileLocations } from "../file-events";
+import { fileSourceKey } from "../workspace-bindings";
 
 export function Editor({
   session,
@@ -49,6 +51,15 @@ export function Editor({
 }: AppContext) {
   const { values: preferences, set: setPreference } = usePreferences();
   const [document, setDocument] = useState<TextDocument | null>(null);
+  const sourceKey = fileSourceKey(session);
+  const [documentSource, setDocumentSource] = useState(sourceKey);
+  const launchSource = useRef(sourceKey);
+  const sourceChanged = !!document && documentSource !== sourceKey;
+  const suggestedDirectory = (
+    document ? !sourceChanged : launchSource.current === sourceKey
+  )
+    ? (document?.parent ?? launch?.directory)
+    : undefined;
   const clipboardRevision = useRef(0);
   const clipboardOperation = useRef(0);
   const clipboardScope = useRef({ sessionId: session?.id, connected, active });
@@ -93,23 +104,45 @@ export function Editor({
       gutter.current.scrollTop = textarea.current.scrollTop;
   }, [wrap, preferences.editorLineNumbers, preferences.editorFontSize]);
   const request = useRef(0);
-  useEffect(() => {
+  useLayoutEffect(() => {
     ++request.current;
     setBusy(false);
     setSaveAs(null);
     setPendingPath(null);
   }, [services, setBusy]);
-  const locationState = useRef({ document, path, saveAs, pendingPath });
-  locationState.current = { document, path, saveAs, pendingPath };
+  const previousSource = useRef(sourceKey);
+  useLayoutEffect(() => {
+    if (previousSource.current !== sourceKey) setPath("");
+    previousSource.current = sourceKey;
+  }, [sourceKey]);
+  const locationState = useRef({
+    document,
+    path,
+    saveAs,
+    pendingPath,
+    documentSource,
+    sourceKey,
+  });
+  locationState.current = {
+    document,
+    path,
+    saveAs,
+    pendingPath,
+    documentSource,
+    sourceKey,
+  };
   useEffect(() => {
     relocatingRef.current = false;
     setRelocating(false);
     if (!session) return;
     return watchFileLocations(session.id, {
       snapshot: () => ({
-        paths: locationState.current.document
-          ? [locationState.current.document.path]
-          : [],
+        paths:
+          locationState.current.document &&
+          locationState.current.documentSource ===
+            locationState.current.sourceKey
+            ? [locationState.current.document.path]
+            : [],
         busy:
           busyRef.current ||
           locationState.current.saveAs !== null ||
@@ -121,6 +154,7 @@ export function Editor({
       },
       relocated: (mappings) => {
         const current = locationState.current;
+        if (current.documentSource !== current.sourceKey) return;
         const match = mappings.find(
           (m) => m.previous === current.document?.path,
         );
@@ -139,7 +173,7 @@ export function Editor({
         setStatus("File location updated");
       },
     });
-  }, [session?.id]);
+  }, [session?.id, sourceKey]);
   const lineCount = useMemo(
     () => buffer.text.split("\n").length,
     [buffer.text],
@@ -150,6 +184,7 @@ export function Editor({
   );
   const dirty = buffer.text !== normaliseText(document?.text ?? "");
   const canSave =
+    !sourceChanged &&
     !!document?.writable &&
     !!session?.info.capabilities.includes("files.edit") &&
     connected &&
@@ -198,6 +233,7 @@ export function Editor({
         path: result.path,
       };
       setDocument(result);
+      setDocumentSource(sourceKey);
       setPath(result.path);
       edit({ type: "load", text: result.text });
       setStatus(
@@ -250,7 +286,7 @@ export function Editor({
     try {
       const selected = await system.dialogs.openFile({
         title: "Open a text file",
-        directory: document?.parent ?? launch?.directory,
+        directory: suggestedDirectory,
       });
       if (current !== request.current || !selected?.[0]) return;
       setBusy(false);
@@ -295,6 +331,7 @@ export function Editor({
       );
       if (current !== request.current) return;
       setDocument(result);
+      setDocumentSource(sourceKey);
       setStatus("Saved to remote host");
       locationState.current = { ...locationState.current, document: result };
     } catch (error) {
@@ -312,7 +349,7 @@ export function Editor({
       try {
         const saved = await system.files.saveTextAs({
           title: "Save text file",
-          directory: document?.parent ?? launch?.directory,
+          directory: suggestedDirectory,
           name: document?.name ?? "untitled.txt",
           text: serialiseText(
             buffer.text,
@@ -326,6 +363,7 @@ export function Editor({
           path: saved.path,
         };
         setDocument(saved);
+        setDocumentSource(sourceKey);
         setPath(saved.path);
         setStatus("Saved to remote host");
       } catch (error) {
@@ -335,7 +373,7 @@ export function Editor({
       }
       return;
     }
-    const parent = document?.parent ?? launch?.directory;
+    const parent = suggestedDirectory;
     if (parent !== undefined && parent !== null) {
       setSaveAs(parent);
       return;
@@ -459,6 +497,14 @@ export function Editor({
         }
       }}
     >
+      {sourceChanged && (
+        <div className="editor-source-notice" role="status">
+          Connection changed. Your draft is kept here.{" "}
+          {canCreate
+            ? "Use Save As to save a copy, or open a file from this connection."
+            : "Copy your draft to keep it, or open a file from this connection."}
+        </div>
+      )}
       <div className="editor-toolbar">
         <form
           onSubmit={(event) => {
@@ -543,8 +589,8 @@ export function Editor({
         </button>
         <button
           aria-label="Reload remote file"
-          disabled={busy || !document || !connected}
-          onClick={() => document && open(document.path)}
+          disabled={busy || !document || !connected || sourceChanged}
+          onClick={() => document && !sourceChanged && open(document.path)}
         >
           <RefreshCw size={14} /> Reload
         </button>
@@ -777,6 +823,7 @@ export function Editor({
               path: saved.path,
             };
             setDocument(saved);
+            setDocumentSource(sourceKey);
             setPath(saved.path);
             setError("");
             setStatus("Saved to remote host");

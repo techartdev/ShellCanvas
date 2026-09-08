@@ -2,7 +2,7 @@
 import { useLayoutEffect, useMemo } from "react";
 import type { DesktopRuntime } from "../extensions/desktop-runtime";
 import { focusedApp, instanceTitle, type DesktopAction } from "../desktop";
-import { bindSession } from "../session-services";
+import { WorkspaceBindings } from "../workspace-bindings";
 import type { AppContext, HostServices } from "../sdk";
 import type { Workspace } from "../workspaces";
 import { AppWindow } from "./AppWindow";
@@ -26,22 +26,31 @@ export function WorkspaceWindows({
   connect(): void;
   reportError(message: string): void;
 }) {
-  // Switching keeps the handle. An explicit reconnect gets a fresh generation.
-  const binding = useMemo(
-    () => bindSession(backend, workspace.session, reportError),
+  const bindings = useMemo(
+    () => new WorkspaceBindings(backend, reportError),
     [backend, workspace.session?.id],
   );
+  const plan = useMemo(
+    () =>
+      bindings.prepare(
+        workspace.session,
+        new Map(
+          Object.entries(workspace.desktop.instances).flatMap(
+            ([id, instance]) => {
+              const app = runtime.resolve(instance);
+              return app ? [[id, app] as const] : [];
+            },
+          ),
+        ),
+      ),
+    [bindings, workspace.session, workspace.desktop.instances, runtime],
+  );
   useLayoutEffect(() => {
-    binding.updateAvailability(workspace.session);
-  }, [binding, workspace.session]);
-  useLayoutEffect(() => {
-    if (workspace.connected !== false) binding.activate();
-    else binding.dispose();
-    return binding.dispose;
-  }, [binding, workspace.connected]);
-  const context: AppContext = {
+    bindings.commit(plan, workspace.connected !== false);
+  }, [bindings, plan, workspace.connected]);
+  useLayoutEffect(() => () => bindings.dispose(), [bindings]);
+  const context: Omit<AppContext, "services"> = {
     session: workspace.session,
-    services: binding.services,
     preview,
     active,
     connect,
@@ -93,6 +102,7 @@ export function WorkspaceWindows({
             cascade={instance.ordinal - 1}
             context={{
               ...context,
+              services: plan.windows.get(id)!.record.binding.services,
               active: active && !workspace.desktop.minimized.includes(id),
               launch: instance.launch,
               setDocumentState: (state) =>

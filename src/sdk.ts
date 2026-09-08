@@ -125,6 +125,8 @@ export interface Session {
   connections?: readonly ConnectionIdentity[];
   /** Complete capability snapshot when supplied by the backend. */
   services?: readonly ServiceStatus[];
+  /** Selected custom-service sources, independently of current availability. */
+  customSources?: Readonly<Record<string, ConnectionIdentity>>;
 }
 export interface ServiceStatus {
   capability: Capability;
@@ -135,6 +137,7 @@ export interface ServiceStatus {
 export interface WorkspaceStatus {
   connected: boolean;
   services: readonly ServiceStatus[];
+  customSources?: Readonly<Record<string, ConnectionIdentity>>;
 }
 export function capabilityStatus(
   session: Session,

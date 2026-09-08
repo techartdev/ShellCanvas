@@ -14,6 +14,45 @@ import { initialWorkspaces, updateWorkspaces } from "./workspaces";
 import type { TransferOutcome } from "./sdk";
 
 const source = { instance: 1, generation: 1, adapter: "fixture-files" };
+it("carries custom source changes without rebuilding the desktop and preserves metadata omitted by older backends", () => {
+  const initial = {
+    ...session("available"),
+    customSources: { "acme.sensor": source },
+  };
+  let state = initialWorkspaces(apps, initial);
+  const desktop = state.items[1].desktop;
+  const status = { connected: true, services: initial.services! };
+  state = updateWorkspaces(
+    state,
+    { type: "status", sessionId: initial.id, status },
+    apps,
+  );
+  expect(state.items[1].session!.customSources).toEqual(initial.customSources);
+  const replacement = { ...source, instance: 55 };
+  state = updateWorkspaces(
+    state,
+    {
+      type: "status",
+      sessionId: initial.id,
+      status: { ...status, customSources: { "acme.sensor": replacement } },
+    },
+    apps,
+  );
+  expect(state.items[1].desktop).toBe(desktop);
+  expect(state.items[1].session!.customSources).toEqual({
+    "acme.sensor": replacement,
+  });
+  state = updateWorkspaces(
+    state,
+    {
+      type: "status",
+      sessionId: initial.id,
+      status: { ...status, customSources: {} },
+    },
+    apps,
+  );
+  expect(state.items[1].session!.customSources).toEqual({});
+});
 it("cancels affected transfer tickets and refuses late download confirmation", async () => {
   let finish!: (value: TransferOutcome) => void;
   const cancelTransfer = vi.fn(async () => {});

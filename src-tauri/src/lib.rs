@@ -48,6 +48,7 @@ struct SessionInfo {
     info: HostInfo,
     connections: Vec<ConnectionIdentity>,
     services: Vec<workspace_services::ServiceStatus>,
+    custom_sources: std::collections::BTreeMap<String, ConnectionIdentity>,
 }
 fn error(e: impl std::fmt::Display) -> String {
     e.to_string()
@@ -236,12 +237,14 @@ async fn connect_session(
     let connections = active.identities();
     active.advertise_capabilities(&info.capabilities);
     let services = active.status().services;
+    let custom_sources = active.custom_sources();
     state.registry.lock().await.sessions.insert(id, active);
     Ok(SessionInfo {
         id,
         info,
         connections,
         services,
+        custom_sources,
     })
 }
 

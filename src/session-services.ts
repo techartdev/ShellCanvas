@@ -21,12 +21,21 @@ export function bindSession(
   backend: HostServices,
   session: Session | null,
   reportError: (message: string) => void = console.warn,
+  options: { clipboardLifecycle?: boolean } = {},
 ) {
   if (session && backend.bindSources) backend = backend.bindSources(session);
   let closed = false;
   let generation = 0;
   let lifetimeEpoch = 0;
   let currentSession = session;
+  const acceptedSources = new Map(
+    (Object.keys(capabilityLabels) as Capability[]).map((cap) => [
+      cap,
+      JSON.stringify(
+        session ? (capabilityStatus(session, cap).source ?? null) : null,
+      ),
+    ]),
+  );
   const changedAt = new Map<Capability, number>();
   const tickets = new Map<number, TransferTicket>();
   const customCalls = new Set<AbortController>();
@@ -51,7 +60,12 @@ export function bindSession(
       closed ||
       !session ||
       expected < lifetimeEpoch ||
-      expected < (changedAt.get(capability) ?? 0)
+      expected < (changedAt.get(capability) ?? 0) ||
+      JSON.stringify(
+        currentSession
+          ? (capabilityStatus(currentSession, capability).source ?? null)
+          : null,
+      ) !== acceptedSources.get(capability)
     )
       throw new Error("This host session is no longer connected");
     if (
@@ -430,7 +444,10 @@ export function bindSession(
       if (!changes.length) return;
       ++generation;
       changes.forEach((cap) => changedAt.set(cap, generation));
-      if (changes.includes("files.move") || changes.includes("files.read")) {
+      if (
+        options.clipboardLifecycle !== false &&
+        (changes.includes("files.move") || changes.includes("files.read"))
+      ) {
         fileClipboard(services).dispose();
         if (valid("files.move", generation)) fileClipboard(services).activate();
       }
@@ -445,7 +462,8 @@ export function bindSession(
     },
     activate: () => {
       closed = false;
-      fileClipboard(services).activate();
+      if (options.clipboardLifecycle !== false)
+        fileClipboard(services).activate();
     },
     dispose: () => {
       closed = true;
@@ -453,7 +471,8 @@ export function bindSession(
       customCalls.clear();
       ++generation;
       lifetimeEpoch = generation;
-      fileClipboard(services).dispose();
+      if (options.clipboardLifecycle !== false)
+        fileClipboard(services).dispose();
       for (const id of tickets.keys())
         void backend
           .cancelTransfer(session!.id, id)

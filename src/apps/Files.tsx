@@ -2,6 +2,7 @@
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -49,6 +50,7 @@ import { TransferQueue, pendingTransfer } from "../transfer-queue";
 import { TransferPanel } from "../components/TransferPanel";
 import { selectFiles } from "../file-selection";
 import { DeleteFilesDialog } from "../components/DeleteFilesDialog";
+import { fileSourceKey } from "../workspace-bindings";
 function size(bytes: number) {
   return bytes >= 1024 * 1024
     ? `${(bytes / 1048576).toFixed(1)} MB`
@@ -67,6 +69,8 @@ export function Files({
   reportError,
   setDocumentState,
 }: AppContext) {
+  const sourceKey = fileSourceKey(session);
+  const previousSource = useRef(sourceKey);
   const {
     values: preferences,
     set: setPreference,
@@ -393,7 +397,7 @@ export function Files({
         setDocument(next.document);
       },
     });
-  }, [session?.id]);
+  }, [session?.id, sourceKey]);
   useEffect(
     () =>
       session
@@ -401,7 +405,7 @@ export function Files({
             refresh.current(kind === "relocation"),
           )
         : undefined,
-    [session?.id],
+    [session?.id, sourceKey],
   );
   useEffect(() => {
     if (!active) closeMenu();
@@ -698,14 +702,52 @@ export function Files({
       if (current === request.current) setLoading(false);
     }
   }
-  useEffect(() => {
+  useLayoutEffect(() => {
+    const changed = previousSource.current !== sourceKey;
+    previousSource.current = sourceKey;
+    if (changed) {
+      const empty = {
+        path: "",
+        name: "Files",
+        parent: null,
+        home: null,
+        roots: [],
+        entries: [],
+      };
+      view.current = {
+        ...view.current,
+        directory: empty,
+        pathInput: "",
+        history: [],
+        selected: null,
+        selection: [],
+        document: null,
+      };
+      setDirectory(empty);
+      setPathInput("");
+      setHistory([]);
+      setSelected(null);
+      setSelection([]);
+      selectionAnchor.current = null;
+      setDocument(null);
+      setMoveTarget(null);
+      setDeleteTarget(null);
+      setOperation(null);
+      closeMenu();
+      setBusy(false);
+      relocatingRef.current = false;
+    }
     if (!connected) setLoading(false);
-    else void navigate(directory.path || launch?.path, false);
+    else
+      void navigate(
+        changed ? undefined : directory.path || launch?.path,
+        false,
+      );
     return () => {
       ++request.current;
       ++previewRequest.current;
     };
-  }, [session?.id, connected]);
+  }, [session?.id, sourceKey, connected]);
   async function open(entry: FileEntry) {
     if (!connected || relocatingRef.current) return;
     if (entry.kind === "directory") {

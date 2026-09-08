@@ -18,6 +18,15 @@
   border-bottom: 1px solid #7895a218;
   flex-shrink: 0;
 }
+.editor-source-notice {
+  flex-shrink: 0;
+  padding: 10px 14px;
+  background: #bfa67514;
+  border-bottom: 1px solid #bfa67530;
+  color: #dbc79e;
+  font-size: 11px;
+  line-height: 1.6;
+}
 .editor-toolbar form {
   min-width: 0;
   flex: 1;

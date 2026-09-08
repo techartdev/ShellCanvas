@@ -34,7 +34,22 @@ This is a native construction API, **not yet an exposed desktop replacement feat
 
 Transfer preparation revalidates the original source after native pickers and before registering tickets. Each ticket retains its selected provider; starting it never resolves a new provider from the workspace. Directory scans and delayed Explorer streams use that same retained service. Existing stream/ticket identities continue to authorize cleanup after source retirement. Backend decorators must wrap `bindSources` results too, so instrumentation does not disappear when handles are captured.
 
-The desktop still needs per-source acceptance, affected-operation cancellation and a replacement flow that preserves unaffected terminals and windows. In particular, an old editor document or selected path must not be sent through newly accepted services without an explicit document workflow. The replacement command remains unexposed until that coordination is in place.
+The desktop assigns service handles per window using the app's declared standard and custom services. A source identity change gives affected apps a new handle; unrelated apps retain theirs. Availability changes update the existing handle without repinning it. Native status includes selected custom-service sources even when a service is temporarily unavailable. Binding plans have no activation/retirement effects until React commits them.
+
+Files resets navigation, selections and pending actions to the replacement provider's default root. Editor preserves its draft and undo history, clears the old address and disables Save/Reload for the detached document. Open and Save As start at the new provider's default rather than carrying the old provider's locations into it. Successful Save As attaches the draft to the resulting document. File clipboard ownership survives changes to unrelated sources and remains shared with newly opened Files windows; changing the file source retires that clipboard state. Terminal does not restart because its parent supplies a different error callback.
+
+The production replacement command and switching UI remain unexposed. They still need preparation/commit cancellation coordination, app acceptance integration and protection against stale status polls. The existing runtime-app reconnect approval mechanism is available to use with the affected window scopes.
+
+### Desktop source-switch probe
+
+`tests/fixtures/source-switch-probe.html` renders the real Files, Terminal, Editor and shared dialogs with two synthetic file sources and an independent echo console. The source changes without changing the logical workspace ID. It checks retained editor/terminal elements, console input, draft/undo retention, disabled old Save/Reload, and Save As through the new provider. The fixture rejects any old provider location sent to the replacement. It does not exercise a real protocol, the future replacement command, or the user's clipboard.
+
+```powershell
+npm run tauri -- build --debug --no-bundle --config src-tauri/tauri.source-switch-probe.conf.json
+node scripts/run-extension-probe.mjs
+```
+
+The runner records `.local/native-extension-probe/result.json`. Restore the normal desktop executable after running the probe with `npm run verify -- --native`. The same fixture runs through the development server for browser inspection. Unit tests in `src/workspace-bindings.test.ts` additionally cover independent custom sources, clipboard ownership across window creation/closure, abandoned plans and late results.
 
 The ownership regression suite covers independent FTP-like files and serial-like console sources, failure of the file leg with continued console byte I/O, shared leases across workspaces, last-owner release, duplicate/foreign binding refusal, file-source isolation, delayed reads, uncertain writes, late console cleanup, transfer I/O refusal and abort after closure. Replacement cases additionally cover a surviving open console, abandoned/rejected/competing proposals, retired-generation reuse, capability loss/recovery, post-commit cleanup failure and preserved custom bindings. They use fake adapters through real neutral service interfaces; they do not implement FTP or serial protocols.
 
