@@ -10,11 +10,65 @@ use sha1::Sha1;
 use std::{fs::File, io::Read, path::Path};
 
 const MAX_KNOWN_HOSTS: u64 = 4 * 1024 * 1024;
+pub use russh::keys::PublicKey as HostPublicKey;
+
+pub fn user_known_hosts_path() -> Result<std::path::PathBuf> {
+    Ok(dirs::home_dir()
+        .context("Cannot locate your home directory")?
+        .join(".ssh/known_hosts"))
+}
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum HostKeyStatus {
     Trusted,
     Unknown,
+}
+
+/// A key seen before authentication, not a grant to trust it. Keep this typed:
+/// callers must never turn mismatch/policy errors into enrollment prompts.
+#[derive(Clone, Debug)]
+pub struct UnknownHostKey {
+    pub host: String,
+    pub port: u16,
+    pub key: keys::PublicKey,
+}
+impl std::fmt::Display for UnknownHostKey {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "Unknown host key for {}:{}. No key was accepted or saved.",
+            self.host, self.port
+        )
+    }
+}
+impl std::error::Error for UnknownHostKey {}
+impl UnknownHostKey {
+    pub fn fingerprint(&self) -> String {
+        self.key.fingerprint(keys::HashAlg::Sha256).to_string()
+    }
+}
+
+pub fn verify_host_key_with_store(
+    host: &str,
+    port: u16,
+    key: &keys::PublicKey,
+    known_hosts: &Path,
+    additional: Option<&Path>,
+) -> Result<()> {
+    let primary = assess_host_key(host, port, key, known_hosts)?;
+    let secondary = match additional {
+        Some(path) => assess_host_key(host, port, key, path)?,
+        None => HostKeyStatus::Unknown,
+    };
+    if primary == HostKeyStatus::Trusted || secondary == HostKeyStatus::Trusted {
+        return Ok(());
+    }
+    Err(UnknownHostKey {
+        host: host.to_ascii_lowercase(),
+        port,
+        key: key.clone(),
+    }
+    .into())
 }
 
 /// '*' and '?' only, with literal brackets/colons (including [host]:port).

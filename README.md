@@ -34,7 +34,7 @@ Windows output: `target/debug/shellcanvas.exe`. This debug build is for local ev
 - Real SSH connections with private-key/passphrase or password authentication.
 - Multiple simultaneous host workspaces. Use the host pill in the top bar to switch; each workspace keeps its Files navigation, terminal buffer and window layout. Add host opens another connection; Disconnect closes only the selected host.
 - Cancel pending connections and reconnect a lost host in its existing workspace, preserving folders, windows and editor drafts. Reconnection opens fresh shells. [Recovery behavior and limits](docs/connection-recovery.md).
-- Strict verification against the user's existing `~/.ssh/known_hosts`. Unknown and changed keys are refused. No automatic trust enrollment or security downgrade.
+- Strict verification against the user's `~/.ssh/known_hosts` and ShellCanvas's own trust store. New hosts require explicit fingerprint review; changed/revoked keys remain blocked before authentication. No automatic trust enrollment or security downgrade.
 - Import of basic, explicit `Host` blocks from `~/.ssh/config`. Select the profile and supply any missing username.
 - Save, edit and remove named host profiles in the native connection dialog. Saved entries live in the application data directory, independently of SSH config; passwords and passphrases are excluded. Use **Save host** before connecting if you want to keep an entry.
 - An xterm.js terminal with binary output streaming, input, PTY resize, and independent SSH channels.

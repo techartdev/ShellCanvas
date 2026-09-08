@@ -2,6 +2,7 @@
 import { Channel, invoke, isTauri } from "@tauri-apps/api/core";
 import type {
   HostServices,
+  HostKeyChallenge,
   Session,
   TerminalEvent,
   TransferProgress,
@@ -35,7 +36,7 @@ export const nativeServices: HostServices = {
   profiles: () => invoke("profiles"),
   saveProfile: (profile) => invoke("save_profile", { profile }),
   removeProfile: (id) => invoke("remove_profile", { id }),
-  connect: async (options, signal) => {
+  connect: async (options, signal, reviewHostKey) => {
     if (signal?.aborted) throw new Error("Connection canceled");
     const requestId = await invoke<number>("begin_connect");
     const cancel = () => {
@@ -44,18 +45,48 @@ export const nativeServices: HostServices = {
       );
     };
     signal?.addEventListener("abort", cancel, { once: true });
+    let finished = false;
+    let reviewError: unknown;
+    const onHostKey = new Channel<HostKeyChallenge>();
+    onHostKey.onmessage = (challenge) => {
+      void (async () => {
+        if (finished || signal?.aborted) return;
+        if (
+          challenge.host.toLowerCase() !== options.host.toLowerCase() ||
+          challenge.port !== options.port
+        )
+          throw new Error("Host-key review does not match this connection.");
+        const approve = (await reviewHostKey?.(challenge)) ?? false;
+        if (finished || signal?.aborted) return;
+        await invoke("decide_host_key", {
+          requestId,
+          token: challenge.token,
+          approve,
+        });
+      })().catch((error) => {
+        reviewError = error;
+        cancel();
+      });
+    };
     try {
       if (signal?.aborted) {
         await invoke("cancel_connect", { requestId });
         throw new Error("Connection canceled");
       }
-      const result = await invoke<Session>("connect", { options, requestId });
+      const result = await invoke<Session>("connect", {
+        options,
+        requestId,
+        onHostKey,
+      });
       if (signal?.aborted) {
         await invoke("disconnect", { sessionId: result.id });
         throw new Error("Connection canceled");
       }
       return result;
+    } catch (error) {
+      throw reviewError ?? error;
     } finally {
+      finished = true;
       signal?.removeEventListener("abort", cancel);
       // Also release a registration if IPC failed before connect claimed it.
       cancel();

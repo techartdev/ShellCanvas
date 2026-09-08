@@ -37,6 +37,7 @@ import type {
   DesktopApp,
   HostProfile,
   HostServices,
+  HostKeyChallenge,
   Session,
 } from "./sdk";
 import { unavailableReason } from "./sdk";
@@ -67,6 +68,10 @@ export default function App({
   const connected = !!session && workspace.connected !== false;
   const [closeWorkspace, setCloseWorkspace] = useState<number | null>(null);
   const [closeApp, setCloseApp] = useState(false);
+  const [hostKeyReview, setHostKeyReview] = useState<{
+    challenge: HostKeyChallenge;
+    decide(approve: boolean): void;
+  } | null>(null);
   const closeAllowed = useRef(false);
   const allInstances = workspaces.items.flatMap((w) =>
     Object.values(w.desktop.instances),
@@ -270,8 +275,31 @@ export default function App({
     attempt.current = controller;
     setConnecting(true);
     setError("");
+    let releaseReview = () => {};
     try {
-      const result = await services.connect(options, controller.signal);
+      const result = await services.connect(
+        options,
+        controller.signal,
+        (challenge) =>
+          new Promise<boolean>((resolve) => {
+            if (controller.signal.aborted || attempt.current !== controller) {
+              resolve(false);
+              return;
+            }
+            let settled = false;
+            const decide = (approve: boolean) => {
+              if (settled) return;
+              settled = true;
+              controller.signal.removeEventListener("abort", cancel);
+              if (attempt.current === controller) setHostKeyReview(null);
+              resolve(approve);
+            };
+            const cancel = () => decide(false);
+            releaseReview = cancel;
+            controller.signal.addEventListener("abort", cancel, { once: true });
+            setHostKeyReview({ challenge, decide });
+          }),
+      );
       if (controller.signal.aborted || attempt.current !== controller) {
         await services.disconnect(result.id);
         return;
@@ -312,6 +340,7 @@ export default function App({
       if (attempt.current === controller && !controller.signal.aborted)
         setError(String(e));
     } finally {
+      releaseReview();
       if (attempt.current === controller) {
         attempt.current = null;
         setConnecting(false);
@@ -801,6 +830,7 @@ export default function App({
           profiles={profiles}
           initialProfile={editingProfile}
           busy={connecting}
+          hostKeyReview={hostKeyReview}
           reconnecting={!!reconnectTarget}
           cancelConnect={cancelConnection}
           error={error}

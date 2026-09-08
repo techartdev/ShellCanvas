@@ -32,13 +32,12 @@ pub struct VerifiedHost {
     host: String,
     port: u16,
     known_hosts: PathBuf,
+    additional_known_hosts: Option<PathBuf>,
+    approved_key: Option<keys::PublicKey>,
 }
 
 pub fn verify_host_key(host: &str, port: u16, key: &keys::PublicKey, path: &Path) -> Result<()> {
-    if crate::assess_host_key(host, port, key, path)? == crate::HostKeyStatus::Unknown {
-        bail!("Unknown host key for {host}:{port}. Verify the host with OpenSSH before connecting. No key was accepted or saved.");
-    }
-    Ok(())
+    crate::verify_host_key_with_store(host, port, key, path, None)
 }
 
 impl client::Handler for VerifiedHost {
@@ -47,7 +46,20 @@ impl client::Handler for VerifiedHost {
         if key.certificate().is_some() {
             bail!("Host certificates are not supported in this prototype.");
         }
-        verify_host_key(&self.host, self.port, &key.public_key(), &self.known_hosts)?;
+        if self
+            .approved_key
+            .as_ref()
+            .is_some_and(|approved| approved.key_data() != key.public_key().key_data())
+        {
+            bail!("Host key changed after review. No authentication was sent.");
+        }
+        crate::verify_host_key_with_store(
+            &self.host,
+            self.port,
+            &key.public_key(),
+            &self.known_hosts,
+            self.additional_known_hosts.as_deref(),
+        )?;
         Ok(true)
     }
 }
@@ -61,11 +73,43 @@ impl Connection {
         let known_hosts = dirs::home_dir()
             .context("Cannot locate your home directory")?
             .join(".ssh/known_hosts");
-        Self::connect_at(options, known_hosts).await
+        Self::connect_using(&options, known_hosts, None, None).await
     }
 
-    // Private seam for isolated handshake tests; never supplied by frontend IPC.
-    async fn connect_at(options: ConnectOptions, known_hosts: PathBuf) -> Result<Self> {
+    /// The additional store supplements user trust; conflicts in either file fail.
+    /// The native application chooses this path, never an untrusted frontend request.
+    pub async fn connect_with_trust_store(
+        options: &ConnectOptions,
+        additional: PathBuf,
+    ) -> Result<Self> {
+        let known_hosts = dirs::home_dir()
+            .context("Cannot locate your home directory")?
+            .join(".ssh/known_hosts");
+        Self::connect_using(options, known_hosts, Some(additional), None).await
+    }
+
+    /// Reconnect after review, requiring the exact approved key as well as current
+    /// trust policy. Changes to either trust file cannot broaden this approval.
+    pub async fn connect_with_approved_key(
+        options: &ConnectOptions,
+        additional: PathBuf,
+        approved_key: keys::PublicKey,
+    ) -> Result<Self> {
+        Self::connect_using(
+            options,
+            crate::user_known_hosts_path()?,
+            Some(additional),
+            Some(approved_key),
+        )
+        .await
+    }
+
+    async fn connect_using(
+        options: &ConnectOptions,
+        known_hosts: PathBuf,
+        additional_known_hosts: Option<PathBuf>,
+        approved_key: Option<keys::PublicKey>,
+    ) -> Result<Self> {
         crate::validate_ssh_endpoint(&options.host, options.port)?;
         if options.host.trim().is_empty() || options.username.trim().is_empty() || options.port == 0
         {
@@ -75,6 +119,8 @@ impl Connection {
             host: options.host.clone(),
             port: options.port,
             known_hosts,
+            additional_known_hosts,
+            approved_key,
         };
         let config = client::Config {
             keepalive_interval: Some(Duration::from_secs(20)),
@@ -298,21 +344,37 @@ mod tests {
             "malformed",
             "trusted",
             "unrelated-markers",
+            "trusted-app",
+            "changed-app",
+            "revoked-with-app",
+            "malformed-app",
+            "approved-key",
+            "different-approved-key",
         ] {
             let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
             let port = listener.local_addr().unwrap().port();
             let record = format!("[127.0.0.1]:{port} {public}\n");
             let content = match case {
-                "unknown" => String::new(),
+                "unknown" | "trusted-app" => String::new(),
                 "changed" => format!("[127.0.0.1]:{port} ssh-ed25519 {KEY}\n"),
-                "revoked" => format!("{record}@revoked [127.0.0.1]:{port} {public}\n"),
+                "revoked" | "revoked-with-app" => {
+                    format!("{record}@revoked [127.0.0.1]:{port} {public}\n")
+                }
                 "malformed" => format!("{record}not-a-key\n"),
                 "unrelated-markers" => format!(
                     "@revoked another-host {public}\n@cert-authority *.example {public}\n{record}"
                 ),
-                _ => record,
+                _ => record.clone(),
             };
             std::fs::write(&path, content).unwrap();
+            let app_path = dir.path().join("app_known_hosts");
+            let app_content = match case {
+                "trusted-app" | "revoked-with-app" => record,
+                "changed-app" => format!("[127.0.0.1]:{port} ssh-ed25519 {KEY}\n"),
+                "malformed-app" => "malformed".into(),
+                _ => String::new(),
+            };
+            std::fs::write(&app_path, app_content).unwrap();
             let calls = Arc::new(AtomicUsize::new(0));
             let handler = CountAuth(calls.clone());
             let config = Arc::new(server::Config {
@@ -330,8 +392,8 @@ mod tests {
             });
             let result = timeout(
                 Duration::from_secs(8),
-                Connection::connect_at(
-                    ConnectOptions {
+                Connection::connect_using(
+                    &ConnectOptions {
                         host: "127.0.0.1".into(),
                         port,
                         username: "fixture".into(),
@@ -340,11 +402,22 @@ mod tests {
                         passphrase: None,
                     },
                     path.clone(),
+                    Some(app_path),
+                    match case {
+                        "approved-key" => Some(key.public_key().clone()),
+                        "different-approved-key" => {
+                            Some(keys::parse_public_key_base64(KEY).unwrap())
+                        }
+                        _ => None,
+                    },
                 ),
             )
             .await
             .expect("SSH fixture timed out");
-            if matches!(case, "trusted" | "unrelated-markers") {
+            if matches!(
+                case,
+                "trusted" | "unrelated-markers" | "trusted-app" | "approved-key"
+            ) {
                 let connection = result.unwrap_or_else(|e| panic!("{case}: {e:#}"));
                 assert!(
                     calls.load(Ordering::SeqCst) > 0,
@@ -359,11 +432,25 @@ mod tests {
                 let text = format!("{error:#}");
                 let expected = match case {
                     "unknown" => "Unknown host key",
-                    "changed" => "MISMATCH",
-                    "revoked" => "REVOKED",
+                    "changed" | "changed-app" => "MISMATCH",
+                    "revoked" | "revoked-with-app" => "REVOKED",
+                    "different-approved-key" => "changed after review",
                     _ => "Malformed",
                 };
                 assert!(text.contains(expected), "{case}: {text}");
+                if case == "unknown" {
+                    let candidate = error
+                        .downcast_ref::<crate::UnknownHostKey>()
+                        .expect("Unknown host must remain a typed enrollment candidate");
+                    assert_eq!(candidate.host, "127.0.0.1");
+                    assert_eq!(candidate.port, port);
+                    assert_eq!(candidate.key.key_data(), key.public_key().key_data());
+                } else {
+                    assert!(
+                        error.downcast_ref::<crate::UnknownHostKey>().is_none(),
+                        "Rejected identities cannot be offered for enrollment"
+                    );
+                }
                 assert_eq!(
                     calls.load(Ordering::SeqCst),
                     0,

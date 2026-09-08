@@ -9,8 +9,9 @@ import {
   ShieldCheck,
   X,
 } from "lucide-react";
-import type { ConnectOptions, HostProfile } from "../sdk";
+import type { ConnectOptions, HostProfile, HostKeyChallenge } from "../sdk";
 import { HostProfilePicker } from "./HostProfilePicker";
+import { HostKeyReviewPanel } from "./HostKeyReviewPanel";
 export function ConnectDialog({
   profiles,
   busy,
@@ -23,7 +24,12 @@ export function ConnectDialog({
   initialProfile,
   reconnecting = false,
   cancelConnect,
+  hostKeyReview,
 }: {
+  hostKeyReview?: {
+    challenge: HostKeyChallenge;
+    decide(approve: boolean): void;
+  } | null;
   reconnecting?: boolean;
   cancelConnect?(): void;
   initialProfile?: HostProfile;
@@ -189,7 +195,7 @@ export function ConnectDialog({
         ref={dialog}
         open
         aria-modal="true"
-        className="connect-dialog"
+        className={`connect-dialog${hostKeyReview ? " connect-dialog-review" : ""}`}
         aria-labelledby="connect-title"
       >
         <button
@@ -203,246 +209,260 @@ export function ConnectDialog({
         >
           <X size={19} />
         </button>
-        <div className="connection-emblem">
-          <Server size={25} />
-          <span>
-            <ShieldCheck size={12} />
-          </span>
-        </div>
+        {!hostKeyReview && (
+          <div className="connection-emblem">
+            <Server size={25} />
+            <span>
+              <ShieldCheck size={12} />
+            </span>
+          </div>
+        )}
         <p className="eyebrow">A WORKSPACE, ANYWHERE</p>
         <h1 id="connect-title">
-          {reconnecting
-            ? "Pick up where you left off."
-            : "Make yourself at home."}
+          {hostKeyReview
+            ? "Verify this host."
+            : reconnecting
+              ? "Pick up where you left off."
+              : "Make yourself at home."}
         </h1>
         <p className="dialog-intro">
-          {reconnecting
-            ? "Reconnect this host with your windows and drafts intact. Terminal windows open fresh shells."
-            : "Connect to your host. Everything stays on your machine."}
+          {hostKeyReview
+            ? "A familiar workspace starts with a trusted connection."
+            : reconnecting
+              ? "Reconnect this host with your windows and drafts intact. Terminal windows open fresh shells."
+              : "Connect to your host. Everything stays on your machine."}
         </p>
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            submit(
-              {
-                ...options,
-                keyPath: method === "key" ? options.keyPath : "",
-                password: method === "password" ? options.password : undefined,
-                passphrase: method === "key" ? options.passphrase : undefined,
-              },
-              label || options.host,
-            );
-          }}
-        >
-          <fieldset disabled={locked || preview}>
-            {!reconnecting && (
-              <HostProfilePicker
-                profiles={profiles}
-                disabled={locked || preview}
-                value={selected}
-                onChange={(value) => {
-                  if (!value) {
-                    newProfile();
-                    return;
-                  }
-                  const profile = profiles.find(
-                    (p, i) => (p.id ?? `import-${i}`) === value,
-                  );
-                  if (profile) {
-                    select(profile);
-                    setSelected(value);
-                  }
-                }}
-              />
-            )}
-            <label className="form-field">
-              Name <span className="optional">optional</span>
-              <input
-                placeholder="My server"
-                value={label}
-                onChange={(e) => {
-                  setLabel(e.target.value);
-                  setSaveMessage("");
-                }}
-              />
-            </label>
-            <div className="form-row">
-              <label className="form-field grow">
-                Host
+        {hostKeyReview ? (
+          <HostKeyReviewPanel
+            key={hostKeyReview.challenge.token}
+            {...hostKeyReview}
+          />
+        ) : (
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              submit(
+                {
+                  ...options,
+                  keyPath: method === "key" ? options.keyPath : "",
+                  password:
+                    method === "password" ? options.password : undefined,
+                  passphrase: method === "key" ? options.passphrase : undefined,
+                },
+                label || options.host,
+              );
+            }}
+          >
+            <fieldset disabled={locked || preview}>
+              {!reconnecting && (
+                <HostProfilePicker
+                  profiles={profiles}
+                  disabled={locked || preview}
+                  value={selected}
+                  onChange={(value) => {
+                    if (!value) {
+                      newProfile();
+                      return;
+                    }
+                    const profile = profiles.find(
+                      (p, i) => (p.id ?? `import-${i}`) === value,
+                    );
+                    if (profile) {
+                      select(profile);
+                      setSelected(value);
+                    }
+                  }}
+                />
+              )}
+              <label className="form-field">
+                Name <span className="optional">optional</span>
                 <input
-                  autoFocus
+                  placeholder="My server"
+                  value={label}
+                  onChange={(e) => {
+                    setLabel(e.target.value);
+                    setSaveMessage("");
+                  }}
+                />
+              </label>
+              <div className="form-row">
+                <label className="form-field grow">
+                  Host
+                  <input
+                    autoFocus
+                    required
+                    placeholder="server.example.com"
+                    value={options.host}
+                    readOnly={reconnecting}
+                    onChange={(e) => field("host", e.target.value)}
+                    autoCapitalize="off"
+                    spellCheck={false}
+                  />
+                </label>
+                <label className="form-field port">
+                  Port
+                  <input
+                    required
+                    type="number"
+                    min="1"
+                    max="65535"
+                    value={options.port}
+                    readOnly={reconnecting}
+                    onChange={(e) => field("port", Number(e.target.value))}
+                  />
+                </label>
+              </div>
+              <label className="form-field">
+                Username
+                <input
                   required
-                  placeholder="server.example.com"
-                  value={options.host}
+                  placeholder="Your remote username"
+                  value={options.username}
                   readOnly={reconnecting}
-                  onChange={(e) => field("host", e.target.value)}
+                  onChange={(e) => field("username", e.target.value)}
                   autoCapitalize="off"
                   spellCheck={false}
                 />
               </label>
-              <label className="form-field port">
-                Port
-                <input
-                  required
-                  type="number"
-                  min="1"
-                  max="65535"
-                  value={options.port}
-                  readOnly={reconnecting}
-                  onChange={(e) => field("port", Number(e.target.value))}
-                />
-              </label>
-            </div>
-            <label className="form-field">
-              Username
-              <input
-                required
-                placeholder="Your remote username"
-                value={options.username}
-                readOnly={reconnecting}
-                onChange={(e) => field("username", e.target.value)}
-                autoCapitalize="off"
-                spellCheck={false}
-              />
-            </label>
-            <div className="auth-tabs">
-              <button
-                type="button"
-                className={method === "key" ? "active" : ""}
-                onClick={() => setMethod("key")}
-              >
-                <KeyRound size={14} /> SSH key
-              </button>
-              <button
-                type="button"
-                className={method === "password" ? "active" : ""}
-                onClick={() => setMethod("password")}
-              >
-                <LockKeyhole size={14} /> Password
-              </button>
-            </div>
-            {method === "key" ? (
-              <>
-                <label className="form-field">
-                  Private key path
-                  <input
-                    required
-                    placeholder="~/.ssh/id_ed25519"
-                    value={options.keyPath}
-                    onChange={(e) => field("keyPath", e.target.value)}
-                    spellCheck={false}
-                  />
-                </label>
-                <label className="form-field">
-                  Key passphrase <span className="optional">optional</span>
-                  <input
-                    type="password"
-                    autoComplete="off"
-                    value={options.passphrase}
-                    onChange={(e) => field("passphrase", e.target.value)}
-                  />
-                </label>
-              </>
-            ) : (
-              <label className="form-field">
-                Password
-                <input
-                  type="password"
-                  required
-                  autoComplete="off"
-                  value={options.password}
-                  onChange={(e) => field("password", e.target.value)}
-                />
-              </label>
-            )}
-            <div className="profile-actions">
-              <button
-                type="button"
-                disabled={
-                  !options.host.trim() ||
-                  !options.username.trim() ||
-                  !Number.isInteger(options.port) ||
-                  options.port < 1 ||
-                  options.port > 65535 ||
-                  (method === "key" && !options.keyPath.trim())
-                }
-                onClick={() => void saveHost()}
-              >
-                {savedId ? "Update saved host" : "Save host"}
-              </button>
-              {savedId && (
+              <div className="auth-tabs">
                 <button
                   type="button"
-                  onClick={() => setConfirmRemove(!confirmRemove)}
+                  className={method === "key" ? "active" : ""}
+                  onClick={() => setMethod("key")}
                 >
-                  Remove saved host
+                  <KeyRound size={14} /> SSH key
                 </button>
-              )}
-            </div>
-            {confirmRemove && (
-              <div className="profile-removal">
-                <span>Remove this saved connection?</span>
-                <button type="button" onClick={() => void removeHost()}>
-                  Remove
-                </button>
-                <button type="button" onClick={() => setConfirmRemove(false)}>
-                  Keep
+                <button
+                  type="button"
+                  className={method === "password" ? "active" : ""}
+                  onClick={() => setMethod("password")}
+                >
+                  <LockKeyhole size={14} /> Password
                 </button>
               </div>
+              {method === "key" ? (
+                <>
+                  <label className="form-field">
+                    Private key path
+                    <input
+                      required
+                      placeholder="~/.ssh/id_ed25519"
+                      value={options.keyPath}
+                      onChange={(e) => field("keyPath", e.target.value)}
+                      spellCheck={false}
+                    />
+                  </label>
+                  <label className="form-field">
+                    Key passphrase <span className="optional">optional</span>
+                    <input
+                      type="password"
+                      autoComplete="off"
+                      value={options.passphrase}
+                      onChange={(e) => field("passphrase", e.target.value)}
+                    />
+                  </label>
+                </>
+              ) : (
+                <label className="form-field">
+                  Password
+                  <input
+                    type="password"
+                    required
+                    autoComplete="off"
+                    value={options.password}
+                    onChange={(e) => field("password", e.target.value)}
+                  />
+                </label>
+              )}
+              <div className="profile-actions">
+                <button
+                  type="button"
+                  disabled={
+                    !options.host.trim() ||
+                    !options.username.trim() ||
+                    !Number.isInteger(options.port) ||
+                    options.port < 1 ||
+                    options.port > 65535 ||
+                    (method === "key" && !options.keyPath.trim())
+                  }
+                  onClick={() => void saveHost()}
+                >
+                  {savedId ? "Update saved host" : "Save host"}
+                </button>
+                {savedId && (
+                  <button
+                    type="button"
+                    onClick={() => setConfirmRemove(!confirmRemove)}
+                  >
+                    Remove saved host
+                  </button>
+                )}
+              </div>
+              {confirmRemove && (
+                <div className="profile-removal">
+                  <span>Remove this saved connection?</span>
+                  <button type="button" onClick={() => void removeHost()}>
+                    Remove
+                  </button>
+                  <button type="button" onClick={() => setConfirmRemove(false)}>
+                    Keep
+                  </button>
+                </div>
+              )}
+            </fieldset>
+            {saveMessage && (
+              <p className="profile-message" role="status">
+                {saveMessage}
+              </p>
             )}
-          </fieldset>
-          {saveMessage && (
-            <p className="profile-message" role="status">
-              {saveMessage}
-            </p>
-          )}
-          {saveError && (
-            <div className="inline-error" role="alert">
-              {saveError}
-            </div>
-          )}
-          {error && (
-            <div role="alert" className="inline-error">
-              {error}
-            </div>
-          )}
-          {preview && (
-            <div className="preview-explanation">
-              You’re viewing the desktop design preview. Open the native app to
-              connect to a real SSH host.
-            </div>
-          )}
-          <button
-            className="primary-button connect-submit"
-            type="submit"
-            disabled={locked || preview}
-          >
-            {busy ? (
-              <>
-                <LoaderCircle size={16} className="spin" /> Verifying host &
-                connecting…
-              </>
-            ) : (
-              <>
-                {reconnecting ? "Reconnect workspace" : "Open workspace"}{" "}
-                <ArrowUpRight size={17} />
-              </>
+            {saveError && (
+              <div className="inline-error" role="alert">
+                {saveError}
+              </div>
             )}
-          </button>
-          {busy && cancelConnect && (
+            {error && (
+              <div role="alert" className="inline-error">
+                {error}
+              </div>
+            )}
+            {preview && (
+              <div className="preview-explanation">
+                You’re viewing the desktop design preview. Open the native app
+                to connect to a real SSH host.
+              </div>
+            )}
             <button
-              type="button"
-              className="cancel-connection"
-              onClick={cancelConnect}
+              className="primary-button connect-submit"
+              type="submit"
+              disabled={locked || preview}
             >
-              Cancel connection
+              {busy ? (
+                <>
+                  <LoaderCircle size={16} className="spin" /> Verifying host &
+                  connecting…
+                </>
+              ) : (
+                <>
+                  {reconnecting ? "Reconnect workspace" : "Open workspace"}{" "}
+                  <ArrowUpRight size={17} />
+                </>
+              )}
             </button>
-          )}
-        </form>
+            {busy && cancelConnect && (
+              <button
+                type="button"
+                className="cancel-connection"
+                onClick={cancelConnect}
+              >
+                Cancel connection
+              </button>
+            )}
+          </form>
+        )}
         <p className="trust-note">
           <ShieldCheck size={15} />
           <span>
-            Verified against your existing known_hosts.
+            Checked against OpenSSH and ShellCanvas trusted host keys.
             <br />
             Passwords and passphrases are never saved.
           </span>

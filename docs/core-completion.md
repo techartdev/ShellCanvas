@@ -15,7 +15,7 @@ Additional protocols are optional until these core workflows work well. Connecti
 
 ## Evidence and outstanding work
 
-- SSH host-key classification now handles wildcard/negated/hashed entries and revocation, while distinguishing unknown keys from mismatches and invalid trust files. Unrelated markers no longer block an otherwise known host. This prepares fingerprint enrollment, which remains pending alongside agent and keyboard-interactive authentication. See [SSH host trust](ssh-host-trust.md).
+- New-host fingerprint review now binds an expiring, one-use decision to the native connection attempt and exact endpoint/key. Approval saves atomically in the app-owned trust store; the authenticated reconnect also pins the exact reviewed key in memory. Changed/revoked/malformed keys remain blocked. Native store/attempt tests, real loopback pre-auth checks, synthetic browser flows and asynchronous bridge tests pass (43 frontend and 41 Rust tests). Native enrollment walkthrough, trust management, agent and keyboard-interactive authentication remain open. See [SSH host trust](ssh-host-trust.md).
 
 - Files now has a capability-gated **Move to folder…** dialog with provider-owned navigation, destination review, no replacement and stale-session safeguards. Browser collision/denial/retry/two-window/opaque-location checks and live disposable file/folder/symlink moves passed. Real unprivileged move refusal/recovery and exact cleanup passed too. See [file actions](file-actions.md). Cross-host copy/move, editor path-following and interrupted-move integration remain separate work.
 

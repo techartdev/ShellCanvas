@@ -70,6 +70,14 @@ export interface ConnectOptions extends Omit<HostProfile, "name" | "id"> {
   password?: string;
   passphrase?: string;
 }
+export interface HostKeyChallenge {
+  token: string;
+  host: string;
+  port: number;
+  algorithm: string;
+  fingerprint: string;
+}
+export type HostKeyReviewer = (challenge: HostKeyChallenge) => Promise<boolean>;
 export interface HostInfo {
   provider: string;
   system: string;
@@ -159,7 +167,11 @@ export interface HostServices {
   profiles(): Promise<HostProfile[]>;
   saveProfile(profile: HostProfile): Promise<HostProfile>;
   removeProfile(id: string): Promise<void>;
-  connect(options: ConnectOptions, signal?: AbortSignal): Promise<Session>;
+  connect(
+    options: ConnectOptions,
+    signal?: AbortSignal,
+    reviewHostKey?: HostKeyReviewer,
+  ): Promise<Session>;
   disconnect(sessionId: number): Promise<void>;
   alive(sessionId: number): Promise<boolean>;
   list(sessionId: number, path?: string): Promise<Directory>;

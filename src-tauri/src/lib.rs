@@ -8,6 +8,7 @@ use std::sync::{
 use tauri::{ipc::Channel, State};
 use tokio::sync::{mpsc, Mutex};
 mod connection_attempts;
+mod host_trust;
 mod profile_store;
 mod session_registry;
 mod terminals;
@@ -82,22 +83,64 @@ async fn cancel_connect(request_id: u64, state: State<'_, DesktopState>) -> Resu
 async fn connect(
     options: ConnectOptions,
     request_id: u64,
+    on_host_key: Channel<connection_attempts::HostKeyChallenge>,
+    app: tauri::AppHandle,
     state: State<'_, DesktopState>,
 ) -> Result<SessionInfo, String> {
     let canceled = state.attempts.lock().await.claim(request_id)?;
-    let result = connection_attempts::cancellable(canceled, connect_session(options, &state)).await;
+    let result = connection_attempts::cancellable(
+        canceled,
+        connect_session(options, request_id, on_host_key, app, &state),
+    )
+    .await;
     state.attempts.lock().await.finish(request_id);
     result
 }
 async fn connect_session(
     options: ConnectOptions,
+    request_id: u64,
+    on_host_key: Channel<connection_attempts::HostKeyChallenge>,
+    app: tauri::AppHandle,
     state: &DesktopState,
 ) -> Result<SessionInfo, String> {
-    let connection = Arc::new(
-        Connection::connect(options)
+    let trust_dir = profile_store::storage_dir(&app)?;
+    let trust_path = host_trust::store_path(&trust_dir);
+    let connection = match Connection::connect_with_trust_store(&options, trust_path.clone()).await
+    {
+        Ok(connection) => connection,
+        Err(connect_error) => {
+            let candidate = connect_error
+                .downcast_ref::<UnknownHostKey>()
+                .cloned()
+                .ok_or_else(|| format!("{connect_error:#}"))?;
+            let (challenge, decision) =
+                state.attempts.lock().await.review(request_id, &candidate)?;
+            on_host_key
+                .send(challenge)
+                .map_err(|_| "Cannot display the host-key review")?;
+            let approved = tokio::time::timeout(connection_attempts::REVIEW_TIMEOUT, decision)
+                .await
+                .map_err(|_| "Host-key review expired. Connect again to check the current key.")?
+                .map_err(|_| "Host-key review canceled")?;
+            if !approved {
+                return Err("Host key was not trusted. No authentication was sent.".into());
+            }
+            let user_known_hosts = user_known_hosts_path().map_err(error)?;
+            let approved_key = candidate.key.clone();
+            tauri::async_runtime::spawn_blocking(move || {
+                host_trust::remember(&trust_dir, &user_known_hosts, &candidate)
+            })
             .await
-            .map_err(|e| format!("{e:#}"))?,
-    );
+            .map_err(error)?
+            .map_err(|e| format!("{e:#}"))?;
+            // One review only. A different key on this new connection is a hard
+            // failure, not another prompt; authentication still follows verification.
+            Connection::connect_with_approved_key(&options, trust_path, approved_key)
+                .await
+                .map_err(|e| format!("{e:#}"))?
+        }
+    };
+    let connection = Arc::new(connection);
     let mut info = inspect_host(&connection).await;
     let settings = settings_for_host(&info.provider, Some(connection.clone()));
     if settings.is_some() {
@@ -165,6 +208,19 @@ async fn connect_session(
     Ok(SessionInfo { id, info })
 }
 
+#[tauri::command]
+async fn decide_host_key(
+    request_id: u64,
+    token: String,
+    approve: bool,
+    state: State<'_, DesktopState>,
+) -> Result<(), String> {
+    state
+        .attempts
+        .lock()
+        .await
+        .decide(request_id, &token, approve)
+}
 #[tauri::command]
 async fn disconnect(session_id: u64, state: State<'_, DesktopState>) -> Result<(), String> {
     let removed = state.registry.lock().await.remove(session_id);
@@ -512,6 +568,7 @@ pub fn run() {
             connect,
             begin_connect,
             cancel_connect,
+            decide_host_key,
             disconnect,
             list_directory,
             preview_file,
