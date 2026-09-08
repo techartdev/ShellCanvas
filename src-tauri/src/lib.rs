@@ -11,7 +11,11 @@ use tokio::sync::{mpsc, Mutex};
 mod clipboard_stream;
 mod connection_attempts;
 mod connection_resource;
+mod extension_frames;
+#[cfg(debug_assertions)]
+mod extension_probe;
 mod host_trust;
+mod native_ipc;
 mod profile_store;
 mod session_registry;
 mod terminals;
@@ -598,47 +602,68 @@ async fn close_terminal(
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .invoke_system(native_ipc::initialization_script())
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_dialog::init())
+        .plugin(extension_frames::plugin())
+        .manage(extension_frames::FrameDocuments::default())
+        .setup(|app| {
+            #[cfg(debug_assertions)]
+            extension_probe::setup(app)?;
+            #[cfg(not(debug_assertions))]
+            let _ = app;
+            Ok(())
+        })
         .manage(DesktopState::default())
-        .invoke_handler(tauri::generate_handler![
-            profiles,
-            read_host_settings,
-            apply_host_setting,
-            save_profile,
-            remove_profile,
-            session_alive,
-            session_status,
-            connect,
-            begin_connect,
-            cancel_connect,
-            decide_host_key,
-            disconnect,
-            list_directory,
-            preview_file,
-            read_text,
-            save_text,
-            create_text,
-            make_directory,
-            rename_entry,
-            move_entry,
-            remove_entry,
-            transfers::choose_upload_files,
-            transfers::choose_download_file,
-            transfers::choose_download_files,
-            transfers::copy_system_files,
-            transfers::cancel_clipboard_preparation,
-            transfers::cut_system_file,
-            transfers::paste_system_files,
-            transfers::system_clipboard_sequence,
-            transfers::prepare_file_copy,
-            transfers::run_transfer,
-            transfers::cancel_transfer,
-            open_terminal,
-            terminal_input,
-            terminal_resize,
-            close_terminal
-        ])
+        .invoke_handler(|invoke| {
+            #[cfg(debug_assertions)]
+            if invoke.message.command() == "channel_roundtrip" {
+                let handler: fn(tauri::ipc::Invoke<tauri::Wry>) -> bool =
+                    tauri::generate_handler![extension_probe::channel_roundtrip];
+                return handler(invoke);
+            }
+            let handler: fn(tauri::ipc::Invoke<tauri::Wry>) -> bool = tauri::generate_handler![
+                extension_frames::publish_app_frame,
+                extension_frames::release_app_frame,
+                profiles,
+                read_host_settings,
+                apply_host_setting,
+                save_profile,
+                remove_profile,
+                session_alive,
+                session_status,
+                connect,
+                begin_connect,
+                cancel_connect,
+                decide_host_key,
+                disconnect,
+                list_directory,
+                preview_file,
+                read_text,
+                save_text,
+                create_text,
+                make_directory,
+                rename_entry,
+                move_entry,
+                remove_entry,
+                transfers::choose_upload_files,
+                transfers::choose_download_file,
+                transfers::choose_download_files,
+                transfers::copy_system_files,
+                transfers::cancel_clipboard_preparation,
+                transfers::cut_system_file,
+                transfers::paste_system_files,
+                transfers::system_clipboard_sequence,
+                transfers::prepare_file_copy,
+                transfers::run_transfer,
+                transfers::cancel_transfer,
+                open_terminal,
+                terminal_input,
+                terminal_resize,
+                close_terminal
+            ];
+            handler(invoke)
+        })
         .run(tauri::generate_context!())
         .expect("Unable to start ShellCanvas");
 }

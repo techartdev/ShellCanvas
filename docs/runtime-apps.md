@@ -51,7 +51,7 @@ Available bridged operations are `system.dialogs.messageBox`, `system.dialogs.op
 
 ## Isolation boundary and unfinished gates
 
-The frame uses `sandbox="allow-scripts"` without `allow-same-origin`, a host-built document and a restrictive document CSP. The handshake checks the exact iframe window before transferring its instance-owned port. This follows the browser's [iframe sandbox model](https://developer.mozilla.org/en-US/docs/Web/HTML/Reference/Elements/iframe). Native integration must additionally satisfy [Tauri's capability boundary](https://v2.tauri.app/security/capabilities/); a browser walkthrough is not proof of native IPC isolation.
+The frame uses `sandbox="allow-scripts"` without `allow-same-origin`, a host-built document and a restrictive document CSP. The handshake checks both the exact iframe window and a per-document token before transferring its instance-owned port. The token rejects a queued handshake from an old document when a browser reuses the same iframe window. This follows the browser's [iframe sandbox model](https://developer.mozilla.org/en-US/docs/Web/HTML/Reference/Elements/iframe). Native integration must additionally satisfy [Tauri's capability boundary](https://v2.tauri.app/security/capabilities/); a browser walkthrough is not proof of native IPC isolation.
 
 This is not yet a security claim for arbitrary hostile packages. In particular, document CSP is not a universal navigation/network sandbox, and a same-renderer app can consume CPU or memory. Native navigation handling, direct-IPC probes, platform-specific behavior, package provenance and reviewed grants need verification before this becomes a production install flow. Native adapters will have a distinct process trust model.
 
@@ -64,3 +64,26 @@ The original `runtime-app.html` channel workbench still immediately replaces/unl
 The initial walkthrough loaded and reloaded the separately compiled Field Notes package, returned `ok` and `cancel` from a desktop message box, selected `welcome.md`, and created `field-notes.txt` in the in-memory provider with the submitted text and revision `fixture-1`. Escape restored focus to the initiating button. Unknown service calls returned `unavailable`, and unloading removed the frame. Save As originally failed against the intentionally read-only preview backend; the workbench now supplies its own explicit create-only fake provider. No real-host save was performed in this walkthrough.
 
 The catalog walkthrough installed 0.1.0, entered an unsaved draft, installed 0.2.0 with `files.read` withheld, and opened both versions. The old window retained its exact draft and old grants; the new window's file picker request was denied. Switching focus initially exposed an iframe DOM-move reload; after the stable-mount fix, repeated focus changes and disabling retained the draft. **Keep working** preserved it, **Discard and close** retired its old instance, and removal was refused while windows were running. Reopening the workbench retained installed version 0.2.0, its two approved grants and disabled state. Removing it after the test windows closed persisted across a subsequent reload.
+
+## Packaged Windows isolation probe
+
+The native loader serves ephemeral, owner-bound HTML, JavaScript and CSS through `shellcanvas-app`. Package text is served as separate resources, never interpolated into native HTML script/style tags. Responses carry a sandbox policy, nonce-based script/style policy, correct MIME types and no-store headers. Closing a frame releases its resources, including publications that complete after their owner closes. Native publication is currently Windows-only; other platforms return an explicit unavailable error pending their own verification.
+
+Build and run the separate native probe from the repository root:
+
+```sh
+npm run tauri -- build --debug --no-bundle --config src-tauri/tauri.extension-probe.conf.json
+node scripts/run-extension-probe.mjs
+```
+
+The hidden WebView2 probe has its own application identity and touches only fake app resources. It reports to `.local/native-extension-probe/result.json`; the runner fails unless the structured result succeeds. Progress is saved in `progress.jsonl`. It tests approved and denied broker calls, stale handshakes, parent DOM and local-storage denial, CSS loading, blocked top navigation and IPC fetches, direct native-call attempts against a canary resource, and small/large native channel round trips. The debug-only channel command refuses calls outside the probe identity and environment. A watchdog makes incomplete runs fail rather than count as passes.
+
+Wry 0.55.1 [documents that Windows ignores its main-frame-only initialization flag](https://docs.rs/wry/0.55.1/wry/struct.WebViewBuilder.html#method.with_initialization_script_for_main_only). The first native probe confirmed that Tauri's key-bearing transport was present in the child. ShellCanvas now uses `Builder::invoke_system` with Tauri's original transport templates enclosed in an early `window === window.top` guard. The small vendored templates retain their upstream license and serializer; see `src-tauri/vendor/tauri-ipc/README.md` for upgrade requirements. Child API wrappers can still exist, but the closure containing the invocation key must be absent. The guarded canary probe verifies this directly; merely hiding a global or relying on CSP was insufficient.
+
+The probe build temporarily replaces `target/debug/shellcanvas.exe`. Restore the normal desktop afterwards:
+
+```sh
+npm run tauri -- build --debug --no-bundle
+```
+
+This is native boundary evidence, not a completed native package-installation UI. The normal desktop still denies extension frames through its production CSP until the launcher, workspace lifecycle and package management are integrated and verified. It is also not a claim of CPU/memory containment, arbitrary network-exfiltration prevention, or cross-platform isolation.

@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: MPL-2.0
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { SystemAPI } from "../system-api";
-import { appDocument, type AppPackage } from "./package";
+import type { AppPackage } from "./package";
 import { RpcPeer, messagePortTransport } from "./rpc";
 import { systemMethods } from "./system-bridge";
 import type { AppLease } from "./catalog";
 import { documentStateMethod, type AppDocumentState } from "./window-api";
+import { isFrameHandshake, mountAppDocument } from "./frame-document";
 
 /** Experimental host, currently exercised only by the development fixture.
  * One effect owns one document, port and system handle. A prop change retires that instance.
@@ -24,11 +25,13 @@ export function ExtensionFrame({
   onDocumentState?: (state: AppDocumentState) => void;
 }) {
   const ref = useRef<HTMLIFrameElement>(null);
+  const [error, setError] = useState("");
   const documentState = useRef(onDocumentState);
   documentState.current = onDocumentState;
   useEffect(() => {
     const frame = ref.current!;
     if (lease?.closed) return;
+    const token = crypto.randomUUID();
     let peer: RpcPeer | undefined;
     let connected = false;
     let retired = false;
@@ -36,7 +39,7 @@ export function ExtensionFrame({
       if (
         retired ||
         event.source !== frame.contentWindow ||
-        event.data !== "shellcanvas:ready:v1"
+        !isFrameHandshake(event.data, "ready", token)
       )
         return;
       if (connected) {
@@ -59,17 +62,20 @@ export function ExtensionFrame({
         methods,
         approved,
       );
-      frame.contentWindow!.postMessage("shellcanvas:connect:v1", "*", [
-        channel.port2,
-      ]);
+      frame.contentWindow!.postMessage(
+        { type: "shellcanvas:connect:v1", token },
+        "*",
+        [channel.port2],
+      );
     };
     window.addEventListener("message", receive);
-    frame.srcdoc = appDocument(app, crypto.randomUUID());
+    setError("");
+    const unmount = mountAppDocument(frame, app, token, setError);
     const retire = () => {
       retired = true;
       window.removeEventListener("message", receive);
       peer?.close();
-      frame.srcdoc = "";
+      unmount();
     };
     const stop = lease?.onClose(retire);
     return () => {
@@ -78,13 +84,26 @@ export function ExtensionFrame({
     };
   }, [app, system, grants, lease]);
   return (
-    <iframe
-      ref={ref}
-      title={app.title}
-      sandbox="allow-scripts"
-      referrerPolicy="no-referrer"
-      allow="camera 'none'; microphone 'none'; geolocation 'none'; clipboard-read 'none'; clipboard-write 'none'"
-      style={{ border: 0, width: "100%", height: "100%", minHeight: 280 }}
-    />
+    <>
+      {error && (
+        <p role="alert" style={{ padding: 20 }}>
+          {error}
+        </p>
+      )}
+      <iframe
+        ref={ref}
+        title={app.title}
+        sandbox="allow-scripts"
+        referrerPolicy="no-referrer"
+        allow="camera 'none'; microphone 'none'; geolocation 'none'; clipboard-read 'none'; clipboard-write 'none'"
+        style={{
+          border: 0,
+          width: "100%",
+          height: "100%",
+          minHeight: 280,
+          display: error ? "none" : undefined,
+        }}
+      />
+    </>
   );
 }

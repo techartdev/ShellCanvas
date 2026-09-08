@@ -13,6 +13,13 @@ export function connectToShellCanvas(
   timeoutMs = 10000,
 ): Promise<ExtensionClient> {
   return new Promise((resolve, reject) => {
+    const token = document.querySelector<HTMLMetaElement>(
+      'meta[name="shellcanvas-instance"]',
+    )?.content;
+    if (!token) {
+      reject(new Error("Missing ShellCanvas instance identity."));
+      return;
+    }
     if (window.parent === window) {
       reject(new Error("Launch this app inside ShellCanvas."));
       return;
@@ -24,7 +31,8 @@ export function connectToShellCanvas(
     const receive = (event: MessageEvent) => {
       if (
         event.source !== window.parent ||
-        event.data !== "shellcanvas:connect:v1" ||
+        event.data?.type !== "shellcanvas:connect:v1" ||
+        event.data?.token !== token ||
         event.ports.length !== 1
       )
         return;
@@ -123,6 +131,6 @@ export function connectToShellCanvas(
       });
     };
     window.addEventListener("message", receive);
-    window.parent.postMessage("shellcanvas:ready:v1", "*");
+    window.parent.postMessage({ type: "shellcanvas:ready:v1", token }, "*");
   });
 }

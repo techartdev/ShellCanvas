@@ -1,0 +1,23 @@
+{
+  "productName": "ShellCanvas Extension Probe",
+  "identifier": "dev.shellcanvas.extensionprobe",
+  "build": {
+    "beforeBuildCommand": "node scripts/build-extension-probe.mjs",
+    "frontendDist": "../.local/native-extension-probe/dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "ShellCanvas native extension probe",
+        "url": "tests/fixtures/native-frame-probe.html",
+        "width": 900,
+        "height": 640,
+        "visible": false
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src ipc: http://ipc.localhost; object-src 'none'; frame-src shellcanvas-app: http://shellcanvas-app.localhost; base-uri 'self'"
+    }
+  }
+}
