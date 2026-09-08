@@ -95,13 +95,13 @@ pub trait FileTransferService: Send + Sync {
     ) -> Result<Box<dyn TransferWriter>>;
 }
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FilePlace {
     pub path: String,
     pub name: String,
 }
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FileLocation {
     pub path: String,
@@ -132,7 +132,7 @@ pub struct FileEntry {
     pub modified: Option<u32>,
     pub revision: String,
 }
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Directory {
     pub path: String,
