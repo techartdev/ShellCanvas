@@ -38,6 +38,9 @@ import { WorkspaceWindows } from "./components/WorkspaceWindows";
 import { ContextMenu, type MenuAction } from "./components/ContextMenu";
 import { ConfirmDialog } from "./components/ConfirmDialog";
 import { ConnectDialog } from "./components/ConnectDialog";
+import { ConnectAdapterDialog } from "./components/ConnectAdapterDialog";
+import { defaultAdapterServices, type AdapterServices } from "./adapters";
+import { isAdapterProfile, type WorkspaceConnection } from "./workspaces";
 import { SettingsDialog } from "./components/SettingsDialog";
 import { usePreferences } from "./preferences";
 import { native, nativeServices } from "./services";
@@ -59,12 +62,14 @@ export default function App({
   isNative = native,
   initialConnection,
   appRuntime,
+  adapterServices = defaultAdapterServices,
 }: {
   services?: HostServices;
   initialSession?: Session | null;
   isNative?: boolean;
-  initialConnection?: HostProfile;
+  initialConnection?: WorkspaceConnection;
   appRuntime?: DesktopRuntime;
+  adapterServices?: AdapterServices;
 } = {}) {
   const [runtime] = useState(
     () =>
@@ -76,6 +81,9 @@ export default function App({
           ),
         ),
         bundledApps,
+        undefined,
+        undefined,
+        adapterServices,
       ),
   );
   const apps = useSyncExternalStore(runtime.subscribe, runtime.snapshot);
@@ -189,7 +197,7 @@ export default function App({
   const [reconnectTarget, setReconnectTarget] = useState<{
     key: string;
     sessionId: number;
-    connection: HostProfile;
+    connection: WorkspaceConnection;
   } | null>(null);
   useEffect(
     () => () => {
@@ -199,6 +207,7 @@ export default function App({
     [],
   );
   const [connectOpen, setConnectOpen] = useState(false);
+  const [adapterConnectOpen, setAdapterConnectOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [editingProfile, setEditingProfile] = useState<HostProfile>();
   const [launcherOpen, setLauncherOpen] = useState(false);
@@ -334,6 +343,12 @@ export default function App({
       sessionId: session.id,
       connection: workspace.connection,
     });
+    if (isAdapterProfile(workspace.connection)) {
+      setSwitcherOpen(false);
+      setError("");
+      setAdapterConnectOpen(true);
+      return;
+    }
     setEditingProfile(workspace.connection);
     setSwitcherOpen(false);
     setError("");
@@ -346,11 +361,22 @@ export default function App({
     setError("Connection canceled. You can try again.");
   }
   async function connect(options: ConnectOptions, name: string) {
-    const profile = connectionProfile(options, name);
+    return establish(connectionProfile(options, name), (signal, review) =>
+      services.connect(options, signal, review),
+    );
+  }
+  async function establish(
+    profile: WorkspaceConnection,
+    open: (
+      signal: AbortSignal,
+      review: import("./sdk").HostKeyReviewer,
+    ) => Promise<Session>,
+  ) {
+    const name = profile.name;
     const target = reconnectTarget;
     if (target && !sameEndpoint(target.connection, profile)) {
       setError(
-        "Reconnect uses the original host, port and user. Use Add host for a different connection.",
+        "Reconnect keeps the original connection settings and service sources. Open a new workspace to use a different device.",
       );
       return;
     }
@@ -361,8 +387,7 @@ export default function App({
     setError("");
     let releaseReview = () => {};
     try {
-      const result = await services.connect(
-        options,
+      const result = await open(
         controller.signal,
         (challenge) =>
           new Promise<boolean>((resolve) => {
@@ -418,6 +443,7 @@ export default function App({
           connection: profile,
         });
       setConnectOpen(false);
+      setAdapterConnectOpen(false);
       setReconnectTarget(null);
       if (result.info.notices.length) setToast(result.info.notices.join(" "));
     } catch (e) {
@@ -1034,6 +1060,40 @@ export default function App({
           }}
           close={() => setConnectOpen(false)}
           submit={(options, name) => void connect(options, name)}
+          openAdapters={
+            adapterServices
+              ? () => {
+                  setConnectOpen(false);
+                  setAdapterConnectOpen(true);
+                }
+              : undefined
+          }
+        />
+      )}
+      {adapterConnectOpen && adapterServices && (
+        <ConnectAdapterDialog
+          services={adapterServices}
+          initial={
+            reconnectTarget && isAdapterProfile(reconnectTarget.connection)
+              ? reconnectTarget.connection
+              : undefined
+          }
+          busy={connecting}
+          error={error}
+          cancel={cancelConnection}
+          close={() => {
+            setAdapterConnectOpen(false);
+            setReconnectTarget(null);
+          }}
+          manage={() => {
+            setAdapterConnectOpen(false);
+            openApp("apps");
+          }}
+          submit={(options, profile) =>
+            establish(profile, (signal) =>
+              adapterServices.connect(options, signal),
+            )
+          }
         />
       )}
       {menu && <ContextMenu {...menu} close={closeMenu} />}

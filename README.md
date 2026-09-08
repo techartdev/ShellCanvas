@@ -4,7 +4,7 @@ A desktop canvas for remote devices. Built with **Tauri 2, Rust, and TypeScript/
 
 This is an early working prototype, not a complete file manager or a hardened public release.
 
-The architecture is evolving toward a connection-neutral desktop: SSH is the first/default adapter, and future workspaces can combine file access, a console and device APIs from different adapters. See [the composition design](docs/connections.md). Serial, Telnet, FTP and API adapters are not implemented yet.
+The architecture is evolving toward a connection-neutral desktop: SSH is the first/default adapter. [Installed native adapters](docs/adapter-packages.md) can now provide file browsing and a console through separate connections in one workspace. Combining those with built-in SSH and adding device APIs remain in progress. See [the composition design](docs/connections.md). Serial, Telnet, FTP and API adapters are not implemented yet.
 
 ## Run
 
@@ -64,7 +64,7 @@ Files and Editor now consume [provider-owned navigation metadata](docs/filesyste
 - The importer is not a full OpenSSH configuration interpreter: `Include`, `Match`, wildcard defaults, `ProxyCommand`, `ProxyJump`, SSH agents, hardware keys, and host certificates are unsupported. Imported fields are editable before connecting.
 - Host-key checks support ordinary/hashed entries, wildcard and negated patterns, ports, aliases and revocation. Unrelated markers do not block known hosts; certificate verification remains unsupported. Malformed trust files fail closed. [SSH trust behavior and limits](docs/ssh-host-trust.md).
 - Connection loss is detected through SSH transport closure and keepalives; it can take roughly a minute to recognize an unreachable network peer.
-- Bundled apps remain trusted source modules. Runtime UI packages use an isolated frame and permission-checked broker on Windows; other native platforms remain gated pending equivalent isolation checks. A [native adapter process library](docs/adapter-process.md) now has files/console/custom-service fixtures; adapter installation and production wiring, publisher authentication and a marketplace remain future work. See [the boundary and validation scope](docs/runtime-apps.md#isolation-boundary-and-unfinished-gates).
+- Bundled apps remain trusted source modules. Runtime UI packages use an isolated frame and permission-checked broker on Windows; other native platforms remain gated pending equivalent isolation checks. [Native adapter packages](docs/adapter-packages.md) require explicit native-code trust and connect read-only files/console services through the production workspace owner. Further service bridges, independent source replacement, publisher authentication and a marketplace remain future work. See [the boundary and validation scope](docs/runtime-apps.md#isolation-boundary-and-unfinished-gates).
 - Tablet/phone layouts are browser-checked. Native Android/iOS builds and touch-keyboard behavior are not yet validated.
 
 ## Verify

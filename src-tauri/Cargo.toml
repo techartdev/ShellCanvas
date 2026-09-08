@@ -23,6 +23,7 @@ rusqlite = { version = "0.37", features = ["bundled"] }
 uuid = { version = "1", features = ["v4"] }
 shellcanvas-core = { path = "../crates/ssh-core" }
 shellcanvas-services = { path = "../crates/service-contracts" }
+shellcanvas-adapter-runtime = { path = "../crates/adapter-runtime" }
 serde = { version = "1", features = ["derive"] }
 tokio = { version = "1", features = ["sync", "time", "fs", "io-util"] }
 

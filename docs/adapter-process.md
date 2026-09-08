@@ -2,13 +2,13 @@
 
 `crates/adapter-runtime` can launch a separately compiled, trusted executable and consume its services without linking its protocol implementation into the host. It supplies version negotiation, service discovery, concurrent calls, cancellation, process teardown, and bridges to the existing `ConnectionLifecycle`, `FileSystemProvider` and `TerminalService` interfaces.
 
-This is the native foundation, not yet a user-facing adapter installer. The shipped connection dialog still offers SSH. Package review/storage, executable integrity and platform selection, configuration UI, custom-service routing into runtime app permissions, and independent workspace binding replacement remain to be integrated. The synthetic adapter implements neither FTP nor serial.
+The desktop now provides [reviewed adapter installation and connection configuration](adapter-packages.md), including independent file and console sources. Custom-service routing into runtime app permissions and independent workspace binding replacement remain to be integrated. The synthetic adapter implements neither FTP nor serial.
 
 ## Launch and trust
 
 `AdapterProcess::launch(Launch { executable, arguments, directory }, configuration, deadline)` requires absolute executable and working-directory paths. It invokes the executable directly, with a structured argument vector, without a shell or PATH lookup. Pass credentials/configuration in the initialization message, not arguments. Configuration and wire data are not logged by this host. Standard error is currently discarded; a reviewed diagnostics channel is pending.
 
-Adapters are native programs running with the user's OS permissions and inherited environment. UI app grants do not sandbox them. A future installer must make this distinct trust decision explicit before launching them. Never let an isolated app frame supply a launch path or arguments.
+Adapters are native programs running with the user's OS permissions and inherited environment. UI app grants do not sandbox them. The installer requires an explicit native-code trust decision. Never let an isolated app frame supply a launch path or arguments.
 
 Windows launch paths must explicitly end in `.exe`; batch files and shortcuts are rejected. An adapter implemented in a scripting language can use an explicit interpreter executable with its script as a separate argument. This avoids Windows batch-file argument handling described in [Rust's process documentation](https://doc.rust-lang.org/std/process/struct.Command.html#method.arg). Literal arguments, including spaces, quotes and shell metacharacters, are covered by the process fixture.
 
@@ -23,13 +23,29 @@ Stdin/stdout are dedicated to the protocol. Every frame is a four-byte, big-endi
 The host sends the first request:
 
 ```json
-{"v":1,"type":"request","id":1,"method":"system.adapter.initialize","params":{"protocol":1,"configuration":{}}}
+{
+  "v": 1,
+  "type": "request",
+  "id": 1,
+  "method": "system.adapter.initialize",
+  "params": { "protocol": 1, "configuration": {} }
+}
 ```
 
 The adapter replies after configuration/connection setup:
 
 ```json
-{"v":1,"type":"result","id":1,"value":{"protocol":1,"services":[{"id":"acme.sensor","version":1,"methods":["acme.sensor.read"]}]}}
+{
+  "v": 1,
+  "type": "result",
+  "id": 1,
+  "value": {
+    "protocol": 1,
+    "services": [
+      { "id": "acme.sensor", "version": 1, "methods": ["acme.sensor.read"] }
+    ]
+  }
+}
 ```
 
 Each service ID and method consists of dot-separated identifier segments, starts each segment with a letter, and uses letters, digits or hyphens thereafter (200-byte maximum). Method names must start with their service ID plus a dot. Service IDs and methods must be unique; service versions are positive integers. `system` and `system.*` are reserved for the host. The catalog is immutable for this process generation; reconnect/replacement requires a fresh instance and explicit binding selection.
@@ -56,11 +72,11 @@ Adapters must process requests concurrently: a pending console read cannot preve
 
 The `files` service requires `files.list`, `files.locate`, and `files.preview`:
 
-| Method | Parameters | Result |
-| --- | --- | --- |
-| `files.list` | `{path: string or null, cursor: string or null, limit: 128}` | `{directory: Directory, next: string or null}` |
-| `files.locate` | `{path: string}` | `FileLocation` |
-| `files.preview` | `{path: string}` | Text preview string |
+| Method          | Parameters                                                   | Result                                         |
+| --------------- | ------------------------------------------------------------ | ---------------------------------------------- |
+| `files.list`    | `{path: string or null, cursor: string or null, limit: 128}` | `{directory: Directory, next: string or null}` |
+| `files.locate`  | `{path: string}`                                             | `FileLocation`                                 |
+| `files.preview` | `{path: string}`                                             | Text preview string                            |
 
 `Directory` and `FileLocation` use the camelCase shapes in `shellcanvas-services`. Each page has directory metadata and up to 128 entries. `next: null` finishes the listing. Cursors are stateless/provider-owned continuation tokens: they must not allocate a retained server handle requiring a later release. The adapter must preserve listing identity or reject stale cursors; it must not silently switch locations between pages. Empty/unchanged next cursors and changed directory paths are rejected.
 
@@ -70,13 +86,13 @@ Paths, parent locations, roots and cursor tokens remain opaque. The host does no
 
 The `console` service requires `console.open`, `console.read`, `console.write`, and `console.close`. `console.resize` is optional:
 
-| Method | Parameters | Result |
-| --- | --- | --- |
-| `console.open` | `{id, cols, rows}` | `{resizable: boolean}` |
-| `console.read` | `{id, maxBytes: 65536, waitMs: 1000}` | `{bytes: number[], closed: boolean}` |
-| `console.write` | `{id, bytes: number[]}` | `null` after the write |
-| `console.resize` | `{id, cols, rows}` | `null` |
-| `console.close` | `{id}` | `null` after cleanup |
+| Method           | Parameters                            | Result                               |
+| ---------------- | ------------------------------------- | ------------------------------------ |
+| `console.open`   | `{id, cols, rows}`                    | `{resizable: boolean}`               |
+| `console.read`   | `{id, maxBytes: 65536, waitMs: 1000}` | `{bytes: number[], closed: boolean}` |
+| `console.write`  | `{id, bytes: number[]}`               | `null` after the write               |
+| `console.resize` | `{id, cols, rows}`                    | `null`                               |
+| `console.close`  | `{id}`                                | `null` after cleanup                 |
 
 Bytes are integers from 0 through 255, preserving binary console data and split UTF-8 sequences. Read/write chunks are at most 64 KiB. An empty read with `closed: false` is a poll timeout; empty with `closed: true` is EOF. Output may accompany EOF; the next read must also return EOF. Sizes use the existing terminal bounds (2–500 columns, 2–300 rows). Resize is exposed only when the method is advertised and the particular open reports it supported.
 
@@ -91,4 +107,4 @@ cargo clippy -p shellcanvas-adapter-runtime --all-targets --locked -- -D warning
 
 The tests compile and launch `fixture-adapter` as a separate executable. They cover version/catalog rejection, oversized/malformed output, process exit, out-of-order/late replies, cancellation, concurrency capacity recovery, shared close results, independent processes, 20,000 paged file entries, opaque locations, binary consoles, simultaneous read/write, fixed-size consoles and abandoned-open cleanup. These are real local processes with fake device data, not in-process service mocks or tests of a live remote protocol. The fixture binary is test scaffolding, not an adapter to install in production.
 
-Next steps: reviewed runtime adapter packages and launch/configuration UI; connect these service objects to production workspace composition; bridge file/text/mutation/transfer/settings and custom services into the app broker; add independent service generation replacement; provide a standalone adapter SDK/schema/starter and cross-platform process evidence. The full [kernel roadmap](kernel-roadmap.md) remains active.
+Reviewed packages and configuration UI now connect these service objects to production workspace composition. Next steps: bridge file/text/mutation/transfer/settings and custom services into the app broker; add independent service generation replacement; provide a standalone adapter SDK/schema/starter and cross-platform process evidence. The full [kernel roadmap](kernel-roadmap.md) remains active.

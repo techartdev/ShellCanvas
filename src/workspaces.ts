@@ -6,6 +6,13 @@ import {
   type DesktopState,
 } from "./desktop";
 import type { ConnectOptions, DesktopApp, HostProfile, Session } from "./sdk";
+import type { AdapterProfile } from "./adapters";
+export type WorkspaceConnection = HostProfile | AdapterProfile;
+export function isAdapterProfile(
+  connection: WorkspaceConnection,
+): connection is AdapterProfile {
+  return "kind" in connection && connection.kind === "adapters";
+}
 import type { WorkspaceStatus } from "./sdk";
 import { capabilityLabels, capabilityStatus, type Capability } from "./sdk";
 export function connectionProfile(
@@ -20,7 +27,26 @@ export function connectionProfile(
     keyPath: options.keyPath,
   };
 }
-export function sameEndpoint(a: HostProfile, b: HostProfile) {
+export function sameEndpoint(a: WorkspaceConnection, b: WorkspaceConnection) {
+  if (isAdapterProfile(a) || isAdapterProfile(b)) {
+    if (!isAdapterProfile(a) || !isAdapterProfile(b)) return false;
+    const identity = (profile: AdapterProfile) =>
+      JSON.stringify({
+        sources: profile.sources
+          .map((source) => ({
+            key: source.key,
+            id: source.id,
+            configuration: Object.entries(source.configuration).sort(
+              ([a], [b]) => a.localeCompare(b),
+            ),
+          }))
+          .sort((a, b) => a.key.localeCompare(b.key)),
+        bindings: Object.entries(profile.bindings).sort(([a], [b]) =>
+          a.localeCompare(b),
+        ),
+      });
+    return identity(a) === identity(b);
+  }
   return (
     a.host.trim().toLowerCase() === b.host.trim().toLowerCase() &&
     a.port === b.port &&
@@ -33,7 +59,7 @@ export interface Workspace {
   session: Session | null;
   desktop: DesktopState;
   connected?: boolean;
-  connection?: HostProfile;
+  connection?: WorkspaceConnection;
 }
 export interface Workspaces {
   items: Workspace[];
@@ -44,14 +70,14 @@ export type WorkspaceAction =
       type: "connected";
       session: Session;
       label: string;
-      connection?: HostProfile;
+      connection?: WorkspaceConnection;
     }
   | {
       type: "reconnected";
       key: string;
       previousSessionId: number;
       session: Session;
-      connection: HostProfile;
+      connection: WorkspaceConnection;
       label: string;
     }
   | { type: "select"; key: string }
@@ -62,7 +88,7 @@ export type WorkspaceAction =
 export function initialWorkspaces(
   apps: readonly DesktopApp[],
   session: Session | null,
-  connection?: HostProfile,
+  connection?: WorkspaceConnection,
 ): Workspaces {
   const local: Workspace = {
     key: "local",

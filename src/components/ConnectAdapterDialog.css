@@ -1,0 +1,76 @@
+.adapter-connect {
+  max-height: calc(100dvh - 48px);
+  overflow: auto;
+}
+.adapter-connect fieldset {
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.adapter-source {
+  border: 1px solid #3c535e;
+  background: #21353f;
+  padding: 18px;
+  border-radius: 12px;
+  margin: 16px 0;
+}
+.adapter-source-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+}
+.adapter-source-heading h3 {
+  font-size: 13px;
+  color: #b9cdd5;
+  margin: 0;
+}
+.adapter-roles {
+  display: flex;
+  gap: 24px;
+  font-size: 13px;
+  color: #b9cdd5;
+  margin: 14px 0;
+}
+.adapter-roles label {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.adapter-roles input {
+  accent-color: #a0cbbb;
+}
+.adapter-add {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: transparent;
+  border: 0;
+  color: #aacfc1;
+  font: inherit;
+  font-size: 12px;
+  padding: 9px 0;
+  cursor: pointer;
+}
+.adapter-connect .form-field select {
+  width: 100%;
+  border: 1px solid #405864;
+  border-radius: 8px;
+  background: #1b2f39;
+  color: #e1edf0;
+  padding: 11px;
+}
+.adapter-connect .form-field:has(input[type="checkbox"]) {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.adapter-connect .form-field input[type="checkbox"] {
+  order: -1;
+  width: 16px;
+  height: 16px;
+  min-height: 16px;
+  margin: 0;
+  padding: 0;
+  accent-color: #a0cbbb;
+}

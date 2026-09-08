@@ -4176,6 +4176,7 @@ dependencies = [
  "rusqlite",
  "serde",
  "serde_json",
+ "shellcanvas-adapter-runtime",
  "shellcanvas-core",
  "shellcanvas-services",
  "tauri",
@@ -4195,9 +4196,12 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "async-trait",
+ "semver",
  "serde",
  "serde_json",
+ "sha2 0.10.9",
  "shellcanvas-services",
+ "tempfile",
  "tokio",
  "uuid",
 ]

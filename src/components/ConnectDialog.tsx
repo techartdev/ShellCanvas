@@ -25,6 +25,7 @@ export function ConnectDialog({
   reconnecting = false,
   cancelConnect,
   hostKeyReview,
+  openAdapters,
 }: {
   hostKeyReview?: {
     challenge: HostKeyChallenge;
@@ -32,6 +33,7 @@ export function ConnectDialog({
   } | null;
   reconnecting?: boolean;
   cancelConnect?(): void;
+  openAdapters?(): void;
   initialProfile?: HostProfile;
   profiles: HostProfile[];
   busy: boolean;
@@ -253,6 +255,16 @@ export function ConnectDialog({
               );
             }}
           >
+            {openAdapters && !reconnecting && (
+              <button
+                type="button"
+                className="adapter-add"
+                disabled={locked}
+                onClick={openAdapters}
+              >
+                Use connection adapters
+              </button>
+            )}
             <fieldset disabled={locked || preview}>
               {!reconnecting && (
                 <HostProfilePicker

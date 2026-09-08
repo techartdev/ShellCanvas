@@ -7,6 +7,7 @@ use std::sync::{
 };
 use tauri::{ipc::Channel, State};
 use tokio::sync::{mpsc, Mutex};
+mod adapters;
 #[cfg(windows)]
 mod clipboard_stream;
 mod connection_attempts;
@@ -615,7 +616,14 @@ pub fn run() {
             Ok(())
         })
         .manage(DesktopState::default())
+        .manage(adapters::AdapterJobs::default())
         .invoke_handler(|invoke| {
+            #[cfg(debug_assertions)]
+            if invoke.message.command() == "review_fixture_adapter" {
+                let handler: fn(tauri::ipc::Invoke<tauri::Wry>) -> bool =
+                    tauri::generate_handler![adapters::review_fixture_adapter];
+                return handler(invoke);
+            }
             #[cfg(debug_assertions)]
             if invoke.message.command() == "channel_roundtrip" {
                 let handler: fn(tauri::ipc::Invoke<tauri::Wry>) -> bool =
@@ -623,6 +631,13 @@ pub fn run() {
                 return handler(invoke);
             }
             let handler: fn(tauri::ipc::Invoke<tauri::Wry>) -> bool = tauri::generate_handler![
+                adapters::list_adapters,
+                adapters::connect_adapters,
+                adapters::review_adapter,
+                adapters::cancel_adapter_review,
+                adapters::install_adapter,
+                adapters::set_adapter_enabled,
+                adapters::remove_adapter,
                 extension_frames::publish_app_frame,
                 extension_frames::release_app_frame,
                 profiles,

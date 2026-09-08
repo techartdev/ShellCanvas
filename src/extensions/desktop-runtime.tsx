@@ -11,7 +11,8 @@ import {
 } from "../sdk";
 import type { SystemAPI } from "../system-api";
 import { AppCatalog, type AppLease, type InstalledApp } from "./catalog";
-import { ExtensionManager } from "./ExtensionManager";
+import { ExtensionCenter } from "./ExtensionCenter";
+import { defaultAdapterServices, type AdapterServices } from "../adapters";
 import { ExtensionFrame } from "./ExtensionFrame";
 import { indexedAppStorage } from "./app-storage";
 import type { AppStorageBackend } from "./storage-api";
@@ -147,6 +148,7 @@ export class DesktopRuntime {
     private bundled: readonly DesktopApp[],
     private storage: AppStorageBackend = indexedAppStorage(),
     private clipboard: ClipboardService = systemClipboard,
+    private adapters: AdapterServices | undefined = defaultAdapterServices,
   ) {
     this.manager = {
       apiVersion: 1,
@@ -157,8 +159,9 @@ export class DesktopRuntime {
       requires: [],
       icon: Package,
       component: (context) => (
-        <ExtensionManager
+        <ExtensionCenter
           catalog={catalog}
+          adapters={this.adapters}
           open={(id) => context.openApp?.(id)}
         />
       ),

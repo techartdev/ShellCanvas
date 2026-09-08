@@ -1,0 +1,33 @@
+{
+  "schemaVersion": 1,
+  "id": "dev.shellcanvas.adapter-probe",
+  "name": "Practice device",
+  "version": "1.0.0",
+  "description": "A synthetic device for trying adapter workspaces. It makes no remote network connections.",
+  "platform": "current",
+  "entrypoint": "bin/fixture-adapter{exe}",
+  "files": [{ "path": "bin/fixture-adapter{exe}", "executable": true }],
+  "configuration": [
+    {
+      "id": "standard",
+      "label": "Services (both, files or console)",
+      "kind": "text",
+      "default": "both",
+      "required": true
+    },
+    {
+      "id": "entries",
+      "label": "Sample file count",
+      "kind": "number",
+      "default": 350,
+      "required": true
+    },
+    {
+      "id": "resizable",
+      "label": "Resizable console",
+      "kind": "boolean",
+      "default": true
+    },
+    { "id": "token", "label": "Example private token", "kind": "password" }
+  ]
+}

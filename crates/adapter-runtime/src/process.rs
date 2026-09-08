@@ -89,6 +89,14 @@ impl AdapterProcess {
         configuration: Value,
         deadline: Duration,
     ) -> Result<Self, AdapterError> {
+        Self::launch_owned(launch, configuration, deadline, None).await
+    }
+    pub(crate) async fn launch_owned(
+        launch: Launch,
+        configuration: Value,
+        deadline: Duration,
+        owner: Option<Arc<dyn Send + Sync>>,
+    ) -> Result<Self, AdapterError> {
         if !launch.executable.is_absolute() || !launch.directory.is_absolute() {
             return Err(error(
                 "invalid",
@@ -154,6 +162,7 @@ impl AdapterProcess {
             complete,
             alive.clone(),
             wake.clone(),
+            owner,
         ));
         let mut process = Self {
             inner: Arc::new(Inner {
@@ -336,6 +345,7 @@ async fn run(
     complete: watch::Sender<Option<Result<(), AdapterError>>>,
     alive: Arc<AtomicBool>,
     wake: Arc<Notify>,
+    owner: Option<Arc<dyn Send + Sync>>,
 ) {
     let mut stdin = child.stdin.take().expect("piped stdin");
     let mut stdout = child.stdout.take().expect("piped stdout");
@@ -457,5 +467,12 @@ async fn run(
             true,
         ))
     };
+    if outcome.is_err() {
+        if let Some(owner) = owner {
+            std::mem::forget(owner);
+        }
+    } else {
+        drop(owner);
+    }
     complete.send_replace(Some(outcome));
 }

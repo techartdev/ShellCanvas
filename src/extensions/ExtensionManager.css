@@ -3,6 +3,40 @@
   padding: 28px;
   overflow: auto;
 }
+.extension-center {
+  min-height: 0;
+  height: 100%;
+  overflow: auto;
+}
+.extension-tabs {
+  display: flex;
+  gap: 6px;
+  padding: 16px 28px 0;
+}
+.extension-tabs button {
+  border: 1px solid transparent;
+  border-radius: 8px;
+  padding: 9px 14px;
+  color: #9cb2bd;
+  background: transparent;
+  cursor: pointer;
+}
+.extension-tabs button[aria-pressed="true"] {
+  color: #dce7ec;
+  background: #293e49;
+  border-color: #425963;
+}
+.adapter-trust {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin: 18px 0;
+  color: #dce7ec;
+  font-size: 13px;
+}
+.adapter-trust input {
+  accent-color: #a0cbbb;
+}
 .extension-manager header,
 .extension-review-heading {
   display: flex;
