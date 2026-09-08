@@ -3,6 +3,8 @@
 //! consumers display/pass them unchanged and never split, join or normalize them.
 use anyhow::Result;
 use async_trait::async_trait;
+pub mod connection;
+pub use connection::*;
 pub mod device;
 pub use device::*;
 pub mod terminal;

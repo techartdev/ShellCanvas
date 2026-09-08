@@ -8,15 +8,17 @@ use std::sync::{
 use tauri::{ipc::Channel, State};
 use tokio::sync::{mpsc, Mutex};
 mod connection_attempts;
+mod connection_resource;
 mod host_trust;
 mod profile_store;
 mod session_registry;
 mod terminals;
 mod transfers;
+use connection_resource::ConnectionResource;
 use session_registry::SessionRegistry;
 
 struct ActiveSession {
-    connection: Arc<Connection>,
+    connection: Arc<ConnectionResource>,
     terminal: Option<Arc<dyn TerminalService>>,
     files: Option<Arc<dyn FileSystemProvider>>,
     text: Option<Arc<dyn TextFileService>>,
@@ -37,6 +39,7 @@ struct DesktopState {
 struct SessionInfo {
     id: u64,
     info: HostInfo,
+    connections: Vec<ConnectionIdentity>,
 }
 fn error(e: impl std::fmt::Display) -> String {
     e.to_string()
@@ -192,11 +195,20 @@ async fn connect_session(
     } else {
         None
     };
+    let resource = ConnectionResource::new(
+        ConnectionIdentity {
+            instance: state.next_id.fetch_add(1, Ordering::Relaxed) + 1,
+            generation: 1,
+            adapter: "ssh".into(),
+        },
+        connection.clone(),
+    );
+    let connections = vec![resource.identity().clone()];
     state.registry.lock().await.sessions.insert(
         id,
         ActiveSession {
             terminal: Some(connection.clone()),
-            connection,
+            connection: resource,
             files,
             text,
             mutations,
@@ -205,7 +217,11 @@ async fn connect_session(
             settings,
         },
     );
-    Ok(SessionInfo { id, info })
+    Ok(SessionInfo {
+        id,
+        info,
+        connections,
+    })
 }
 
 #[tauri::command]
@@ -239,7 +255,7 @@ async fn session_alive(session_id: u64, state: State<'_, DesktopState>) -> Resul
         .await
         .sessions
         .get(&session_id)
-        .is_some_and(|s| !s.connection.handle.is_closed()))
+        .is_some_and(|s| s.connection.is_connected()))
 }
 
 async fn filesystem(

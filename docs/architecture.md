@@ -40,6 +40,8 @@ Apps now receive session-bound services without connection/profile administratio
 
 ## Lifecycle
 
+The established connection now implements a [transport-independent lifecycle](connection-lifecycle.md). The native workspace holds a shared resource with a separate connection identity; health/disconnect no longer reach into an SSH client handle. Setup/trust remain in the SSH adapter, and composite service routing remains pending.
+
 - Session IDs prevent commands from accidentally acting on a replacement host.
 - A native registry keeps independent connections and terminal owners under a short mutex. Network connection setup does not remove or block an existing host. Terminal creation rechecks ownership after its network await, so disconnecting during creation cannot register an orphan.
 - Terminal input, resize and close IPC carry both session and terminal IDs. A mismatched owner is refused (close is an idempotent no-op). IDs monotonically increase during the process and are never reassigned to a reconnect.

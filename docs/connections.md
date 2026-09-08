@@ -71,7 +71,7 @@ The shared desktop design stays coherent across adapters. Unavailable apps/actio
 ## Incremental migration
 
 1. **Implemented first seam:** `CommandProbe` and `ProbeContext` separate system detection from the concrete SSH connection. Missing command access is valid. Ordered providers run within a total detection budget, and fallback preserves supplied capabilities. This proves limited-device detection with fixtures; it is not a connection-plugin runtime.
-2. **Next:** put generic service/identity types behind a dependency boundary with no russh/Tauri imports. Adapt the current terminal, filesystem and connection lifecycle behind those interfaces. Keep existing SSH IPC as a compatibility facade during migration.
+2. **Implemented service/lifecycle seams:** generic file, console, settings and connection identity/lifecycle types now live behind a dependency boundary with no russh/Tauri imports. Native health/disconnect uses the neutral established-connection resource with bounded once-only teardown; see [lifecycle verification](connection-lifecycle.md). Adapter setup schemas and general command/API contracts remain. Existing SSH IPC stays the compatibility facade during migration.
 3. Add explicit workspace service bindings and per-binding status, generations and teardown. Prove a mixed workspace with fake adapters, including loss of one leg and shared connection cleanup.
 4. Bind apps and AI to the service broker; replace Unix-specific path assumptions and SSH-specific connection metadata in shared UI.
 5. Implement a second real adapter to validate the contract, selected from an actual device/workflow. Serial, Telnet, FTP and API connectors remain separate backlog items. Preserve SSH/SFTP regression checks throughout.

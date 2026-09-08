@@ -98,6 +98,12 @@ export interface HostInfo {
 export interface Session {
   id: number;
   info: HostInfo;
+  /** Established connector identities; absent in older/synthetic backends. Not a trust claim. */
+  connections?: readonly {
+    instance: number;
+    generation: number;
+    adapter: string;
+  }[];
 }
 export interface FileEntry {
   revision?: string;

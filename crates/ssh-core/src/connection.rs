@@ -68,6 +68,17 @@ pub struct Connection {
     pub handle: client::Handle<VerifiedHost>,
 }
 
+#[async_trait::async_trait]
+impl shellcanvas_services::ConnectionLifecycle for Connection {
+    fn is_connected(&self) -> bool {
+        !self.handle.is_closed()
+    }
+
+    async fn disconnect(&self) -> Result<()> {
+        Connection::disconnect(self).await
+    }
+}
+
 impl Connection {
     pub async fn connect(options: ConnectOptions) -> Result<Self> {
         let known_hosts = dirs::home_dir()

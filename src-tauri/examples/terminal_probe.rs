@@ -1,12 +1,16 @@
 // SPDX-License-Identifier: MPL-2.0
 // Authorized read-only integration: only temporary shell variables and stty queries.
+#[path = "../src/connection_resource.rs"]
+mod connection_resource;
 #[path = "../src/session_registry.rs"]
 mod session_registry;
 #[path = "../src/terminals.rs"]
 mod terminals;
 use anyhow::{ensure, Result};
 use shellcanvas_core::{ConnectOptions, Connection};
-use shellcanvas_services::{TerminalEvent, TerminalInput, TerminalService, TerminalSize};
+use shellcanvas_services::{
+    ConnectionIdentity, TerminalEvent, TerminalInput, TerminalService, TerminalSize,
+};
 use std::{
     sync::{Arc, Mutex},
     time::Duration,
@@ -42,6 +46,22 @@ async fn main() -> Result<()> {
         .await?,
     );
     let service: Arc<dyn TerminalService> = connection.clone();
+    let resource = connection_resource::ConnectionResource::new(
+        ConnectionIdentity {
+            instance: 1001,
+            generation: 1,
+            adapter: "ssh".into(),
+        },
+        connection.clone(),
+    );
+    ensure!(
+        resource.is_connected(),
+        "Neutral SSH lifecycle reported disconnected after connect"
+    );
+    ensure!(
+        resource.identity().instance != 1,
+        "Connection and workspace identities were conflated"
+    );
     let mut registry = session_registry::SessionRegistry::default();
     registry.sessions.insert(1, connection.clone());
     let mut tasks = Vec::new();
@@ -105,7 +125,12 @@ async fn main() -> Result<()> {
     println!("Closing one console preserves the other; stale/cross-session handles refused");
     registry.remove(1);
     timeout(Duration::from_secs(5), tasks.remove(0)).await??;
-    connection.disconnect().await?;
-    println!("Console cleanup and SSH disconnect: OK");
+    resource.disconnect().await.map_err(anyhow::Error::msg)?;
+    resource.disconnect().await.map_err(anyhow::Error::msg)?;
+    ensure!(
+        !resource.is_connected(),
+        "Closed resource still reports connected"
+    );
+    println!("Console cleanup, neutral lifecycle and repeated disconnect: OK");
     Ok(())
 }
