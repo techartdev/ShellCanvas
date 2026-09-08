@@ -6,6 +6,11 @@ import type {
   ServiceMethodInfo,
 } from "../../src/extensions/environment-api";
 const environmentEvents: AppEnvironment[] = [];
+let capturedDocument:
+  | Awaited<
+      ReturnType<NonNullable<Awaited<typeof connection>>["files"]["readText"]>
+    >
+  | undefined;
 let watching = false;
 window.addEventListener("message", async (event) => {
   if (event.source !== parent || event.data?.type !== "desktop-probe") return;
@@ -21,6 +26,61 @@ window.addEventListener("message", async (event) => {
   if (event.data.action === "remember" || event.data.action === "restore")
     document.querySelector<HTMLButtonElement>(`#${event.data.action}`)!.click();
   let storage: unknown;
+  let files: Record<string, boolean> | undefined;
+  if (event.data.action === "files") {
+    const client = (await connection)!;
+    const binding = (await client.environment.get()).binding!;
+    capturedDocument = await client.files.readText({
+      binding,
+      path: "fixture:note",
+    });
+    const saved = await client.files.saveText(
+      capturedDocument,
+      "Remote note ✓",
+    );
+    let conflict = false;
+    try {
+      await client.files.saveText(capturedDocument, "stale");
+    } catch {
+      conflict = true;
+    }
+    const created = await client.files.createText({
+      binding,
+      parent: "fixture:root",
+      name: "new.txt",
+      text: "Created 🌿",
+    });
+    files = {
+      read: capturedDocument.text === "Original note",
+      saved:
+        saved.text === "Remote note ✓" &&
+        saved.revision !== capturedDocument.revision,
+      conflict,
+      created: created.text === "Created 🌿",
+    };
+  }
+  if (
+    event.data.action === "files-stale" ||
+    event.data.action === "files-denied"
+  ) {
+    const client = (await connection)!;
+    try {
+      if (event.data.action === "files-stale")
+        await client.files.saveText(capturedDocument!, "Wrong host");
+      else
+        await client.files.readText({
+          binding: (await client.environment.get()).binding!,
+          path: "fixture:note",
+        });
+      files = { rejected: false };
+    } catch (error) {
+      files = {
+        rejected:
+          (error as { code: string }).code ===
+          (event.data.action === "files-stale" ? "closed" : "denied"),
+      };
+    }
+  }
   let clipboard: Record<string, boolean> | undefined;
   if (event.data.action === "clipboard") {
     const client = (await connection)!;
@@ -103,6 +163,7 @@ window.addEventListener("message", async (event) => {
       status: document.querySelector("output")!.textContent,
       ready: !document.querySelector<HTMLButtonElement>("#message")!.disabled,
       storage,
+      files,
       clipboard,
       environment,
       services,

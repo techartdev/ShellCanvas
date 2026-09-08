@@ -1,9 +1,18 @@
 // SPDX-License-Identifier: MPL-2.0
-import { connectToShellCanvas } from "@shellcanvas/app-sdk";
+import {
+  connectToShellCanvas,
+  type RemoteTextDocument,
+} from "@shellcanvas/app-sdk";
 
 const root = document.querySelector<HTMLDivElement>("#root")!;
 root.innerHTML = `<main><p class="eyebrow">SHELLCANVAS · SAMPLE APP</p><h1>Field Notes</h1><p class="intro">A separately built app, using the desktop’s shared dialogs.</p><textarea aria-label="Notes" placeholder="Write a note for this workspace…"></textarea><div class="actions"><button id="message">Message box</button><button id="open">Browse files</button><button id="save">Save note as…</button><button id="denied">Check unavailable service</button></div><output aria-live="polite">Connecting to the desktop…</output></main>`;
 const status = root.querySelector("output")!;
+root
+  .querySelector(".actions")!
+  .insertAdjacentHTML(
+    "afterbegin",
+    '<button id="open-note">Open note…</button><button id="save-existing">Save changes</button>',
+  );
 const localActions = document.createElement("div");
 localActions.className = "actions";
 localActions.innerHTML =
@@ -16,6 +25,7 @@ buttons.forEach((button) => {
 async function start() {
   try {
     const client = await connectToShellCanvas();
+    let remoteDocument: RemoteTextDocument | undefined;
     const connectionState = document.createElement("p");
     connectionState.className = "intro";
     root.querySelector("textarea")!.before(connectionState);
@@ -56,13 +66,25 @@ async function start() {
         method.available,
     );
     const enabled = (button: HTMLButtonElement) =>
-      button.id === "copy-note"
-        ? canCopy
-        : button.id === "paste-text"
-          ? canPaste
-          : ["remember", "restore"].includes(button.id)
-            ? localAvailable
-            : true;
+      button.id === "save-existing"
+        ? !!remoteDocument &&
+          remoteDocument.writable &&
+          available.some(
+            (method) =>
+              method.name === "system.files.saveText" && method.granted,
+          )
+        : button.id === "open-note"
+          ? available.some(
+              (method) =>
+                method.name === "system.files.readText" && method.granted,
+            )
+          : button.id === "copy-note"
+            ? canCopy
+            : button.id === "paste-text"
+              ? canPaste
+              : ["remember", "restore"].includes(button.id)
+                ? localAvailable
+                : true;
     let busy = false;
     const publish = () => client.window.setDocumentState({ dirty, busy });
     root.querySelector("textarea")!.addEventListener("input", () => {
@@ -122,14 +144,69 @@ async function start() {
           }),
         ),
     );
+    root.querySelector("#open-note")!.addEventListener(
+      "click",
+      () =>
+        void run(async () => {
+          const note = root.querySelector("textarea")!;
+          const original = note.value;
+          if (
+            dirty &&
+            (await client.system.dialogs.messageBox({
+              title: "Open another note?",
+              message: "Replace the current draft with a remote document?",
+              buttons: [
+                { id: "cancel", label: "Keep editing" },
+                { id: "open", label: "Open note" },
+              ],
+              cancelId: "cancel",
+              defaultId: "cancel",
+            })) !== "open"
+          )
+            return "Kept the current note.";
+          const { binding } = await client.environment.get();
+          if (!binding) throw new Error("Connect to a workspace first.");
+          const selected = await client.system.dialogs.openFile({
+            title: "Open a text note",
+            extensions: [".txt", ".md"],
+          });
+          if (!selected?.length) return "Kept the current note.";
+          const opened = await client.files.readText({
+            binding,
+            path: selected[0].path,
+          });
+          if (note.value !== original)
+            throw new Error(
+              "Your draft changed while opening. It has been kept.",
+            );
+          note.value = opened.text;
+          remoteDocument = opened;
+          dirty = false;
+          return `Opened ${opened.name}`;
+        }),
+    );
+    root.querySelector("#save-existing")!.addEventListener(
+      "click",
+      () =>
+        void run(async () => {
+          if (!remoteDocument) return "Open a remote note first.";
+          const note = root.querySelector("textarea")!;
+          const saved = await client.files.saveText(remoteDocument, note.value);
+          remoteDocument = saved;
+          if (note.value === saved.text) dirty = false;
+          return `Saved ${saved.name}`;
+        }),
+    );
     root.querySelector("#save")!.addEventListener(
       "click",
       () =>
         void run(async () => {
+          const { binding } = await client.environment.get();
           const saved = await client.system.files.saveTextAs({
             name: "field-notes.txt",
             text: root.querySelector("textarea")!.value,
           });
+          if (saved && binding) remoteDocument = { ...saved, binding };
           if (saved && saved.text === root.querySelector("textarea")!.value)
             dirty = false;
           return saved;

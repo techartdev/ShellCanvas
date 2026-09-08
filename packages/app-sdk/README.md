@@ -59,6 +59,8 @@ All methods are asynchronous except subscription disposal. `connectToShellCanvas
 
 ## Ownership, cancellation and errors
 
+For remote text, capture `environment.get().binding` before opening a file picker, then pass `{binding, path}` to `files.readText`. Keep the returned `RemoteTextDocument` alongside the draft and pass it unchanged to `files.saveText(document, newText)`. The snapshot includes the exact binding and revision; old snapshots are rejected after connection replacement. Never substitute a fresh binding/revision to force a save. `files.createText({binding, parent, name, text}, signal?)` creates only and requires `files.create`; reading needs `files.read`, saving needs `files.edit`. Use `system.files.saveTextAs` for reviewed replacement. These methods accept an optional AbortSignal. Text service size limits apply; binary and folder transfers are separate APIs still under development.
+
 Each client belongs to one window, package/grant generation and explicitly accepted workspace binding. It cannot choose another window or native session ID. Reconnect can require explicit user approval before old app windows use a new connection. Preserve drafts while waiting; observe `system.environment` events for connection/visibility changes. Event batches with `reset: true` are current snapshots rather than a complete historical replay.
 
 Use `AbortSignal` for cancelable calls. Closing the instance rejects pending calls and releases resources. Cancellation cannot undo a dispatched write. Do not automatically retry failed writes, saves or clipboard publication. Report dirty/busy state so the desktop can review close and quit requests. Mark a draft clean only if the saved snapshot still matches the editor contents.

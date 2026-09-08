@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 import type { SystemAPI } from "./system-api.js";
 import { RpcPeer, messagePortTransport, type Json } from "./rpc.js";
+import { appFileClient, type AppFilesAPI } from "./file-client.js";
 import type { AppDocumentState } from "./window-api.js";
 import type { AppStorageAPI, AppValue, StoragePage } from "./storage-api.js";
 import type {
@@ -15,6 +16,7 @@ import {
 } from "./clipboard-client.js";
 export interface ExtensionClient {
   readonly system: SystemAPI;
+  readonly files: AppFilesAPI;
   readonly window: { setDocumentState(state: AppDocumentState): Promise<void> };
   readonly storage: AppStorageAPI;
   readonly settings: AppStorageAPI;
@@ -166,6 +168,7 @@ export function connectToShellCanvas(
         } satisfies AppStorageAPI);
       resolve({
         system,
+        files: appFileClient(peer),
         storage: storage("storage"),
         settings: storage("settings"),
         environment: Object.freeze({

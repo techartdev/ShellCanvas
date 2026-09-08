@@ -14,6 +14,11 @@ export type {
   DialogControl,
 } from "./system-api.js";
 export type { FileEntry, TextDocument } from "./files.js";
+export type {
+  AppFilesAPI,
+  RemoteFileLocation,
+  RemoteTextDocument,
+} from "./file-client.js";
 export type { AppDocumentState } from "./window-api.js";
 export type { AppStorageAPI, AppValue, StoragePage } from "./storage-api.js";
 export type {

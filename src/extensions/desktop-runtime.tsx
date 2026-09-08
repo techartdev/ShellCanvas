@@ -20,6 +20,7 @@ import { RuntimeEnvironment } from "./environment";
 import type { AppEnvironment } from "./environment-api";
 import type { CustomAccess } from "../custom-services";
 import { RpcError } from "./rpc";
+import type { AppFileSourceGetter } from "./file-bridge";
 import {
   clipboard as systemClipboard,
   type ClipboardService,
@@ -64,6 +65,7 @@ function RuntimeDocument({
   clipboard: ClipboardService;
 }) {
   const [accepted, accept] = useState(context.system);
+  const [acceptedServices, acceptServices] = useState(context.services);
   const [acceptedCustom, acceptCustom] = useState(context.services.custom);
   const customTarget = useRef(acceptedCustom);
   customTarget.current = acceptedCustom;
@@ -118,6 +120,20 @@ function RuntimeDocument({
         )
       : [],
   };
+  const fileTarget = useRef({
+    binding: state.binding,
+    services: acceptedServices,
+  });
+  fileTarget.current = { binding: state.binding, services: acceptedServices };
+  const fileSource = useMemo<AppFileSourceGetter>(
+    () => () => {
+      const current = fileTarget.current;
+      return current.binding
+        ? { binding: current.binding, services: current.services }
+        : undefined;
+    },
+    [],
+  );
   const [environment] = useState(() => new RuntimeEnvironment(state));
   useLayoutEffect(() => environment.update(state));
   const system = useMemo<SystemAPI>(
@@ -144,6 +160,7 @@ function RuntimeDocument({
             disabled={!context.connected}
             onClick={() => {
               accept(context.system);
+              acceptServices(context.services);
               acceptCustom(context.services.custom);
             }}
           >
@@ -162,6 +179,7 @@ function RuntimeDocument({
           clipboard={clipboard}
           environment={environment}
           custom={custom}
+          fileSource={fileSource}
         />
       </div>
     </div>

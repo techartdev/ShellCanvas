@@ -4,6 +4,8 @@ Updated: 2026-09-08. `[x]` means implemented and checked within the stated scope
 
 Current BASE-11 checkpoint (2026-09-09): runtime app and adapter packages, shared system dialogs/storage/events/text clipboard, standalone app SDK and independent installed-adapter source replacement are implemented. The Windows adapter fixture verifies Files replacement with a surviving console and custom-app acceptance. Remaining goal work and evidence gates are tracked in [the kernel roadmap](docs/kernel-roadmap.md); historical milestone notes below are not a completion claim for the full extension platform.
 
+Public app file checkpoint: binding-aware remote text read/create/save now runs through the SDK and broker. The Windows installed-app probe passes 33 checks including stale revisions, reconnect isolation and denied access. Directory browsing, general mutations, terminal and transfer SDK APIs are still pending; see [runtime app files](docs/app-files.md).
+
 ## Immediate delivery focus — everyday basics
 
 Prioritize a dependable working desktop over adding protocols or more bundled apps. Delivered: terminal containment/actions, saved host CRUD, independent host workspaces, Files context actions/clipboard, multiple app instances, existing-file text editing with unsaved guards, and persistent desktop/app preferences. Save As, explicit reconnect, provider-owned navigation, regular-file transfers and provider-defined host settings are also implemented. Next: remaining native integration and failure-handling gates. [Core completion work](docs/core-completion.md) tracks the active overnight goal. Keep the composite-adapter architecture as a constraint rather than building every adapter now.

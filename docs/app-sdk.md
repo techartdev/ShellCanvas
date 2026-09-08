@@ -16,6 +16,8 @@ In the generated directory, run `npm install` and `npm run build`. Install its `
 
 ## Verification
 
+The SDK includes [remote text services](app-files.md): binding-aware reads, create-only writes and revision-checked saves. Field Notes uses these to open and edit a remote note while retaining the reviewed source identity. The installed-app desktop probe exercises these operations and rejects old documents after reconnect.
+
 `npm run test:sdk` checks source/package schema agreement, safe starter creation and preservation of the previous artifact when a build fails. These checks are included in `npm run verify`.
 
 `npm run verify:sdk` packs the SDK and installs it into newly created projects under the operating system's temporary directory, outside this repository. It generates and type-checks a starter, builds and validates the package, and builds native probe artifacts through the installed tarball. It saves a report and distributable starter/SDK under `.local/sdk-verification/`. Temporary projects are retained for diagnosis; the script prints the exact path. This step may download pinned build dependencies and is separate from the regular local verification command.

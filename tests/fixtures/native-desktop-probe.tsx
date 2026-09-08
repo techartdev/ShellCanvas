@@ -18,6 +18,7 @@ import type {
   ServiceMethodInfo,
 } from "../../src/extensions/environment-api";
 import { previewServices, previewSession } from "../../src/preview";
+import type { Session } from "../../src/sdk";
 import source from "../../.local/native-extension-probe/desktop-client.js?raw";
 import style from "../../examples/dialog-app/style.css?raw";
 import "../../src/styles.css";
@@ -37,9 +38,64 @@ const runtime = new DesktopRuntime(catalog, apps, localData, {
   },
 });
 let sessionSerial = 100;
+const fixtureSession: Session = {
+  ...previewSession,
+  info: {
+    ...previewSession.info,
+    capabilities: [
+      ...previewSession.info.capabilities,
+      "files.edit",
+      "files.create",
+    ],
+  },
+};
+let fileWrites = 0;
+let remoteText = "Original note";
+let remoteRevision = 1;
 const services = {
   ...previewServices,
-  connect: async () => ({ ...previewSession, id: ++sessionSerial }),
+  connect: async () => ({ ...fixtureSession, id: ++sessionSerial }),
+  readText: async (_id: number, path: string) => ({
+    path,
+    parent: "fixture:root",
+    name: "note.txt",
+    text: remoteText,
+    revision: String(remoteRevision),
+    writable: true,
+  }),
+  saveText: async (
+    _id: number,
+    path: string,
+    text: string,
+    revision: string,
+  ) => {
+    if (revision !== String(remoteRevision))
+      throw new Error("Revision conflict");
+    fileWrites++;
+    remoteText = text;
+    remoteRevision++;
+    return {
+      path,
+      parent: "fixture:root",
+      name: "note.txt",
+      text,
+      revision: String(remoteRevision),
+      writable: true,
+    };
+  },
+  createText: async (
+    _id: number,
+    parent: string,
+    name: string,
+    text: string,
+  ) => ({
+    path: "fixture:new",
+    parent,
+    name,
+    text,
+    revision: "new",
+    writable: true,
+  }),
 };
 const checks: Record<string, boolean> = {};
 const report = async (stage: string) => {
@@ -66,6 +122,7 @@ function ask(frame: HTMLIFrameElement, action = "snapshot") {
     status: string;
     ready: boolean;
     storage?: Record<string, unknown>;
+    files?: Record<string, boolean>;
     environment?: AppEnvironment;
     services?: readonly ServiceMethodInfo[];
     environmentEvents?: AppEnvironment[];
@@ -130,6 +187,8 @@ async function install(version: string) {
           permissions: [
             "system.dialogs",
             "files.read",
+            "files.edit",
+            "files.create",
             "system.storage",
             "system.clipboard.read",
             "system.clipboard.write",
@@ -203,7 +262,7 @@ async function run() {
     <StrictMode>
       <App
         services={services}
-        initialSession={previewSession}
+        initialSession={fixtureSession}
         isNative={true}
         appRuntime={runtime}
         initialConnection={{
@@ -287,6 +346,11 @@ async function run() {
     "dirty window state",
   );
   checks.sdkDocumentState = true;
+  const fileResult = (await ask(first, "files")).files;
+  checks.sdkRemoteText =
+    !!fileResult &&
+    Object.values(fileResult).every(Boolean) &&
+    fileWrites === 1;
   const clipboard = (await ask(first, "clipboard")).clipboard;
   checks.sdkClipboard = !!clipboard && Object.values(clipboard).every(Boolean);
   const appStorage = (await ask(first, "storage")).storage;
@@ -373,6 +437,9 @@ async function run() {
     acceptedEnvironment.environment.binding !==
       initialEnvironment.environment?.binding;
   button("Cancel", fileDialog).click();
+  checks.sdkOldDocumentRejected =
+    (await ask(first, "files-stale")).files?.rejected === true &&
+    fileWrites === 1;
   await frameState(first, (state) => state.ready);
   document
     .querySelector<HTMLButtonElement>('button[aria-label="Open Apps"]')!
@@ -390,6 +457,8 @@ async function run() {
   );
   await frameState(second, (state) => state.ready);
   const secondEnvironment = await ask(second, "environment");
+  checks.sdkFileGrantDenied =
+    (await ask(second, "files-denied")).files?.rejected === true;
   const beforeDeniedRead = clipboardReads;
   checks.clipboardGrantDenied =
     (await ask(second, "clipboard-denied")).clipboard?.denied === true &&

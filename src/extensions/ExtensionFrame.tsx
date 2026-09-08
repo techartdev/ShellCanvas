@@ -4,6 +4,7 @@ import type { SystemAPI } from "../system-api";
 import type { AppPackage } from "./package";
 import { RpcPeer, RpcError, messagePortTransport, type Json } from "./rpc";
 import { systemMethods } from "./system-bridge";
+import { fileMethods, type AppFileSourceGetter } from "./file-bridge";
 import type { AppLease } from "./catalog";
 import { documentStateMethod, type AppDocumentState } from "./window-api";
 import { isFrameHandshake, mountAppDocument } from "./frame-document";
@@ -34,6 +35,7 @@ export function ExtensionFrame({
   clipboard,
   environment: suppliedEnvironment,
   custom,
+  fileSource,
 }: {
   app: AppPackage;
   system: SystemAPI;
@@ -44,6 +46,7 @@ export function ExtensionFrame({
   clipboard?: ClipboardService;
   environment?: RuntimeEnvironment;
   custom?: CustomAccess;
+  fileSource?: AppFileSourceGetter;
 }) {
   const ref = useRef<HTMLIFrameElement>(null);
   const [error, setError] = useState("");
@@ -82,6 +85,9 @@ export function ExtensionFrame({
         app.permissions.includes(grant),
       );
       const methods = new Map(systemMethods(system, approved));
+      if (fileSource)
+        for (const [name, method] of fileMethods(fileSource))
+          methods.set(name, method);
       const customService = customMethods(
         custom,
         approved,
@@ -199,6 +205,7 @@ export function ExtensionFrame({
     environment,
     suppliedEnvironment,
     custom,
+    fileSource,
   ]);
   return (
     <>

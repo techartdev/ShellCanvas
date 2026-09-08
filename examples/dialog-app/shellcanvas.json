@@ -7,6 +7,7 @@
   "permissions": [
     "system.dialogs",
     "files.read",
+    "files.edit",
     "files.create",
     "system.storage",
     "system.clipboard.read",
