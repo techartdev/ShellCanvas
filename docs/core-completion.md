@@ -15,6 +15,8 @@ Additional protocols are optional until these core workflows work well. Connecti
 
 ## Evidence and outstanding work
 
+- Windows native terminal checks passed copy through the OS clipboard into an editor draft, opening and closing a second terminal, right tiling, F6 focus cycling, Shift+F10 menus and keyboard move/cancel. Floating/tiled native windows and compact/large browser fixtures showed no black strip or footer overlap. Native terminal paste, Files clipboard and keyboard resize remain separate checks; see [terminal services](terminal-services.md) and [window controls](window-management.md).
+
 - Real unprivileged SFTP permission refusal and recovery now pass for reads, file actions, editor saves and transfers. Original files and temporary cleanup were checked; browser folder/editor failures retained their inputs and recovered on retry. See [permission validation](permission-validation.md).
 
 - Connections now has a searchable, keyboard-accessible host picker with separate saved/imported groups and endpoint details. The 80-profile fixture passed search, navigation, no-match handling, saved-copy removal and narrow-layout checks without submitting a connection. Native profile persistence and reconnect semantics are unchanged; see [host profiles](host-profiles.md).

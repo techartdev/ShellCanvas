@@ -15,4 +15,6 @@ Narrower layouts use stacked, scrollable windows. Move, resize, tiling and maxim
 
 Browser walkthrough: keyboard move and Escape restored the original rectangle; resize applied both 16-pixel and one-pixel changes; right-anchored Terminal resizing kept its left edge stationary. Repeated moves stopped at the work-area edges. F6 and Shift+F6 moved focus between Files and Terminal. At 1280×720, tiled windows occupied x=0–640 and x=640–1280, y=44–638, exactly between toolbar and dock. At 1000×650 both halves followed the available area. At 768×1024, windows stacked and desktop-only menu actions were disabled. Restore retained the prior floating size and position.
 
-Native keyboard checks, drag-to-edge snap previews, touch resize handles and persistence across process restarts remain separate work.
+Windows native walkthrough also passed right tiling between toolbar and dock, F6 focus cycling, Shift+F10 titlebar menus, a 16-pixel keyboard move and Escape restoring the original position. The connected terminal retained its buffer through those changes.
+
+Native keyboard resizing, drag-to-edge snap previews, touch resize handles and persistence across process restarts remain separate work.

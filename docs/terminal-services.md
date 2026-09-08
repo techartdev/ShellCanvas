@@ -16,3 +16,11 @@ The session registry owns a cancellation sender for each terminal. Removing a wi
 - The authorized `root@evtinsait` run passed independent variables, 120×40 and 90×25 dimensions, survivor input/output, stale/cross-session refusal and cleanup. This is a native Rust integration probe, not a Windows GUI clipboard/keyboard walkthrough or a physical serial test.
 
 Connection identity/lifecycle contracts, composite service bindings, connector-specific settings and per-binding availability remain open. No automatic fallback from SSH to an insecure protocol is introduced.
+
+## Windows UI verification
+
+The native SSH walkthrough verified Select all and Ctrl+Shift+C by pasting the displayed terminal text into an unsaved editor draft through the OS clipboard. Opening Terminal 2 produced a separate shell; closing it preserved the first window and its buffer. The Rust probe above separately verifies surviving-console input/output. The test draft was discarded without saving any remote file.
+
+Floating and right-tiled native terminals rendered without the black strip or footer overlap. The 500-pixel and 260-pixel browser fixtures also retained the terminal background in the unused pixels below the last whole text row. `.xterm-viewport` explicitly uses the same background as the terminal theme, overriding xterm's default black background.
+
+Native paste into a terminal, Files clipboard actions and interrupted-network GUI checks remain pending.
