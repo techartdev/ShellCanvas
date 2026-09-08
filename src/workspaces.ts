@@ -11,6 +11,7 @@ export interface Workspace {
   label: string;
   session: Session | null;
   desktop: DesktopState;
+  connected?: boolean;
 }
 export interface Workspaces {
   items: Workspace[];
@@ -20,6 +21,7 @@ export type WorkspaceAction =
   | { type: "connected"; session: Session; label: string }
   | { type: "select"; key: string }
   | { type: "remove"; sessionId: number }
+  | { type: "lost"; sessionId: number }
   | { type: "desktop"; key: string; action: DesktopAction };
 export function initialWorkspaces(
   apps: readonly DesktopApp[],
@@ -57,6 +59,7 @@ export function updateWorkspaces(
             session: action.session,
             label: action.label,
             desktop: initialDesktop(apps),
+            connected: true,
           },
         ],
         active: key,
@@ -66,6 +69,13 @@ export function updateWorkspaces(
       return state.items.some((w) => w.key === action.key)
         ? { ...state, active: action.key }
         : state;
+    case "lost":
+      return {
+        ...state,
+        items: state.items.map((w) =>
+          w.session?.id === action.sessionId ? { ...w, connected: false } : w,
+        ),
+      };
     case "remove": {
       const items = state.items.filter(
         (w) => w.session?.id !== action.sessionId,

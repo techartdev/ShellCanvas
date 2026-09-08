@@ -2,12 +2,22 @@
 import type { AppContext } from "../sdk";
 
 /** A small reference app: only consumes the provider's existing snapshot. */
-export function HostDetails({ session, preview }: AppContext) {
+export function HostDetails({
+  session,
+  preview,
+  connected = true,
+}: AppContext) {
   if (!session) return null;
   const { info } = session;
   return (
     <article className="host-details-app">
-      <p className="eyebrow">{preview ? "SAMPLE HOST" : "CONNECTED HOST"}</p>
+      <p className="eyebrow">
+        {preview
+          ? "SAMPLE HOST"
+          : connected
+            ? "CONNECTED HOST"
+            : "LAST KNOWN HOST"}
+      </p>
       <h2>{info.hostname}</h2>
       <p>Your host and the tools available in this workspace.</p>
       <dl>
@@ -32,7 +42,9 @@ export function HostDetails({ session, preview }: AppContext) {
               ? "File browsing"
               : capability === "terminal"
                 ? "Terminal"
-                : capability}
+                : capability === "files.edit"
+                  ? "Text editing"
+                  : capability}
           </span>
         ))}
       </div>

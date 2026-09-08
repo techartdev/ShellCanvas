@@ -7,7 +7,14 @@ export interface DesktopState {
   minimized: string[];
   instances: Record<
     string,
-    { appId: string; ordinal: number; launch?: { path?: string } }
+    {
+      appId: string;
+      ordinal: number;
+      launch?: { path?: string };
+      dirty?: boolean;
+      busy?: boolean;
+      title?: string;
+    }
   >;
   serials: Record<string, number>;
 }
@@ -15,6 +22,13 @@ export type DesktopAction =
   | { type: "open" | "focus" | "minimize" | "close"; id: string }
   | { type: "new"; id: string; launch?: { path?: string } }
   | { type: "show-desktop" }
+  | {
+      type: "document-state";
+      id: string;
+      dirty: boolean;
+      busy: boolean;
+      title?: string;
+    }
   | { type: "host-connected" };
 
 export function initialDesktop(apps: readonly DesktopApp[]): DesktopState {
@@ -83,6 +97,27 @@ export function updateDesktop(
   const opened = state.open.includes(action.id);
   if (!opened) return state;
   switch (action.type) {
+    case "document-state": {
+      const previous = state.instances[action.id];
+      if (
+        previous.dirty === action.dirty &&
+        previous.busy === action.busy &&
+        previous.title === action.title
+      )
+        return state;
+      return {
+        ...state,
+        instances: {
+          ...state.instances,
+          [action.id]: {
+            ...previous,
+            dirty: action.dirty,
+            busy: action.busy,
+            title: action.title,
+          },
+        },
+      };
+    }
     case "focus":
       return {
         ...state,

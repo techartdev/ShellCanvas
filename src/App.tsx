@@ -22,6 +22,7 @@ import type { DesktopAction } from "./desktop";
 import { initialWorkspaces, updateWorkspaces } from "./workspaces";
 import { WorkspaceWindows } from "./components/WorkspaceWindows";
 import { ContextMenu, type MenuAction } from "./components/ContextMenu";
+import { ConfirmDialog } from "./components/ConfirmDialog";
 import { ConnectDialog } from "./components/ConnectDialog";
 import { native, nativeServices } from "./services";
 import { previewServices, previewSession } from "./preview";
@@ -53,6 +54,52 @@ export default function App({
   );
   const workspace = workspaces.items.find((w) => w.key === workspaces.active)!;
   const { session, label, desktop } = workspace;
+  const connected = !!session && workspace.connected !== false;
+  const [closeWorkspace, setCloseWorkspace] = useState<number | null>(null);
+  const [closeApp, setCloseApp] = useState(false);
+  const closeAllowed = useRef(false);
+  const allInstances = workspaces.items.flatMap((w) =>
+    Object.values(w.desktop.instances),
+  );
+  const hasUnsaved = allInstances.some((instance) => instance.dirty);
+  const hasBusy = allInstances.some((instance) => instance.busy);
+  const closeState = useRef({ hasUnsaved, hasBusy });
+  closeState.current = { hasUnsaved, hasBusy };
+  useEffect(() => {
+    const beforeUnload = (event: BeforeUnloadEvent) => {
+      if (
+        !closeAllowed.current &&
+        (closeState.current.hasUnsaved || closeState.current.hasBusy)
+      ) {
+        event.preventDefault();
+        event.returnValue = "";
+      }
+    };
+    window.addEventListener("beforeunload", beforeUnload);
+    let disposed = false;
+    let unlisten: (() => void) | undefined;
+    if (native)
+      void import("@tauri-apps/api/window")
+        .then(async ({ getCurrentWindow }) => {
+          const stop = await getCurrentWindow().onCloseRequested((event) => {
+            if (
+              !closeAllowed.current &&
+              (closeState.current.hasUnsaved || closeState.current.hasBusy)
+            ) {
+              event.preventDefault();
+              setCloseApp(true);
+            }
+          });
+          if (disposed) stop();
+          else unlisten = stop;
+        })
+        .catch((error) => setToast(String(error)));
+    return () => {
+      disposed = true;
+      unlisten?.();
+      window.removeEventListener("beforeunload", beforeUnload);
+    };
+  }, []);
   const dispatch = (action: DesktopAction) =>
     update({ type: "desktop", key: workspace.key, action });
   const [switcherOpen, setSwitcherOpen] = useState(false);
@@ -104,14 +151,14 @@ export default function App({
       checking = true;
       void Promise.all(
         workspaces.items
-          .filter((w) => w.session)
+          .filter((w) => w.session && w.connected !== false)
           .map(async (w) => {
             try {
               const alive = await services.alive(w.session!.id);
               if (!alive && !disposed) {
-                update({ type: "remove", sessionId: w.session!.id });
+                update({ type: "lost", sessionId: w.session!.id });
                 setToast(
-                  `${w.label}: connection closed. Other workspaces remain connected.`,
+                  `${w.label}: connection closed. Unsaved work remains available in this workspace.`,
                 );
                 await services.disconnect(w.session!.id);
               }
@@ -127,7 +174,11 @@ export default function App({
       disposed = true;
       clearInterval(timer);
     };
-  }, [isNative, services, workspaces.items.map((w) => w.key).join(",")]);
+  }, [
+    isNative,
+    services,
+    workspaces.items.map((w) => `${w.key}:${w.connected}`).join(","),
+  ]);
   useEffect(() => {
     if (!switcherOpen) return;
     const outside = (event: PointerEvent) => {
@@ -175,6 +226,16 @@ export default function App({
   async function disconnect() {
     if (!session) return;
     const id = session.id;
+    if (Object.values(desktop.instances).some((instance) => instance.busy))
+      return;
+    if (Object.values(desktop.instances).some((instance) => instance.dirty)) {
+      setCloseWorkspace(id);
+      return;
+    }
+    await disconnectWorkspace(id);
+  }
+  async function disconnectWorkspace(id: number) {
+    setCloseWorkspace(null);
     update({ type: "remove", sessionId: id });
     try {
       await services.disconnect(id);
@@ -217,7 +278,7 @@ export default function App({
       onContextMenu={(event) => {
         if (
           (event.target as HTMLElement).closest(
-            ".app-window,.system-bar,.dock,.modal-backdrop,.context-menu,input,button",
+            ".app-window,.system-bar,.dock,.modal-backdrop,.context-menu,dialog,input,button",
           )
         )
           return;
@@ -279,7 +340,7 @@ export default function App({
         </button>
         <div className="host-switcher" ref={switcher}>
           <button
-            className={`host-pill ${session ? "connected" : ""}`}
+            className={`host-pill ${connected ? "connected" : ""}`}
             onClick={() => setSwitcherOpen(!switcherOpen)}
             aria-label="Switch workspace"
             aria-expanded={switcherOpen}
@@ -293,7 +354,12 @@ export default function App({
               <div className="popover-heading">
                 <span>Workspaces</span>
                 <small>
-                  {workspaces.items.filter((w) => w.session).length} connected
+                  {
+                    workspaces.items.filter(
+                      (w) => w.session && w.connected !== false,
+                    ).length
+                  }{" "}
+                  connected
                 </small>
               </div>
               {workspaces.items.map((w) => (
@@ -311,7 +377,7 @@ export default function App({
                     <strong>{w.label}</strong>
                     <small>
                       {w.session
-                        ? `${w.session.info.hostname} · Session ${w.session.id}`
+                        ? `${w.session.info.hostname} · ${w.connected === false ? "Disconnected" : `Session ${w.session.id}`}`
                         : "On this device"}
                     </small>
                   </span>
@@ -328,9 +394,11 @@ export default function App({
           <span className="preview-label">
             {!isNative
               ? "Design preview · sample data"
-              : session
+              : connected
                 ? "SSH workspace"
-                : "Local workspace"}
+                : session
+                  ? "Disconnected workspace"
+                  : "Local workspace"}
           </span>
           <Wifi size={15} />
           <span className="bar-divider" />
@@ -384,7 +452,7 @@ export default function App({
           <span>
             <ShieldCheck size={13} />
             {session
-              ? isNative
+              ? connected && isNative
                 ? "Known host verified"
                 : "No remote connection"
               : "SSH. Nothing extra on your host."}
@@ -508,7 +576,9 @@ export default function App({
           {session
             ? !isNative
               ? "Preview mode"
-              : "Connected over SSH"
+              : connected
+                ? "Connected over SSH"
+                : "Disconnected · drafts preserved"
             : "Ready when you are"}
         </span>
         <nav className="dock" aria-label="Desktop applications">
@@ -596,10 +666,14 @@ export default function App({
         </nav>
         <button
           className="disconnect-button"
-          disabled={!session || !isNative}
+          disabled={
+            !session ||
+            !isNative ||
+            Object.values(desktop.instances).some((instance) => instance.busy)
+          }
           onClick={() => void disconnect()}
         >
-          <Power size={13} /> Disconnect
+          <Power size={13} /> {connected ? "Disconnect" : "Close workspace"}
         </button>
       </footer>
       {toast && (
@@ -635,6 +709,41 @@ export default function App({
         />
       )}
       {menu && <ContextMenu {...menu} close={closeMenu} />}
+      {closeWorkspace !== null && (
+        <ConfirmDialog
+          title="Close workspace with unsaved changes?"
+          message="Editor drafts in this workspace will be discarded. Save or copy your changes before disconnecting."
+          confirmLabel="Discard and disconnect"
+          confirm={() => void disconnectWorkspace(closeWorkspace)}
+          cancel={() => setCloseWorkspace(null)}
+        />
+      )}
+      {closeApp && (
+        <ConfirmDialog
+          title={
+            hasBusy
+              ? "A file operation is still running"
+              : "Close ShellCanvas with unsaved changes?"
+          }
+          message={
+            hasBusy
+              ? "Wait for the operation to finish before closing the app."
+              : "Unsaved editor drafts across all workspaces will be discarded."
+          }
+          confirmLabel="Discard and quit"
+          disabled={hasBusy}
+          cancel={() => setCloseApp(false)}
+          confirm={() => {
+            closeAllowed.current = true;
+            void import("@tauri-apps/api/window")
+              .then(({ getCurrentWindow }) => getCurrentWindow().close())
+              .catch((error) => {
+                closeAllowed.current = false;
+                setToast(String(error));
+              });
+          }}
+        />
+      )}
     </main>
   );
 }

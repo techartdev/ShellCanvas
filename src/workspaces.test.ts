@@ -4,6 +4,40 @@ import { apps } from "./apps/registry";
 import { previewSession } from "./preview";
 import { initialWorkspaces, updateWorkspaces } from "./workspaces";
 describe("independent workspaces", () => {
+  it("retains unsaved instance state after transport loss", () => {
+    let state = initialWorkspaces(apps, { ...previewSession, id: 5 });
+    state = updateWorkspaces(
+      state,
+      {
+        type: "desktop",
+        key: "session-5",
+        action: { type: "new", id: "editor", launch: { path: "/draft.txt" } },
+      },
+      apps,
+    );
+    state = updateWorkspaces(
+      state,
+      {
+        type: "desktop",
+        key: "session-5",
+        action: {
+          type: "document-state",
+          id: "editor",
+          dirty: true,
+          busy: false,
+          title: "draft.txt",
+        },
+      },
+      apps,
+    );
+    const desktop = state.items.find((w) => w.key === "session-5")!.desktop;
+    state = updateWorkspaces(state, { type: "lost", sessionId: 5 }, apps);
+    const lost = state.items.find((w) => w.key === "session-5")!;
+    expect(lost.connected).toBe(false);
+    expect(lost.desktop).toBe(desktop);
+    expect(lost.desktop.instances.editor.dirty).toBe(true);
+    expect(state.active).toBe("session-5");
+  });
   it("preserves app state when switching and only removes the selected session", () => {
     let state = initialWorkspaces(apps, { ...previewSession, id: 1 });
     state = updateWorkspaces(

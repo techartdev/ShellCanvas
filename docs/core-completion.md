@@ -18,4 +18,5 @@ Additional protocols are optional until these core workflows work well. Connecti
 - Files keyboard menu copied the exact selected path using the fake clipboard and opened a folder in an independent second Files window. Clipboard-path navigation changed only that second window.
 - Two Terminal windows accepted separate input; closing the second left the first usable with its own buffer. Window element order remains stable while stacking changes, avoiding lost clicks on focus.
 - Desktop, dock, window titlebar and Files share the same menu component. Dock/window menus expose creation and existing instances; Files also exposes a touch-accessible actions button.
-- Editor, settings expansion, transfers, file writes and final integration audit remain open. The goal is not complete at this checkpoint.
+- Editor now opens/saves existing remote text, with undo/redo, find, wrapping, clipboard and unsaved-close guards. Browser conflict/loss checks retain drafts; the live disposable-file probe passed save/readback, basic metadata, conflicts, bounds and cleanup. See [editor behavior and limits](text-editor.md).
+- Settings expansion, transfers, file creation/rename/delete, Save As and final integration audit remain open. Native dirty-editor app quit still needs a walkthrough. The goal is not complete at this checkpoint.

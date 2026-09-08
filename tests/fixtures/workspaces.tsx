@@ -4,13 +4,18 @@ import { createRoot } from "react-dom/client";
 import App from "../../src/App";
 import { clipboard } from "../../src/clipboard";
 import { previewServices, previewSession } from "../../src/preview";
-import type { HostServices, Session } from "../../src/sdk";
+import type { HostServices, Session, TextDocument } from "../../src/sdk";
 import "../../src/styles.css";
 const sessions = new Map<number, Session>();
+const documents = new Map<string, TextDocument>();
 const first: Session = {
   ...previewSession,
   id: 101,
-  info: { ...previewSession.info, hostname: "fixture-alpha" },
+  info: {
+    ...previewSession.info,
+    hostname: "fixture-alpha",
+    capabilities: ["terminal", "files.read", "files.edit"],
+  },
 };
 sessions.set(first.id, first);
 let next = 101;
@@ -21,6 +26,31 @@ clipboard.writeText = async (text) => {
 clipboard.readText = async () => "/from-clipboard";
 const backend: HostServices = {
   ...previewServices,
+  readText: async (id, path) => {
+    if (!sessions.has(id)) throw new Error("Fixture session closed");
+    const key = `${id}:${path}`;
+    if (!documents.has(key))
+      documents.set(key, {
+        path,
+        text: "# Fixture document\r\nHello from the remote file.\r\n",
+        revision: "0",
+        writable: true,
+      });
+    return { ...documents.get(key)! };
+  },
+  saveText: async (id, path, text, revision) => {
+    if (!sessions.has(id)) throw new Error("Fixture session closed");
+    const key = `${id}:${path}`,
+      current = documents.get(key)!;
+    if (current.revision !== revision)
+      throw new Error(
+        "CONFLICT: The remote file changed. Your draft is intact.",
+      );
+    const saved = { ...current, text, revision: String(Number(revision) + 1) };
+    documents.set(key, saved);
+    log(`saved ${path}`);
+    return saved;
+  },
   profiles: async () =>
     ["beta", "failure"].map((name) => ({
       name: `Fixture ${name}`,
@@ -88,6 +118,22 @@ function Fixture() {
         }}
       >
         <summary>Fixture events</summary>
+        <button
+          onClick={() => {
+            documents.forEach((doc, key) =>
+              documents.set(key, {
+                ...doc,
+                text: "External fixture edit",
+                revision: String(Number(doc.revision) + 1),
+              }),
+            );
+          }}
+        >
+          Simulate remote edit
+        </button>
+        <button onClick={() => sessions.clear()}>
+          Simulate connection loss
+        </button>
         <pre aria-label="Fixture events">{events.join("\n")}</pre>
       </details>
     </>

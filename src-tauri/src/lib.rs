@@ -14,6 +14,7 @@ use session_registry::SessionRegistry;
 struct ActiveSession {
     connection: Arc<Connection>,
     files: Option<Arc<dyn FileSystemProvider>>,
+    text: Option<Arc<dyn TextFileService>>,
 }
 #[derive(Default)]
 struct DesktopState {
@@ -82,12 +83,31 @@ async fn connect(
         }
     };
     let id = state.next_id.fetch_add(1, Ordering::Relaxed) + 1;
-    state
-        .registry
-        .lock()
-        .await
-        .sessions
-        .insert(id, ActiveSession { connection, files });
+    let text: Option<Arc<dyn TextFileService>> = if files.is_some() {
+        match connection.text_files().await {
+            Ok(service) => {
+                if service.can_save() {
+                    info.capabilities.push("files.edit".into());
+                }
+                Some(Arc::new(service))
+            }
+            Err(_) => {
+                info.notices
+                    .push("Text files can be previewed, but remote saving is unavailable.".into());
+                None
+            }
+        }
+    } else {
+        None
+    };
+    state.registry.lock().await.sessions.insert(
+        id,
+        ActiveSession {
+            connection,
+            files,
+            text,
+        },
+    );
     Ok(SessionInfo { id, info })
 }
 
@@ -147,6 +167,56 @@ async fn preview_file(
     filesystem(&state, session_id)
         .await?
         .preview(&path)
+        .await
+        .map_err(|e| format!("{e:#}"))
+}
+
+#[tauri::command]
+async fn read_text(
+    session_id: u64,
+    path: String,
+    state: State<'_, DesktopState>,
+) -> Result<TextDocument, String> {
+    let text = state
+        .registry
+        .lock()
+        .await
+        .sessions
+        .get(&session_id)
+        .and_then(|s| s.text.clone());
+    if let Some(service) = text {
+        return service.read_text(&path).await.map_err(|e| format!("{e:#}"));
+    }
+    let text = filesystem(&state, session_id)
+        .await?
+        .preview(&path)
+        .await
+        .map_err(error)?;
+    Ok(TextDocument {
+        path,
+        revision: text_revision(text.as_bytes()),
+        text,
+        writable: false,
+    })
+}
+#[tauri::command]
+async fn save_text(
+    session_id: u64,
+    path: String,
+    text: String,
+    revision: String,
+    state: State<'_, DesktopState>,
+) -> Result<TextDocument, String> {
+    let service = state
+        .registry
+        .lock()
+        .await
+        .sessions
+        .get(&session_id)
+        .and_then(|s| s.text.clone())
+        .ok_or("Text saving is unavailable for this session")?;
+    service
+        .save_text(&path, &text, &revision)
         .await
         .map_err(|e| format!("{e:#}"))
 }
@@ -248,6 +318,8 @@ pub fn run() {
             disconnect,
             list_directory,
             preview_file,
+            read_text,
+            save_text,
             open_terminal,
             terminal_input,
             terminal_resize,

@@ -1,10 +1,27 @@
 // SPDX-License-Identifier: MPL-2.0
-import { FolderClosed, SquareTerminal, MonitorCog } from "lucide-react";
+import {
+  FolderClosed,
+  SquareTerminal,
+  MonitorCog,
+  FilePenLine,
+} from "lucide-react";
 import { defineApps } from "../sdk";
 import { Files } from "./Files";
 import { Terminal } from "./Terminal";
 import { HostDetails } from "./HostDetails";
+import { Editor } from "./Editor";
 export const apps = defineApps([
+  {
+    apiVersion: 1,
+    id: "editor",
+    title: "Text editor",
+    subtitle: "A quiet place for your remote files",
+    scope: "host",
+    requires: ["files.read"],
+    icon: FilePenLine,
+    component: Editor,
+    window: { layout: "primary", multiple: true },
+  },
   {
     apiVersion: 1,
     id: "files",

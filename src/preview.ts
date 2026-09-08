@@ -48,6 +48,15 @@ export const previewServices: HostServices = {
   },
   disconnect: async () => {},
   alive: async () => true,
+  readText: async (_, path) => ({
+    path,
+    text: `# ${path.split("/").pop()}\n\nSample document. No remote file is connected.\n`,
+    revision: "preview",
+    writable: false,
+  }),
+  saveText: async () => {
+    throw new Error("Preview documents cannot be saved to a remote host.");
+  },
   list: async (_, path) => directory(path),
   preview: async (_, path) =>
     `# ${path.split("/").pop()}\n\nThis is sample content in the design preview.\nNo remote host is connected, and no files are being read.\n\nOpen the native app to explore your own host.\n`,

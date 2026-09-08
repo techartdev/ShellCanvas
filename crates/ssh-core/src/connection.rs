@@ -164,6 +164,20 @@ impl Connection {
         .context("SFTP negotiation timed out")?
     }
 
+    pub async fn text_files(&self) -> Result<crate::SftpTextFiles> {
+        timeout(OP_TIMEOUT, async {
+            let mut channel = self.handle.channel_open_session().await?;
+            channel.request_subsystem(true, "sftp").await?;
+            wait_for_acceptance(&mut channel, "Text file subsystem").await?;
+            crate::SftpTextFiles::new(russh_sftp::client::RawSftpSession::new(
+                channel.into_stream(),
+            ))
+            .await
+        })
+        .await
+        .context("Text file negotiation timed out")?
+    }
+
     pub async fn terminal(&self, cols: u32, rows: u32) -> Result<Channel<client::Msg>> {
         timeout(OP_TIMEOUT, async {
             let mut channel = self.handle.channel_open_session().await?;

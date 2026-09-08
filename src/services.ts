@@ -11,6 +11,9 @@ export const nativeServices: HostServices = {
   alive: (sessionId) => invoke("session_alive", { sessionId }),
   list: (sessionId, path) => invoke("list_directory", { sessionId, path }),
   preview: (sessionId, path) => invoke("preview_file", { sessionId, path }),
+  readText: (sessionId, path) => invoke("read_text", { sessionId, path }),
+  saveText: (sessionId, path, text, revision) =>
+    invoke("save_text", { sessionId, path, text, revision }),
   terminal: async (sessionId, cols, rows, onEvent) => {
     const channel = new Channel<TerminalEvent>();
     channel.onmessage = onEvent;

@@ -27,9 +27,10 @@ export function WorkspaceWindows({
   // Each keyed workspace owns a fixed handle. Switching never replaces its session.
   const [binding] = useState(() => bindSession(backend, workspace.session));
   useLayoutEffect(() => {
-    binding.activate();
+    if (workspace.connected !== false) binding.activate();
+    else binding.dispose();
     return binding.dispose;
-  }, [binding]);
+  }, [binding, workspace.connected]);
   const context: AppContext = {
     session: workspace.session,
     services: binding.services,
@@ -38,6 +39,7 @@ export function WorkspaceWindows({
     connect,
     reportError,
     openApp: (id, launch) => dispatch({ type: "new", id, launch }),
+    connected: workspace.connected !== false,
   };
   return (
     <div
@@ -54,15 +56,20 @@ export function WorkspaceWindows({
             key={id}
             app={app}
             title={
-              instance.ordinal > 1
+              instance.title ||
+              (instance.ordinal > 1
                 ? `${app.title} ${instance.ordinal}`
-                : app.title
+                : app.title)
             }
+            dirty={instance.dirty}
+            busy={instance.busy}
             cascade={instance.ordinal - 1}
             context={{
               ...context,
               active: active && !workspace.desktop.minimized.includes(id),
               launch: instance.launch,
+              setDocumentState: (state) =>
+                dispatch({ type: "document-state", id, ...state }),
             }}
             focused={active && focusedApp(workspace.desktop) === id}
             focus={() => dispatch({ type: "focus", id })}

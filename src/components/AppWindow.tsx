@@ -11,6 +11,7 @@ import type { AppContext, DesktopApp } from "../sdk";
 import { unavailableReason } from "../sdk";
 import { AppBoundary } from "./AppBoundary";
 import { ContextMenu } from "./ContextMenu";
+import { ConfirmDialog } from "./ConfirmDialog";
 export function AppWindow({
   app,
   context,
@@ -22,6 +23,8 @@ export function AppWindow({
   order,
   title = app.title,
   cascade = 0,
+  dirty = false,
+  busy = false,
 }: {
   app: DesktopApp;
   context: AppContext;
@@ -33,12 +36,20 @@ export function AppWindow({
   order: number;
   title?: string;
   cascade?: number;
+  dirty?: boolean;
+  busy?: boolean;
 }) {
   const [position, setPosition] = useState<{
     left: number;
     top: number;
   } | null>(null);
   const [maximized, setMaximized] = useState(false);
+  const [confirmClose, setConfirmClose] = useState(false);
+  const requestClose = () => {
+    if (busy) return;
+    if (dirty) setConfirmClose(true);
+    else close();
+  };
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
   const closeMenu = useCallback(() => setMenu(null), []);
   useEffect(() => {
@@ -196,6 +207,13 @@ export function AppWindow({
         <span className="window-title">
           <Icon size={16} />
           {title}
+          {dirty && (
+            <span
+              className="unsaved-dot"
+              title="Unsaved changes"
+              aria-label="Unsaved changes"
+            />
+          )}
           {app.scope === "host" && context.session && (
             <small>{context.session.info.hostname}</small>
           )}
@@ -227,7 +245,8 @@ export function AppWindow({
           <button
             title={`Close ${title}`}
             aria-label={`Close ${title}`}
-            onClick={close}
+            onClick={requestClose}
+            disabled={busy}
           >
             <X size={15} />
           </button>
@@ -285,9 +304,20 @@ export function AppWindow({
               id: "close",
               label: "Close window",
               separatorBefore: true,
-              run: close,
+              run: requestClose,
+              disabled: busy,
             },
           ]}
+        />
+      )}
+      {confirmClose && (
+        <ConfirmDialog
+          title="Discard unsaved changes?"
+          message={`Your changes in ${title} have not been saved to the remote host.`}
+          confirmLabel="Discard and close"
+          disabled={busy}
+          confirm={close}
+          cancel={() => setConfirmClose(false)}
         />
       )}
     </section>

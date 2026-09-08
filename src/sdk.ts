@@ -1,6 +1,12 @@
 // SPDX-License-Identifier: MPL-2.0
 import type { ComponentType } from "react";
-export type Capability = "terminal" | "files.read";
+export type Capability = "terminal" | "files.read" | "files.edit";
+export interface TextDocument {
+  path: string;
+  text: string;
+  revision: string;
+  writable: boolean;
+}
 export interface HostProfile {
   id?: string;
   name: string;
@@ -54,6 +60,13 @@ export interface HostServices {
   alive(sessionId: number): Promise<boolean>;
   list(sessionId: number, path: string): Promise<Directory>;
   preview(sessionId: number, path: string): Promise<string>;
+  readText(sessionId: number, path: string): Promise<TextDocument>;
+  saveText(
+    sessionId: number,
+    path: string,
+    text: string,
+    revision: string,
+  ): Promise<TextDocument>;
   terminal(
     sessionId: number,
     cols: number,
@@ -65,6 +78,8 @@ export interface HostServices {
 export interface SessionServices {
   list(path: string): Promise<Directory>;
   preview(path: string): Promise<string>;
+  readText(path: string): Promise<TextDocument>;
+  saveText(path: string, text: string, revision: string): Promise<TextDocument>;
   terminal(
     cols: number,
     rows: number,
@@ -72,6 +87,12 @@ export interface SessionServices {
   ): Promise<TerminalSession>;
 }
 export interface AppContext {
+  connected?: boolean;
+  setDocumentState?(state: {
+    dirty: boolean;
+    busy: boolean;
+    title?: string;
+  }): void;
   launch?: { path?: string };
   openApp?(appId: string, launch?: { path?: string }): void;
   session: Session | null;
@@ -112,7 +133,9 @@ export function defineApps(definitions: DesktopApp[]): readonly DesktopApp[] {
       if (app.scope !== "host" && app.scope !== "local")
         throw new Error(`Invalid app scope: ${app.id}`);
       if (
-        app.requires.some((cap) => cap !== "terminal" && cap !== "files.read")
+        app.requires.some(
+          (cap) => !["terminal", "files.read", "files.edit"].includes(cap),
+        )
       )
         throw new Error(`Unknown app capability: ${app.id}`);
       if (app.scope === "local" && app.requires.length)
@@ -138,6 +161,6 @@ export function unavailableReason(
     (cap) => !session?.info.capabilities.includes(cap),
   );
   return missing.length
-    ? `Unavailable on this device: ${missing.map((cap) => (cap === "files.read" ? "file browsing" : "terminal")).join(", ")}`
+    ? `Unavailable on this device: ${missing.map((cap) => (cap === "files.read" ? "file browsing" : cap === "files.edit" ? "text saving" : "terminal")).join(", ")}`
     : null;
 }

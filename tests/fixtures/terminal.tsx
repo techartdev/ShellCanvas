@@ -18,6 +18,9 @@ function Fixture() {
   };
   clipboard.readText = async () => "fixture paste";
   const [services] = useState<SessionServices>(() => ({
+    readText: (path) => previewServices.readText(previewSession.id, path),
+    saveText: (path, text, revision) =>
+      previewServices.saveText(previewSession.id, path, text, revision),
     list: (path) => previewServices.list(previewSession.id, path),
     preview: (path) => previewServices.preview(previewSession.id, path),
     terminal: async (_, __, event) => {

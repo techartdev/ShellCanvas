@@ -13,6 +13,23 @@ export function bindSession(backend: HostServices, session: Session | null) {
     return session.id;
   }
   const services: SessionServices = {
+    readText: async (path) => {
+      const expected = generation;
+      const result = await backend.readText(check("files.read"), path);
+      check("files.read", expected);
+      return result;
+    },
+    saveText: async (path, text, revision) => {
+      const expected = generation;
+      const result = await backend.saveText(
+        check("files.edit"),
+        path,
+        text,
+        revision,
+      );
+      check("files.edit", expected);
+      return result;
+    },
     list: async (path) => {
       const expected = generation;
       const result = await backend.list(check("files.read"), path);

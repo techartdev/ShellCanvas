@@ -49,6 +49,7 @@ export function Files({
   const [document, setDocument] = useState<{
     name: string;
     text: string;
+    path: string;
   } | null>(null);
   const [history, setHistory] = useState<string[]>([]);
   const request = useRef(0);
@@ -125,11 +126,15 @@ export function Files({
     }
     const current = ++previewRequest.current;
     setError("");
-    setDocument({ name: entry.name, text: "Loading preview…" });
+    setDocument({
+      name: entry.name,
+      text: "Loading preview…",
+      path: entry.path,
+    });
     try {
       const text = await services.preview(entry.path);
       if (current === previewRequest.current)
-        setDocument({ name: entry.name, text });
+        setDocument({ name: entry.name, text, path: entry.path });
     } catch (e) {
       if (current === previewRequest.current) {
         setDocument(null);
@@ -142,6 +147,15 @@ export function Files({
   );
   function menuActions(entry?: FileEntry): MenuAction[] {
     return [
+      ...(entry && entry.kind !== "directory" && openApp
+        ? [
+            {
+              id: "edit",
+              label: "Open in text editor",
+              run: () => openApp("editor", { path: entry.path }),
+            },
+          ]
+        : []),
       ...(entry
         ? [
             {
@@ -228,7 +242,11 @@ export function Files({
         if (target.closest("input,textarea")) return;
         if (command && event.key.toLowerCase() === "c") {
           event.preventDefault();
-          void copyText(selected ?? directory.path);
+          void copyText(
+            (document && window.getSelection()?.toString()) ||
+              selected ||
+              directory.path,
+          );
         } else if (event.key === "F5") {
           event.preventDefault();
           if (!loading) void navigate(directory.path, false);
@@ -524,7 +542,7 @@ export function Files({
                   {
                     id: "copy-document-path",
                     label: "Copy file path",
-                    run: () => void copyText(selected ?? directory.path),
+                    run: () => void copyText(document.path),
                   },
                   {
                     id: "close-preview",
