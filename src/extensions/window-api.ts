@@ -1,10 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 import { RpcError, type RpcMethod } from "./rpc";
-export interface AppDocumentState {
-  dirty: boolean;
-  busy: boolean;
-  title?: string;
-}
+import type { AppDocumentState } from "../../packages/app-sdk/src/window-api";
+export type { AppDocumentState } from "../../packages/app-sdk/src/window-api";
 /** Intrinsic authority: an app may describe only its own window's document state. */
 export function documentStateMethod(
   update: (state: AppDocumentState) => void,

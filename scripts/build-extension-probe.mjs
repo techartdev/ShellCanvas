@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 import { build as bundle } from "esbuild";
 import { build } from "vite";
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, writeFile, readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 const source = await bundle({
   entryPoints: ["tests/fixtures/native-frame-probe-client.ts"],
@@ -16,14 +16,28 @@ await writeFile(
   ".local/native-extension-probe/client.js",
   source.outputFiles[0].text,
 );
-const desktop = await bundle({
-  entryPoints: ["tests/fixtures/desktop-probe-client.ts"],
-  bundle: true,
-  format: "iife",
-  platform: "browser",
-  target: "es2022",
-  write: false,
-});
+const desktop =
+  process.env.SHELLCANVAS_SDK_PROBE === "1"
+    ? {
+        outputFiles: [
+          {
+            text: JSON.parse(
+              await readFile(
+                ".local/sdk-verification/desktop-probe.shellcanvas.json",
+                "utf8",
+              ),
+            ).script,
+          },
+        ],
+      }
+    : await bundle({
+        entryPoints: ["tests/fixtures/desktop-probe-client.ts"],
+        bundle: true,
+        format: "iife",
+        platform: "browser",
+        target: "es2022",
+        write: false,
+      });
 await writeFile(
   ".local/native-extension-probe/desktop-client.js",
   desktop.outputFiles[0].text,
@@ -37,6 +51,9 @@ await build({
         resolve("tests/fixtures/native-frame-probe.html"),
         resolve("tests/fixtures/native-desktop-probe.html"),
         resolve("tests/fixtures/adapter-desktop-probe.html"),
+        ...(process.env.SHELLCANVAS_SDK_PROBE === "1"
+          ? [resolve("tests/fixtures/sdk-starter-probe.html")]
+          : []),
       ],
     },
   },

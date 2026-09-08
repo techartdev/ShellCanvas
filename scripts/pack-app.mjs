@@ -1,31 +1,9 @@
 // SPDX-License-Identifier: MPL-2.0
-import { build } from "esbuild";
-import { readFile, mkdir, writeFile } from "node:fs/promises";
-import { resolve, join } from "node:path";
-
-const directory = resolve(process.argv[2] ?? "examples/dialog-app");
-const manifest = JSON.parse(
-  await readFile(join(directory, "shellcanvas.json"), "utf8"),
-);
-if (process.argv[3] === "--version") {
-  if (!/^\d+\.\d+\.\d+(?:-[a-zA-Z0-9.-]+)?$/.test(process.argv[4] ?? ""))
-    throw new Error("Provide a valid package version.");
-  manifest.version = process.argv[4];
-}
-const result = await build({
-  entryPoints: [join(directory, "main.ts")],
-  bundle: true,
-  write: false,
-  format: "iife",
-  platform: "browser",
-  target: "es2022",
-});
-const style = await readFile(join(directory, "style.css"), "utf8");
-await mkdir(join(directory, "dist"), { recursive: true });
-const destination = join(directory, "dist", "app.shellcanvas.json");
-await writeFile(
-  destination,
-  JSON.stringify({ ...manifest, script: result.outputFiles[0].text, style }),
-  "utf8",
-);
-console.log(`App package: ${destination}`);
+// Compatibility entry point. The same packer ships with the standalone SDK.
+import { main } from "../packages/app-sdk/bin/shellcanvas-app.mjs";
+await main([
+  "build",
+  ...(process.argv.slice(2).length
+    ? process.argv.slice(2)
+    : ["examples/dialog-app"]),
+]);

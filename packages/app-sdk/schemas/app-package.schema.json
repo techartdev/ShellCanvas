@@ -1,0 +1,53 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ShellCanvas app package v1",
+  "description": "Provisional v1. The desktop parser additionally enforces its 16 Mi UTF-16 package resource budget and UTF-16 title length.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "format",
+    "kind",
+    "id",
+    "version",
+    "title",
+    "permissions",
+    "script",
+    "style"
+  ],
+  "properties": {
+    "format": {
+      "const": 1
+    },
+    "kind": {
+      "const": "app"
+    },
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]*(?:\\.[a-z][a-z0-9-]*)+$"
+    },
+    "version": {
+      "type": "string",
+      "pattern": "^\\d+\\.\\d+\\.\\d+(?:-[a-zA-Z0-9.-]+)?$"
+    },
+    "title": {
+      "type": "string",
+      "maxLength": 100,
+      "pattern": "\\S"
+    },
+    "permissions": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "pattern": "^[a-z][a-z0-9-]*(?:\\.[a-z][a-z0-9-]*)+$"
+      }
+    },
+    "script": {
+      "type": "string",
+      "pattern": "\\S"
+    },
+    "style": {
+      "type": "string"
+    }
+  }
+}

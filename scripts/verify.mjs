@@ -113,6 +113,11 @@ if (args.includes("--help")) {
         args: ["fmt", "--all", "--", "--check"],
       },
       {
+        name: "Public app SDK build and package checks",
+        file: process.execPath,
+        args: [npmCli, "run", "test:sdk"],
+      },
+      {
         name: "Frontend tests",
         file: process.execPath,
         args: [npmCli, "test"],

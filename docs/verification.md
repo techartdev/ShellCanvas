@@ -7,7 +7,9 @@ npm run verify
 npm run verify -- --native
 ```
 
-The default command runs the verification runner's failure-path checks, Rust formatting without edits, the frontend tests and production build, locked Rust workspace tests, and locked all-target Clippy with warnings treated as failures. `--native` additionally builds the current platform's debug desktop executable with embedded frontend assets. It does not create an installer, sign, publish, push, launch the app or connect to a remote host. Cargo may fetch missing locked dependencies; install prerequisites/dependencies before an offline run.
+The default command runs the verification runner's failure-path checks, Rust formatting without edits, the public app SDK build/schema/packer checks, the frontend tests and production build, locked Rust workspace tests, and locked all-target Clippy with warnings treated as failures. `--native` additionally builds the current platform's debug desktop executable with embedded frontend assets. It does not create an installer, sign, publish, push, launch the app or connect to a remote host. Cargo may fetch missing locked dependencies; install prerequisites/dependencies before an offline run.
+
+The separate `npm run verify:sdk` command packs and installs the SDK into fresh projects outside the repository and builds generated app fixtures. It may download build dependencies. See [the standalone SDK workflow and native fixture](app-sdk.md) for scope, retained temporary project locations and UI verification.
 
 Commands run sequentially and stop on the first failure. Missing executables, signals and launch errors fail verification; later checks remain **not-run**. There is no automatic retry, format rewrite, dependency installation or live-host fallback. Fix the reported problem, then run the command again.
 

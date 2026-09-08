@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
+import type { FileEntry, TextDocument } from "../packages/app-sdk/src/files";
 import type { ComponentType } from "react";
 import type { SystemAPI } from "./system-api";
 export type {
@@ -74,14 +75,7 @@ export interface TransferOutcome {
   message?: string | null;
   path?: string | null;
 }
-export interface TextDocument {
-  path: string;
-  name: string;
-  parent: string | null;
-  text: string;
-  revision: string;
-  writable: boolean;
-}
+export type { TextDocument } from "../packages/app-sdk/src/files";
 export interface FileLocation {
   path: string;
   name: string;
@@ -164,14 +158,7 @@ export function capabilityReason(
     ? null
     : `Unavailable ${capabilityLabels[capability].toLowerCase()}: ${status.reason || status.state}`;
 }
-export interface FileEntry {
-  revision?: string;
-  name: string;
-  path: string;
-  kind: "directory" | "file" | "symlink";
-  size: number;
-  modified: number | null;
-}
+export type { FileEntry } from "../packages/app-sdk/src/files";
 export interface FilePlace {
   path: string;
   name: string;

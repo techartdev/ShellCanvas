@@ -4,9 +4,16 @@
   "private": true,
   "type": "module",
   "license": "MPL-2.0",
+  "workspaces": [
+    "packages/app-sdk"
+  ],
   "scripts": {
+    "postinstall": "npm run build:sdk",
+    "build:sdk": "npm run build --workspace @shellcanvas/app-sdk",
+    "test:sdk": "npm run build:sdk && npm test --workspace @shellcanvas/app-sdk",
+    "verify:sdk": "node scripts/verify-sdk.mjs",
     "dev": "vite --host 127.0.0.1",
-    "build": "tsc -b && vite build",
+    "build": "npm run build:sdk && tsc -b && vite build",
     "test": "vitest run",
     "verify": "node scripts/verify.mjs",
     "tauri": "tauri",

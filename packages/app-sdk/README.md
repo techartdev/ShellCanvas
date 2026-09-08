@@ -1,0 +1,85 @@
+# ShellCanvas app SDK
+
+Build desktop apps that install while ShellCanvas is running. The SDK supplies typed, window-owned system services over the desktop's isolated app channel. It needs no React, Tauri or Node dependency in the app bundle. The included CLI uses Node and esbuild at development time.
+
+Version **0.1.0 is provisional and not published to npm yet**. Use a packed SDK tarball from the ShellCanvas repository or a project release. Do not assume the npm package name is available until an official release says so.
+
+## Create and build an app
+
+With this package installed as a development dependency:
+
+```sh
+shellcanvas-app init ./my-app --id org.example.notes --title "Notes" --sdk /absolute/path/shellcanvas-app-sdk-0.1.0.tgz
+cd my-app
+npm install
+npm run build
+```
+
+The output is `dist/app.shellcanvas.json`. Open ShellCanvas's **Apps → Install app**, select it, review the permissions and open the app. No desktop rebuild/restart is needed. For an update, change the manifest version and rebuild. Existing windows keep their code and grants until closed; a new window uses the installed version.
+
+The generator requires a new directory and never overwrites an existing project. Until publication, pass `--sdk` to point the generated dependency at the local tarball. `shellcanvas-app build [directory] --version 0.2.0` overrides the artifact's version without editing the manifest. `shellcanvas-app validate <package>` invokes the same package parser used by the desktop.
+
+## Public API
+
+```ts
+import { connectToShellCanvas, RpcError } from "@shellcanvas/app-sdk";
+
+const desktop = await connectToShellCanvas();
+try {
+  const answer = await desktop.system.dialogs.messageBox({
+    title: "Continue?",
+    message: "Choose what to do with your note.",
+    buttons: [
+      { id: "continue", label: "Continue" },
+      { id: "cancel", label: "Cancel" },
+    ],
+    defaultId: "continue",
+    cancelId: "cancel",
+  });
+} catch (error) {
+  if (error instanceof RpcError) console.error(error.code, error.message);
+}
+```
+
+| Service                | API                                                                           | Required grants                                                                             |
+| ---------------------- | ----------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
+| Shared message box     | `system.dialogs.messageBox(options, {signal}?)`                               | `system.dialogs`                                                                            |
+| Open/Save selection    | `system.dialogs.openFile(options?, control?)`, `saveFile(options?, control?)` | `system.dialogs`, `files.read`                                                              |
+| Save text workflow     | `system.files.saveTextAs({text, name?, directory?, allowReplace?}, control?)` | `system.dialogs`, `files.read`, `files.create`; replacement additionally needs `files.edit` |
+| Own window state       | `window.setDocumentState({dirty, busy, title?})`                              | Intrinsic to this app window                                                                |
+| Local data/preferences | `storage` and `settings`: `get`, `put`, `remove`, `list`                      | `system.storage`                                                                            |
+| Environment/discovery  | `environment.get(signal?)`, `services.list(signal?)`                          | Intrinsic; individual methods still enforce their grants                                    |
+| State events           | `events.subscribe(listener, onError?)` returns an unsubscribe function        | Intrinsic; event contents are filtered by the host                                          |
+| Text clipboard         | `clipboard.readText(signal?)`, `writeText(text, signal?)`                     | `system.clipboard.read` or `system.clipboard.write`                                         |
+
+All methods are asynchronous except subscription disposal. `connectToShellCanvas(timeoutMs?)` must run inside a desktop-owned app frame. `dispose()` closes the instance channel; page teardown does this automatically. Named types, `Json`, `RpcCode` and `RpcError` are exported from the package root. Manifest parsers/types are available from `@shellcanvas/app-sdk/package`.
+
+`call(method, params?, signal?)` uses the same explicit broker method map and permission checks. It is not a native-command escape hatch. Discover methods first; `granted` and `available` are separate. Unregistered custom adapter methods are not yet exposed to UI apps.
+
+## Ownership, cancellation and errors
+
+Each client belongs to one window, package/grant generation and explicitly accepted workspace binding. It cannot choose another window or native session ID. Reconnect can require explicit user approval before old app windows use a new connection. Preserve drafts while waiting; observe `system.environment` events for connection/visibility changes. Event batches with `reset: true` are current snapshots rather than a complete historical replay.
+
+Use `AbortSignal` for cancelable calls. Closing the instance rejects pending calls and releases resources. Cancellation cannot undo a dispatched write. Do not automatically retry failed writes, saves or clipboard publication. Report dirty/busy state so the desktop can review close and quit requests. Mark a draft clean only if the saved snapshot still matches the editor contents.
+
+Storage is local to the app identity and survives package updates/removal. `put(key, value, null)` creates only; replacement requires the revision returned by `get`/`put`. A revision conflict must be reviewed or reloaded, not blindly retried. `list({after, limit})` is paginated live state. Storage is not a credential vault. File locations are opaque provider values: do not split, join or translate them. Open/Save selections do not themselves write data or authorize overwriting.
+
+| Error code    | Meaning and response                                                                  |
+| ------------- | ------------------------------------------------------------------------------------- |
+| `invalid`     | Fix the request shape or unsupported option.                                          |
+| `denied`      | Required permission is absent; explain which feature needs it.                        |
+| `unavailable` | The service or current connection does not support the action.                        |
+| `closed`      | The owning channel/window/binding has retired.                                        |
+| `aborted`     | The call was canceled; dispatched effects may still have occurred.                    |
+| `busy`        | Resource or concurrency capacity is occupied; avoid unbounded queues.                 |
+| `failed`      | The operation failed; preserve work and inspect the result before retrying mutations. |
+
+User dismissal normally returns `null` from dialogs and save workflows. Host-originated failures use `RpcError`; handshake failures can be ordinary errors. Type declarations describe the supported API, not additional authority.
+
+## Package and compatibility
+
+Edit `main.ts`, `style.css` and `shellcanvas.json`. The bundled schemas describe the source manifest and executable package. Source manifests may contain `$schema` for editor completion; packaging removes it. The desktop enforces additional resource bounds: 16 Mi UTF-16 units for a package and 100 UTF-16 units for a title. These are app metadata/control limits, not remote file-tree limits.
+
+All JavaScript must be bundled. External assets, runtime imports, networking, native Tauri IPC and Node APIs are unavailable in UI app frames. Use provider-owned desktop services for remote access. Native adapters are separate, explicitly trusted executable packages.
+
+The client uses app channel v1 and format-1 packages. Discover optional methods instead of assuming every host has them. Version 0.x APIs remain subject to change; pin the SDK and test against the target desktop. This package does not claim a stable future ABI, a marketplace, non-Windows native isolation, arbitrary adapter-service routing or complete virtual-OS coverage.

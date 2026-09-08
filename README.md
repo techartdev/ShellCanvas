@@ -86,7 +86,7 @@ The probe checks authentication, Linux detection, home-directory SFTP listing, `
 
 ## Architecture and contribution
 
-Start with [the roadmap](ROADMAP.md), [development backlog](BACKLOG.md), and [kernel/API roadmap](docs/kernel-roadmap.md). See [the architecture](docs/architecture.md), [bundled app guide](docs/apps.md), [runtime app guide](docs/runtime-apps.md), [remote support matrix](docs/providers.md), [WispCrew AI integration assessment](docs/ai-integration.md), and [contribution guide](CONTRIBUTING.md). The public SDK remains provisional. Commercial packaging is intentionally undecided.
+Start with [the roadmap](ROADMAP.md), [development backlog](BACKLOG.md), and [kernel/API roadmap](docs/kernel-roadmap.md). Build independent apps with the [standalone app SDK and starter](docs/app-sdk.md). See [the architecture](docs/architecture.md), [bundled app guide](docs/apps.md), [runtime app guide](docs/runtime-apps.md), [remote support matrix](docs/providers.md), [WispCrew AI integration assessment](docs/ai-integration.md), and [contribution guide](CONTRIBUTING.md). The public SDK remains provisional and is distributed as a local tarball; it has not been published to npm. Commercial packaging is intentionally undecided.
 
 ## License
 

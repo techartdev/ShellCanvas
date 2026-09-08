@@ -1,0 +1,20 @@
+{
+  "productName": "ShellCanvas SDK Probe",
+  "identifier": "dev.shellcanvas.extensionprobe",
+  "build": {
+    "beforeBuildCommand": "node scripts/build-sdk-probe.mjs",
+    "frontendDist": "../.local/native-extension-probe/dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "ShellCanvas SDK starter probe",
+        "url": "tests/fixtures/sdk-starter-probe.html",
+        "width": 1360,
+        "height": 900,
+        "visible": false
+      }
+    ]
+  }
+}

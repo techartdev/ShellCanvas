@@ -1,0 +1,45 @@
+{
+  "name": "@shellcanvas/app-sdk",
+  "version": "0.1.0",
+  "description": "Typed runtime app API and app packaging tools for ShellCanvas",
+  "type": "module",
+  "license": "MPL-2.0",
+  "engines": {
+    "node": ">=20"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./package": {
+      "types": "./dist/package.d.ts",
+      "import": "./dist/package.js"
+    },
+    "./schemas/app-manifest.schema.json": "./schemas/app-manifest.schema.json",
+    "./schemas/app-package.schema.json": "./schemas/app-package.schema.json"
+  },
+  "bin": {
+    "shellcanvas-app": "bin/shellcanvas-app.mjs"
+  },
+  "files": [
+    "dist",
+    "bin",
+    "templates",
+    "schemas",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "prepack": "npm run build",
+    "test": "node --test tests/*.check.mjs"
+  },
+  "dependencies": {
+    "esbuild": "0.25.12"
+  },
+  "devDependencies": {
+    "ajv": "8.20.0",
+    "typescript": "5.8.3"
+  }
+}

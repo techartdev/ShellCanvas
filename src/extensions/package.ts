@@ -1,64 +1,8 @@
 // SPDX-License-Identifier: MPL-2.0
 import { RpcError } from "./rpc";
-/** Experimental self-contained UI package. Native adapters will use a separate executable kind. */
-export interface AppPackage {
-  readonly format: 1;
-  readonly kind: "app";
-  readonly id: string;
-  readonly version: string;
-  readonly title: string;
-  readonly permissions: readonly string[];
-  readonly script: string;
-  readonly style: string;
-}
-export function parseAppPackage(raw: string): AppPackage {
-  // Packaging limit is independent of remote file/tree sizes. No external assets are loaded.
-  if (raw.length > 16 * 1024 * 1024)
-    throw new RpcError("invalid", "App package is too large.");
-  const item = JSON.parse(raw);
-  if (
-    !item ||
-    item.format !== 1 ||
-    item.kind !== "app" ||
-    typeof item.id !== "string" ||
-    !/^[a-z][a-z0-9-]*(?:\.[a-z][a-z0-9-]*)+$/.test(item.id) ||
-    typeof item.version !== "string" ||
-    !/^\d+\.\d+\.\d+(?:-[a-zA-Z0-9.-]+)?$/.test(item.version) ||
-    typeof item.title !== "string" ||
-    !item.title.trim() ||
-    item.title.length > 100 ||
-    typeof item.script !== "string" ||
-    !item.script.trim() ||
-    typeof item.style !== "string" ||
-    !Array.isArray(item.permissions) ||
-    item.permissions.some(
-      (permission: unknown) =>
-        typeof permission !== "string" ||
-        !/^[a-z][a-z0-9-]*(?:\.[a-z][a-z0-9-]*)+$/.test(permission),
-    ) ||
-    new Set(item.permissions).size !== item.permissions.length ||
-    Object.keys(item).some(
-      (key) =>
-        ![
-          "format",
-          "kind",
-          "id",
-          "version",
-          "title",
-          "permissions",
-          "script",
-          "style",
-        ].includes(key),
-    )
-  ) {
-    throw new RpcError("invalid", "Invalid or unsupported app package.");
-  }
-  return Object.freeze({
-    ...item,
-    permissions: Object.freeze([...item.permissions]),
-  });
-}
-
+import type { AppPackage } from "../../packages/app-sdk/src/package";
+export { parseAppPackage } from "../../packages/app-sdk/src/package";
+export type { AppPackage } from "../../packages/app-sdk/src/package";
 /** Construct the document ourselves: packages supply JS/CSS, not privileged frame markup. */
 export function appDocument(app: AppPackage, nonce: string): string {
   if (!/^[a-zA-Z0-9-]+$/.test(nonce))
