@@ -61,6 +61,21 @@ function fixture(queue = new DialogQueue()) {
   return { queue, scope, services, state };
 }
 describe("window-owned system dialogs", () => {
+  it("a no-replacement Save As cannot read or overwrite an existing file even with broad window capabilities", async () => {
+    const { queue, scope, services } = fixture();
+    const saving = scope.api.files.saveTextAs({
+      text: "draft",
+      allowReplace: false,
+    });
+    const rejected = expect(saving).rejects.toThrow(
+      "Replacing files is unavailable",
+    );
+    queue.snapshot()[0].resolve({ parent: "opaque:root", name: "draft.txt" });
+    await rejected;
+    expect(services.readText).not.toHaveBeenCalled();
+    expect(services.saveText).not.toHaveBeenCalled();
+    expect(queue.snapshot()).toHaveLength(0);
+  });
   it("queues independent windows, snapshots options, and revokes only the closed owner's requests", async () => {
     const { queue, scope } = fixture();
     const sibling = fixture(queue).scope;

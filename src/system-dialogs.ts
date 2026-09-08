@@ -201,10 +201,14 @@ export class SystemScope {
       dialogs: Object.freeze(dialogs),
       files: Object.freeze({
         saveTextAs: async (
-          options: SaveFileOptions & { text: string },
+          options: SaveFileOptions & { text: string; allowReplace?: boolean },
           control?: DialogControl,
         ) => {
-          const { text: contents, ...selectionOptions } = options;
+          const {
+            text: contents,
+            allowReplace = true,
+            ...selectionOptions
+          } = options;
           if (typeof contents !== "string")
             throw new SystemError("invalid", "Text contents are required.");
           this.require("files.create");
@@ -214,7 +218,7 @@ export class SystemScope {
             services,
             selected.parent,
             selected.name,
-            this.allowed("files.edit"),
+            allowReplace && this.allowed("files.edit"),
           );
           this.check(control);
           if (target.kind === "replace") {

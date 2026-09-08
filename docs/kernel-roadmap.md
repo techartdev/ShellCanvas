@@ -25,3 +25,7 @@ Objective: provide a small, coherent virtual-desktop API for bundled and communi
 - Keep source code, installed packages, private credentials, app data and temporary transfer metadata separate. SDK examples must work without real credentials.
 
 This remains an active implementation plan. A passing unit suite alone does not establish runtime installation, cross-platform isolation, real protocol support or completion of the goal.
+
+## Runtime boundary checkpoint
+
+The [runtime app workbench](runtime-apps.md) now loads an independently bundled package into an opaque-origin iframe and brokers shared dialogs over an instance-owned JSON channel. This is development-only evidence for the runtime apps, extension boundary and developer-experience rows; those rows are not complete. Production package management, native isolation checks, update state preservation, the rest of the system services, adapter packages and AI skills remain pending. No production CSP relaxation has been made.

@@ -55,6 +55,8 @@ This convenience workflow opens the shared Save picker, discovers the destinatio
 
 The operation requires declared and available `files.read` and `files.create`; replacement also requires `files.edit`. The current text service limits and atomicity guarantees still apply. This does not add binary overwrites or silently delete sources.
 
+Set `allowReplace: false` to restrict this invocation to a new destination even when the window can edit files. Runtime brokers additionally clamp this flag to the instance's approved `files.edit` grant; an extension cannot grant itself replacement access by passing `true`.
+
 ## Lifetime and errors
 
 All calls accept an optional second argument `{ signal: AbortSignal }`. User cancellation resolves `null` (or a message-box cancel ID). Caller abort, hiding the owning window/workspace, disposal, or session replacement rejects outstanding dialogs. A closed handle cannot be used for new work. File capability access is checked before opening and before delivering a selection. The owning window gets focus; focus returns to the initiating control when the dialog closes.
@@ -65,7 +67,7 @@ Cancellation prevents future steps, but cannot roll back a write already dispatc
 
 ## Verification
 
-- Seven contract tests cover queue ordering/owner isolation, immutable request contents, late replies, AbortSignal, hidden/closed owners, capability loss, selection without file access, replacement confirmation, conflicts, captured drafts and closure during inspection.
+- Eight contract tests cover queue ordering/owner isolation, immutable request contents, late replies, AbortSignal, hidden/closed owners, capability loss, selection without file access, replacement confirmation, conflicts, captured drafts, closure during inspection and explicit no-replacement saves.
 - `/tests/fixtures/system-api.html` exercises the same window-scoped API without a real host. Browser checks passed multi-selection with suffix filtering, opaque folder navigation, empty-folder selection, revision-checked replacement, default-action focus, Escape and focus restoration.
 - The picker was inspected at desktop size and 600 × 800; its navigation, content and actions remain visible. This is responsive-browser evidence, not a native tablet release claim.
 - Local native Open/Save file handles, runtime extension packages and adapter hot switching remain separate delivery gates. Existing native transfer pickers continue to work through their current service methods.

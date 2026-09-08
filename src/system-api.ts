@@ -52,7 +52,7 @@ export interface SystemAPI {
   readonly files: {
     /** Pick a destination, review replacement, then perform a revision-checked text save. */
     saveTextAs(
-      options: SaveFileOptions & { text: string },
+      options: SaveFileOptions & { text: string; allowReplace?: boolean },
       control?: DialogControl,
     ): Promise<TextDocument | null>;
   };

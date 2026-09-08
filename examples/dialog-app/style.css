@@ -1,0 +1,67 @@
+main {
+  max-width: 760px;
+  margin: auto;
+  padding: 30px;
+}
+.eyebrow {
+  color: #97cbbd;
+  letter-spacing: 0.16em;
+  font-size: 10px;
+  font-weight: 700;
+}
+h1 {
+  font-size: 30px;
+  font-weight: 500;
+  margin: 10px 0;
+}
+.intro {
+  color: #94aeba;
+  line-height: 1.6;
+}
+textarea {
+  width: 100%;
+  min-height: 180px;
+  resize: vertical;
+  color: #e1ecf0;
+  background: #111f29;
+  border: 1px solid #354e5c;
+  border-radius: 12px;
+  padding: 16px;
+  font: inherit;
+  line-height: 1.6;
+  margin: 14px 0;
+}
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+button {
+  padding: 10px 14px;
+  background: #29424d;
+  color: #dce7ec;
+  border: 1px solid #476570;
+  border-radius: 8px;
+  font: inherit;
+  cursor: pointer;
+}
+button:hover {
+  background: #34525b;
+}
+button:focus-visible,
+textarea:focus-visible {
+  outline: 2px solid #acdccc;
+  outline-offset: 3px;
+}
+button:disabled {
+  opacity: 0.5;
+  cursor: wait;
+}
+output {
+  display: block;
+  margin-top: 20px;
+  color: #9fb8c2;
+  overflow-wrap: anywhere;
+  font-size: 12px;
+  line-height: 1.6;
+}
