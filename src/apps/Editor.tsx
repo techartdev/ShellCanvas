@@ -53,7 +53,7 @@ export function Editor({
   });
   const [path, setPath] = useState(launch?.path ?? "");
   const [busy, setBusy] = useState(false);
-  const [saveAs, setSaveAs] = useState(false);
+  const [saveAs, setSaveAs] = useState<string | null>(null);
   const canCreate =
     connected && !busy && !!session?.info.capabilities.includes("files.create");
   const [error, setError] = useState("");
@@ -89,7 +89,7 @@ export function Editor({
     connected &&
     !busy &&
     dirty &&
-    path.trim() === document.path;
+    path === document.path;
   function change(text: string) {
     if (
       text.length > 256 * 1024 ||
@@ -100,9 +100,7 @@ export function Editor({
     }
     edit({ type: "change", text });
   }
-  const title = document
-    ? `${document.path.split("/").pop()} — Editor`
-    : "Text editor";
+  const title = document ? `${document.name} — Editor` : "Text editor";
   useEffect(() => {
     setDocumentState?.({ dirty, busy, title });
   }, [dirty, busy, title]);
@@ -125,7 +123,7 @@ export function Editor({
     setError("");
     setPendingPath(null);
     try {
-      const result = await services.readText(nextPath.trim());
+      const result = await services.readText(nextPath);
       if (current !== request.current) return;
       setDocument(result);
       setPath(result.path);
@@ -148,7 +146,7 @@ export function Editor({
   }
   async function save() {
     if (!document && canCreate) {
-      setSaveAs(true);
+      void openSaveAs();
       return;
     }
     if (!document || !canSave) return;
@@ -165,6 +163,25 @@ export function Editor({
       if (current !== request.current) return;
       setDocument(result);
       setStatus("Saved to remote host");
+    } catch (error) {
+      if (current === request.current) setError(String(error));
+    } finally {
+      if (current === request.current) setBusy(false);
+    }
+  }
+  async function openSaveAs() {
+    if (!canCreate) return;
+    const parent = document?.parent ?? launch?.directory;
+    if (parent !== undefined && parent !== null) {
+      setSaveAs(parent);
+      return;
+    }
+    const current = request.current;
+    setBusy(true);
+    setError("");
+    try {
+      const location = await services.list();
+      if (current === request.current) setSaveAs(location.path);
     } catch (error) {
       if (current === request.current) setError(String(error));
     } finally {
@@ -238,7 +255,7 @@ export function Editor({
         const command = event.ctrlKey || event.metaKey;
         if (command && event.key.toLowerCase() === "s") {
           event.preventDefault();
-          if (event.shiftKey && canCreate) setSaveAs(true);
+          if (event.shiftKey && canCreate) void openSaveAs();
           else void save();
         } else if (command && event.key.toLowerCase() === "f") {
           event.preventDefault();
@@ -332,7 +349,7 @@ export function Editor({
         <button
           aria-label="Save file as"
           disabled={!canCreate}
-          onClick={() => setSaveAs(true)}
+          onClick={() => void openSaveAs()}
         >
           <Save size={14} /> Save as
         </button>
@@ -481,7 +498,7 @@ export function Editor({
               label: "Save as new file",
               shortcut: "Ctrl+Shift+S",
               disabled: !canCreate,
-              run: () => setSaveAs(true),
+              run: () => void openSaveAs(),
             },
             {
               id: "copy",
@@ -538,18 +555,14 @@ export function Editor({
           ]}
         />
       )}
-      {saveAs && (
+      {saveAs !== null && (
         <FileActionDialog
           title="Save as new file"
           description="Save a copy of this draft in an existing remote folder. Existing files are never replaced; choose a new name."
-          initialName={document?.path.split("/").pop() ?? "untitled.txt"}
-          initialParent={
-            document
-              ? document.path.slice(0, document.path.lastIndexOf("/")) || "/"
-              : (launch?.directory ?? session?.info.home ?? ".")
-          }
+          initialName={document?.name ?? "untitled.txt"}
+          initialParent={saveAs}
           confirmLabel="Save new file"
-          close={() => setSaveAs(false)}
+          close={() => setSaveAs(null)}
           setBusy={setBusy}
           disabled={!connected}
           execute={async (name, parent) => {

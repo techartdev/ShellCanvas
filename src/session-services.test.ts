@@ -81,7 +81,14 @@ it("routes to the bound session and rejects late results after disposal", async 
   expect(list).toHaveBeenCalledWith(11, "/a");
   a.dispose();
   a.activate(); // React StrictMode can set up the same component again.
-  resolve({ path: "/a", entries: [] });
+  resolve({
+    path: "/a",
+    name: "a",
+    parent: "/",
+    home: null,
+    roots: [],
+    entries: [],
+  });
   await expect(pending).rejects.toThrow("no longer connected");
   a.dispose();
   await expect(a.services.list("/b")).rejects.toThrow();

@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 import { describe, expect, it } from "vitest";
 import { unavailableReason, type DesktopApp, type Session } from "./sdk";
-import { parentPath } from "./apps/Files";
 const app = { scope: "host", requires: ["files.read"] } as DesktopApp;
 describe("capability-driven desktop", () => {
   it("keeps local apps available without an SSH session", () => {
@@ -24,11 +23,6 @@ describe("capability-driven desktop", () => {
         info: { capabilities: ["files.read"] },
       } as Session),
     ).toBeNull();
-  });
-  it("navigates Unix/SFTP parent paths without crossing root", () => {
-    expect(parentPath("/")).toBe("/");
-    expect(parentPath("/home/demo/")).toBe("/home");
-    expect(parentPath("/home")).toBe("/");
   });
   it("keeps app availability independent of transport and OS names", () => {
     const terminal = { scope: "host", requires: ["terminal"] } as DesktopApp;

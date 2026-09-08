@@ -4122,9 +4122,19 @@ dependencies = [
  "russh-sftp",
  "serde",
  "sha2 0.10.9",
+ "shellcanvas-services",
  "tempfile",
  "tokio",
  "uuid",
+]
+
+[[package]]
+name = "shellcanvas-services"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "serde",
 ]
 
 [[package]]

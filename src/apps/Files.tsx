@@ -24,9 +24,6 @@ import { usePreferences } from "../preferences";
 import { visibleFiles } from "../file-view";
 import { FileActionDialog } from "../components/FileActionDialog";
 import { watchFileChanges } from "../file-events";
-export function parentPath(path: string) {
-  return path.replace(/\/+$/, "").split("/").slice(0, -1).join("/") || "/";
-}
 function size(bytes: number) {
   return bytes >= 1024 * 1024
     ? `${(bytes / 1048576).toFixed(1)} MB`
@@ -46,7 +43,11 @@ export function Files({
 }: AppContext) {
   const { values: preferences, set: setPreference } = usePreferences();
   const [directory, setDirectory] = useState<Directory>({
-    path: ".",
+    path: "",
+    name: "Files",
+    parent: null,
+    home: null,
+    roots: [],
     entries: [],
   });
   const [query, setQuery] = useState("");
@@ -61,11 +62,13 @@ export function Files({
   } | null>(null);
   const canManage =
     connected &&
+    !!directory.path &&
     !loading &&
     !busy &&
     !!session?.info.capabilities.includes("files.manage");
   const canCreate =
     connected &&
+    !!directory.path &&
     !loading &&
     !busy &&
     !!session?.info.capabilities.includes("files.create");
@@ -110,6 +113,9 @@ export function Files({
       void navigate(previous, false);
     }
   }
+  function parent() {
+    if (directory.parent !== null) void navigate(directory.parent);
+  }
   async function copyText(text: string) {
     try {
       await clipboard.writeText(text);
@@ -121,7 +127,7 @@ export function Files({
     if (!connected) return;
     const current = request.current;
     try {
-      const path = (await clipboard.readText()).trim();
+      const path = await clipboard.readText();
       if (current !== request.current) return;
       if (!path || path.length > 4096 || /[\0\r\n]/.test(path))
         throw new Error("The clipboard must contain one file or folder path.");
@@ -130,7 +136,7 @@ export function Files({
       setError(`Cannot open clipboard path: ${e}`);
     }
   }
-  async function navigate(path: string, remember = true) {
+  async function navigate(path?: string, remember = true) {
     if (!session || !connected) return;
     const current = ++request.current;
     ++previewRequest.current;
@@ -138,9 +144,9 @@ export function Files({
     setError("");
     setDocument(null);
     try {
-      const result = await services.list(path);
+      const result = await services.list(path === "" ? undefined : path);
       if (current !== request.current) return;
-      if (remember && directory.path !== result.path)
+      if (remember && directory.path && directory.path !== result.path)
         setHistory((previous) => [...previous, directory.path]);
       setDirectory(result);
       setPathInput(result.path);
@@ -153,13 +159,7 @@ export function Files({
   }
   useEffect(() => {
     if (!connected) setLoading(false);
-    else
-      void navigate(
-        directory.path === "."
-          ? launch?.path || session?.info.home || "."
-          : directory.path,
-        false,
-      );
+    else void navigate(directory.path || launch?.path, false);
     return () => {
       ++request.current;
       ++previewRequest.current;
@@ -297,8 +297,8 @@ export function Files({
         id: "parent",
         label: "Parent folder",
         shortcut: "Alt+↑",
-        disabled: !connected || loading || directory.path === "/",
-        run: () => void navigate(parentPath(directory.path)),
+        disabled: !connected || loading || directory.parent === null,
+        run: parent,
       },
       {
         id: "refresh",
@@ -369,7 +369,7 @@ export function Files({
           back();
         } else if (event.altKey && event.key === "ArrowUp") {
           event.preventDefault();
-          if (!loading) void navigate(parentPath(directory.path));
+          if (!loading) parent();
         } else if (
           event.key === "ContextMenu" ||
           (event.shiftKey && event.key === "F10")
@@ -386,20 +386,25 @@ export function Files({
     >
       <aside className="file-sidebar">
         <p className="eyebrow">PLACES</p>
-        <button
-          className={directory.path === session?.info.home ? "selected" : ""}
-          disabled={!connected}
-          onClick={() => void navigate(session?.info.home || ".")}
-        >
-          <Home size={16} /> Home
-        </button>
-        <button
-          className={directory.path === "/" ? "selected" : ""}
-          disabled={!connected}
-          onClick={() => void navigate("/")}
-        >
-          <Server size={16} /> Filesystem
-        </button>
+        {directory.home && (
+          <button
+            className={directory.path === directory.home.path ? "selected" : ""}
+            disabled={!connected}
+            onClick={() => void navigate(directory.home!.path)}
+          >
+            <Home size={16} /> {directory.home.name}
+          </button>
+        )}
+        {directory.roots.map((root) => (
+          <button
+            key={root.path}
+            className={directory.path === root.path ? "selected" : ""}
+            disabled={!connected}
+            onClick={() => void navigate(root.path)}
+          >
+            <Server size={16} /> {root.name}
+          </button>
+        ))}
         <div className="sidebar-spacer" />
         <div className="volume">
           <span className="volume-icon">
@@ -434,8 +439,8 @@ export function Files({
             className="icon-button"
             title="Parent folder"
             aria-label="Parent folder"
-            disabled={!connected || loading || directory.path === "/"}
-            onClick={() => void navigate(parentPath(directory.path))}
+            disabled={!connected || loading || directory.parent === null}
+            onClick={parent}
           >
             <ArrowUp size={17} />
           </button>
@@ -490,10 +495,9 @@ export function Files({
         <div className="folder-heading">
           <div>
             <h2>
-              {directory.path === session?.info.home
-                ? "Home"
-                : directory.path.split("/").filter(Boolean).at(-1) ||
-                  "Filesystem"}
+              {directory.home?.path === directory.path
+                ? directory.home.name
+                : directory.name}
             </h2>
             <p>
               {preview

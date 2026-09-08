@@ -77,7 +77,7 @@ async fn main() -> Result<()> {
         actions
             .create_text(&folder, "child.txt", "keep child")
             .await?;
-        let listing = fs.list(&dir).await?;
+        let listing = fs.list(Some(&dir)).await?;
         let folder_entry = listing
             .entries
             .iter()
@@ -110,7 +110,7 @@ async fn main() -> Result<()> {
             "Rename failed"
         );
         let stale = fs
-            .list(&dir)
+            .list(Some(&dir))
             .await?
             .entries
             .into_iter()
@@ -138,7 +138,7 @@ async fn main() -> Result<()> {
         // OpenSSH's wire ordering is target first, new link second.
         fs.0.symlink(&sibling, &link).await?;
         let link_entry = fs
-            .list(&dir)
+            .list(Some(&dir))
             .await?
             .entries
             .into_iter()
@@ -157,7 +157,7 @@ async fn main() -> Result<()> {
             );
         }
         let child_entry = fs
-            .list(&folder)
+            .list(Some(&folder))
             .await?
             .entries
             .into_iter()
@@ -165,7 +165,7 @@ async fn main() -> Result<()> {
             .context("Child missing")?;
         actions.remove_entry(&child, &child_entry.revision).await?;
         let folder_entry = fs
-            .list(&dir)
+            .list(Some(&dir))
             .await?
             .entries
             .into_iter()

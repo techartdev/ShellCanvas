@@ -22,10 +22,17 @@ const names = [
   "notes.txt",
   "compose.yaml",
 ];
-function directory(path: string): Directory {
+function directory(path = "/home/demo"): Directory {
   const location = path === "." ? "/home/demo" : path;
   return {
     path: location,
+    name: location.split("/").filter(Boolean).at(-1) || "Filesystem",
+    parent:
+      location === "/"
+        ? null
+        : location.slice(0, location.lastIndexOf("/")) || "/",
+    home: { path: "/home/demo", name: "Home" },
+    roots: [{ path: "/", name: "Filesystem" }],
     entries: names.map((name, i) => ({
       name,
       path: `${location === "/" ? "" : location}/${name}`,
@@ -70,6 +77,8 @@ export const previewServices: HostServices = {
   alive: async () => true,
   readText: async (_, path) => ({
     path,
+    name: path.split("/").pop()!,
+    parent: path.slice(0, path.lastIndexOf("/")) || "/",
     text: `# ${path.split("/").pop()}\n\nSample document. No remote file is connected.\n`,
     revision: "preview",
     writable: false,

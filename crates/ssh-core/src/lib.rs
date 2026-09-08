@@ -10,4 +10,5 @@ pub use file_actions::*;
 pub use probe::*;
 pub use profiles::*;
 pub use provider::*;
+pub use shellcanvas_services::*;
 pub use text::*;

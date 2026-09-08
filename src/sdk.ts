@@ -4,6 +4,8 @@ export type Capability =
   "terminal" | "files.read" | "files.edit" | "files.create" | "files.manage";
 export interface TextDocument {
   path: string;
+  name: string;
+  parent: string | null;
   text: string;
   revision: string;
   writable: boolean;
@@ -40,8 +42,17 @@ export interface FileEntry {
   size: number;
   modified: number | null;
 }
+export interface FilePlace {
+  path: string;
+  name: string;
+}
+/** Paths are opaque provider-owned tokens; apps must not split or join them. */
 export interface Directory {
   path: string;
+  name: string;
+  parent: string | null;
+  home: FilePlace | null;
+  roots: FilePlace[];
   entries: FileEntry[];
 }
 export type TerminalEvent =
@@ -78,7 +89,7 @@ export interface HostServices {
   connect(options: ConnectOptions, signal?: AbortSignal): Promise<Session>;
   disconnect(sessionId: number): Promise<void>;
   alive(sessionId: number): Promise<boolean>;
-  list(sessionId: number, path: string): Promise<Directory>;
+  list(sessionId: number, path?: string): Promise<Directory>;
   preview(sessionId: number, path: string): Promise<string>;
   readText(sessionId: number, path: string): Promise<TextDocument>;
   saveText(
@@ -100,7 +111,7 @@ export interface SessionServices {
   makeDirectory(parent: string, name: string): Promise<string>;
   renameEntry(path: string, name: string, revision: string): Promise<string>;
   removeEntry(path: string, revision: string): Promise<void>;
-  list(path: string): Promise<Directory>;
+  list(path?: string): Promise<Directory>;
   preview(path: string): Promise<string>;
   readText(path: string): Promise<TextDocument>;
   saveText(path: string, text: string, revision: string): Promise<TextDocument>;

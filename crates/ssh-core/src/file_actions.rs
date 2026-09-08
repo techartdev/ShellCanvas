@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
-use crate::{text::validate_path, SftpTextFiles};
+use crate::{text::validate_path, FileMutationService, SftpTextFiles};
 use anyhow::{bail, Context, Result};
 use async_trait::async_trait;
 use russh_sftp::{
@@ -31,12 +31,6 @@ pub fn validate_name(name: &str) -> Result<()> {
         bail!("Enter one file or folder name, without slashes or control characters (up to 255 UTF-8 bytes).");
     }
     Ok(())
-}
-#[async_trait]
-pub trait FileMutationService: Send + Sync {
-    async fn make_directory(&self, parent: &str, name: &str) -> Result<String>;
-    async fn rename_entry(&self, path: &str, name: &str, revision: &str) -> Result<String>;
-    async fn remove_entry(&self, path: &str, revision: &str) -> Result<()>;
 }
 impl SftpTextFiles {
     pub(crate) async fn child_path(&self, parent: &str, name: &str) -> Result<String> {

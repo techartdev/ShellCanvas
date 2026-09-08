@@ -15,7 +15,7 @@ The Editor supports **Save as new file** (Ctrl+Shift+S). Saving an unnamed draft
 
 ## Current limits
 
-Only files, symlinks and **empty** directories can be deleted. There is no recursive delete, remote trash, undo, arbitrary move, copy/paste of remote file objects, or Save As overwrite confirmation yet. Upload/download and their cancellation queue remain separate unfinished work. Paths still use the existing SFTP conventions; drive/virtual-root navigation and generic composite adapters remain backlog items. Native file-dialog and clipboard integration walkthroughs are separate from these browser fixture checks.
+Only files, symlinks and **empty** directories can be deleted. There is no recursive delete, remote trash, undo, arbitrary move, copy/paste of remote file objects, or Save As overwrite confirmation yet. Upload/download and their cancellation queue remain separate unfinished work. Apps now use provider-owned navigation metadata (see filesystem-contract.md). The production adapter still uses POSIX SFTP conventions; other production providers and composite adapters remain backlog items. Native file-dialog and clipboard integration walkthroughs are separate from these browser fixture checks.
 
 ## Evidence
 

@@ -15,6 +15,8 @@ Additional protocols are optional until these core workflows work well. Connecti
 
 ## Evidence and outstanding work
 
+- Files and Editor now consume provider-owned names, parents, home and roots without parsing paths. File contracts were extracted from the SSH implementation. Drive/opaque UI fixtures and a read-only Linux regression passed; see [filesystem contracts](filesystem-contract.md). This prepares transfers and future providers; it does not add a production connector.
+
 - Files keyboard menu copied the exact selected path using the fake clipboard and opened a folder in an independent second Files window. Clipboard-path navigation changed only that second window.
 - Two Terminal windows accepted separate input; closing the second left the first usable with its own buffer. Window element order remains stable while stacking changes, avoiding lost clicks on focus.
 - Desktop, dock, window titlebar and Files share the same menu component. Dock/window menus expose creation and existing instances; Files also exposes a touch-accessible actions button.

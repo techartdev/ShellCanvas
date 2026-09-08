@@ -179,12 +179,12 @@ async fn filesystem(
 #[tauri::command]
 async fn list_directory(
     session_id: u64,
-    path: String,
+    path: Option<String>,
     state: State<'_, DesktopState>,
 ) -> Result<Directory, String> {
     filesystem(&state, session_id)
         .await?
-        .list(&path)
+        .list(path.as_deref())
         .await
         .map_err(|e| format!("{e:#}"))
 }
@@ -217,13 +217,13 @@ async fn read_text(
     if let Some(service) = text {
         return service.read_text(&path).await.map_err(|e| format!("{e:#}"));
     }
-    let text = filesystem(&state, session_id)
-        .await?
-        .preview(&path)
-        .await
-        .map_err(error)?;
+    let files = filesystem(&state, session_id).await?;
+    let location = files.locate(&path).await.map_err(error)?;
+    let text = files.preview(&location.path).await.map_err(error)?;
     Ok(TextDocument {
-        path,
+        path: location.path,
+        name: location.name,
+        parent: location.parent,
         revision: text_revision(text.as_bytes()),
         text,
         writable: false,

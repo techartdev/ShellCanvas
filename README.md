@@ -49,6 +49,8 @@ Windows output: `target/debug/shellcanvas.exe`. This debug build is for local ev
 
 ## Current boundaries
 
+Files and Editor now consume [provider-owned navigation metadata](docs/filesystem-contract.md), including opaque paths and multiple roots. The production adapter still uses POSIX SFTP conventions; other path models are verified through synthetic providers.
+
 - Files and Terminal support multiple instances; other apps opt in through their manifest. Workspace state survives switching during this app run; it is not restored after closing the workspace or restarting the app. Reconnecting starts a new session and shell; it does not restore remote processes.
 - The file explorer does not yet upload/download, recursively delete, or move/copy remote items. New text files can be created through the Editor's Save As form; existing destinations are refused. **The terminal is a real shell with all permissions of the authenticated account**, including root when selected.
 - Editor drafts survive workspace switches and connection loss. Deliberate window/workspace/app closure guards unsaved work; forced termination can still lose in-memory drafts. Save As supports new names; replacing an existing destination through Save As and crash recovery are not implemented yet.

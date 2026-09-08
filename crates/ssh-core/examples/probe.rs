@@ -18,8 +18,41 @@ async fn main() -> anyhow::Result<()> {
     println!("SSH authentication and known-host verification: OK");
     println!("Provider: {}; system: {}", info.provider, info.system);
     let sftp = SftpFileSystem(connection.sftp().await?);
-    let home = sftp.list(".").await?;
+    let home = sftp.list(None).await?;
     println!("SFTP home listing: OK ({} entries)", home.entries.len());
+    anyhow::ensure!(
+        home.home
+            .as_ref()
+            .is_some_and(|place| place.path == home.path),
+        "Home metadata does not match the default location"
+    );
+    for root in &home.roots {
+        anyhow::ensure!(
+            sftp.list(Some(&root.path)).await?.parent.is_none(),
+            "Root unexpectedly has a parent"
+        );
+    }
+    if let Some(parent) = &home.parent {
+        anyhow::ensure!(
+            !sftp.list(Some(parent)).await?.path.is_empty(),
+            "Parent navigation failed"
+        );
+    }
+    let location = sftp.locate("/etc/os-release").await?;
+    anyhow::ensure!(
+        !location.name.is_empty() && location.parent.is_some(),
+        "File location metadata is incomplete"
+    );
+    let text = connection
+        .text_files()
+        .await?
+        .read_text("/etc/os-release")
+        .await?;
+    anyhow::ensure!(
+        text.path == location.path && text.name == location.name && text.parent == location.parent,
+        "Text and browsing services disagree on canonical location"
+    );
+    println!("Provider home/root/parent and canonical text locations: OK");
     let os_release = sftp.preview("/etc/os-release").await?;
     println!("Read-only UTF-8 preview: OK ({} bytes)", os_release.len());
     let mut terminal = connection.terminal(100, 30).await?;

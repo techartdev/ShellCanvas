@@ -19,7 +19,7 @@ const fileKey = (id: number, path: string) =>
 let nextWithoutFiles = false;
 const documents = new Map<string, TextDocument>();
 const folders = new Map<string, Directory>();
-async function folder(id: number, path: string) {
+async function folder(id: number, path = "/home/demo") {
   if (!sessions.has(id)) throw new Error("Fixture session closed");
   const key = fileKey(id, path);
   if (!folders.has(key)) {
@@ -67,7 +67,7 @@ const backend: HostServices = {
     if (directory.entries.some((entry) => entry.name === name))
       throw new Error("An item already exists. Choose a different name.");
     const path = `${parent.replace(/\/$/, "")}/${name}`;
-    const doc = { path, text, revision: "1", writable: true };
+    const doc = { path, name, parent, text, revision: "1", writable: true };
     directory.entries.push({
       name,
       path,
@@ -93,7 +93,13 @@ const backend: HostServices = {
       modified: 1,
       revision: "1",
     });
-    folders.set(fileKey(id, path), { path, entries: [] });
+    folders.set(fileKey(id, path), {
+      ...directory,
+      path,
+      name,
+      parent,
+      entries: [],
+    });
     log(`folder created ${path}`);
     return path;
   },
@@ -108,7 +114,11 @@ const backend: HostServices = {
     const doc = documents.get(fileKey(id, path));
     if (doc) {
       documents.delete(fileKey(id, path));
-      documents.set(fileKey(id, destination), { ...doc, path: destination });
+      documents.set(fileKey(id, destination), {
+        ...doc,
+        name,
+        path: destination,
+      });
     }
     log(`renamed ${path} -> ${destination}`);
     return destination;
@@ -127,6 +137,8 @@ const backend: HostServices = {
     if (!documents.has(key))
       documents.set(key, {
         path,
+        name: path.split("/").pop()!,
+        parent: path.slice(0, path.lastIndexOf("/")) || "/",
         text: "# Fixture document\r\nHello from the remote file.\r\n",
         revision: "0",
         writable: true,

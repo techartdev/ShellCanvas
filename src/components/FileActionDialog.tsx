@@ -47,16 +47,8 @@ export function FileActionDialog({
   }, []);
   async function submit() {
     if (working || disabled) return;
-    if (
-      !readOnlyName &&
-      (!name.trim() ||
-        [".", ".."].includes(name) ||
-        /[\/\x00-\x1f\x7f]/.test(name) ||
-        new TextEncoder().encode(name).length > 255)
-    ) {
-      setError(
-        "Enter one name without slashes or control characters, up to 255 UTF-8 bytes.",
-      );
+    if (!readOnlyName && (!name.trim() || /[\x00-\x1f\x7f]/.test(name))) {
+      setError("Enter a name without control characters.");
       return;
     }
     if (initialParent !== undefined && !parent.trim()) {

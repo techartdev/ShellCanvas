@@ -1,23 +1,15 @@
 // SPDX-License-Identifier: MPL-2.0
+use crate::{TextDocument, TextFileService};
 use anyhow::{bail, Context, Result};
 use async_trait::async_trait;
 use russh_sftp::{
     client::{error::Error as SftpError, RawSftpSession},
     protocol::{FileAttributes, OpenFlags, Packet, StatusCode},
 };
-use serde::Serialize;
 use sha2::{Digest, Sha256};
 use tokio::sync::Mutex;
 
 pub const TEXT_LIMIT: usize = 256 * 1024;
-#[derive(Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct TextDocument {
-    pub path: String,
-    pub text: String,
-    pub revision: String,
-    pub writable: bool,
-}
 pub fn text_revision(bytes: &[u8]) -> String {
     format!("{:x}", Sha256::digest(bytes))
 }
@@ -51,18 +43,6 @@ fn check_revision(actual: &str, expected: &str) -> Result<()> {
     }
     Ok(())
 }
-#[async_trait]
-pub trait TextFileService: Send + Sync {
-    async fn read_text(&self, path: &str) -> Result<TextDocument>;
-    async fn create_text(&self, parent: &str, name: &str, text: &str) -> Result<TextDocument>;
-    async fn save_text(
-        &self,
-        path: &str,
-        text: &str,
-        expected_revision: &str,
-    ) -> Result<TextDocument>;
-}
-
 /// Dedicated SFTP channel; saves in this workspace serialize across editor windows.
 pub struct SftpTextFiles {
     pub(crate) raw: RawSftpSession,
@@ -140,9 +120,12 @@ impl SftpTextFiles {
         let close = self.raw.close(handle).await;
         let (text, metadata) = result?;
         close?;
+        let location = crate::provider::sftp_location(path);
         Ok((
             TextDocument {
-                path,
+                name: location.name,
+                parent: location.parent,
+                path: location.path,
                 revision: document_revision(&text, &metadata),
                 text,
                 writable: self.can_save(),

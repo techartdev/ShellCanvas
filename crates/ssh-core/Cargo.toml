@@ -5,6 +5,7 @@ edition = "2021"
 license = "MPL-2.0"
 
 [dependencies]
+shellcanvas-services = { path = "../service-contracts" }
 anyhow = "1"
 async-trait = "0.1"
 dirs = "6"
