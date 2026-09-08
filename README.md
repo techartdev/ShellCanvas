@@ -28,6 +28,8 @@ Windows output: `target/debug/shellcanvas.exe`. This debug build is for local ev
 ## Included
 
 - A custom desktop shell with mountain wallpapers, a dock, launcher, local clock, and floating app windows.
+- Runtime app installation and updates through **Apps**, with reviewed permissions, isolated app frames on Windows, pinned running versions and protected drafts. See [runtime apps](docs/runtime-apps.md).
+- Shared system dialogs, app-owned persistent [data/settings](docs/app-storage.md), and [environment events/service discovery](docs/app-events.md) through the developing app API. The full extension objective is tracked in [the kernel roadmap](docs/kernel-roadmap.md).
 - Persistent settings for desktop appearance/clock/motion, terminal text/cursor/history, editor text/wrap/indentation, and Files visibility/order/density. The Hosts section opens saved connection settings. [Settings behavior and limits](docs/settings.md).
 - Provider-defined remote settings in Host details: static hostname and timezone on supported Linux/systemd hosts, review before apply, read-only reasons, revision checks and verified readback. [Remote settings and validation limits](docs/remote-settings.md).
 - Move, resize, maximize, minimize, and reopen windows across the full desktop between the top toolbar and bottom dock. Windows can cover desktop widgets, which remain clickable when uncovered. Narrow displays use stacked layouts.
@@ -62,7 +64,7 @@ Files and Editor now consume [provider-owned navigation metadata](docs/filesyste
 - The importer is not a full OpenSSH configuration interpreter: `Include`, `Match`, wildcard defaults, `ProxyCommand`, `ProxyJump`, SSH agents, hardware keys, and host certificates are unsupported. Imported fields are editable before connecting.
 - Host-key checks support ordinary/hashed entries, wildcard and negated patterns, ports, aliases and revocation. Unrelated markers do not block known hosts; certificate verification remains unsupported. Malformed trust files fail closed. [SSH trust behavior and limits](docs/ssh-host-trust.md).
 - Connection loss is detected through SSH transport closure and keepalives; it can take roughly a minute to recognize an unreachable network peer.
-- Extensions are trusted, bundled source modules. There is no runtime plugin loader, marketplace, or third-party sandbox yet. Do not load untrusted JavaScript into the native webview.
+- Bundled apps remain trusted source modules. Runtime UI packages use an isolated frame and permission-checked broker on Windows; other native platforms remain gated pending equivalent isolation checks. Runtime native adapters, publisher authentication and a marketplace remain future work. See [the boundary and validation scope](docs/runtime-apps.md#isolation-boundary-and-unfinished-gates).
 - Tablet/phone layouts are browser-checked. Native Android/iOS builds and touch-keyboard behavior are not yet validated.
 
 ## Verify
@@ -84,7 +86,7 @@ The probe checks authentication, Linux detection, home-directory SFTP listing, `
 
 ## Architecture and contribution
 
-Start with [the roadmap](ROADMAP.md) and [development backlog](BACKLOG.md). See [the architecture](docs/architecture.md), [app guide](docs/apps.md), [remote support matrix](docs/providers.md), [WispCrew AI integration assessment](docs/ai-integration.md), and [contribution guide](CONTRIBUTING.md). The public SDK remains provisional. Commercial packaging is intentionally undecided.
+Start with [the roadmap](ROADMAP.md), [development backlog](BACKLOG.md), and [kernel/API roadmap](docs/kernel-roadmap.md). See [the architecture](docs/architecture.md), [bundled app guide](docs/apps.md), [runtime app guide](docs/runtime-apps.md), [remote support matrix](docs/providers.md), [WispCrew AI integration assessment](docs/ai-integration.md), and [contribution guide](CONTRIBUTING.md). The public SDK remains provisional. Commercial packaging is intentionally undecided.
 
 ## License
 
