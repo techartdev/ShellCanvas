@@ -1,11 +1,38 @@
 // SPDX-License-Identifier: MPL-2.0
-import type { Capability, HostServices, Session, SessionServices } from "./sdk";
+import type {
+  Capability,
+  HostServices,
+  Session,
+  SessionServices,
+  TransferTicket,
+} from "./sdk";
 import { notifyFileChanges } from "./file-events";
 
 /** Lifetime and capability checks complement native ownership checks; not a sandbox. */
-export function bindSession(backend: HostServices, session: Session | null) {
+export function bindSession(
+  backend: HostServices,
+  session: Session | null,
+  reportError: (message: string) => void = console.warn,
+) {
   let closed = false;
   let generation = 0;
+  const tickets = new Map<number, TransferTicket>();
+  async function adopt(
+    result: TransferTicket[],
+    expected: number,
+    cap: Capability,
+  ) {
+    try {
+      check(cap, expected);
+    } catch (error) {
+      await Promise.all(
+        result.map((ticket) => backend.cancelTransfer(session!.id, ticket.id)),
+      );
+      throw error;
+    }
+    result.forEach((ticket) => tickets.set(ticket.id, ticket));
+    return result;
+  }
   function check(capability: Capability, expected = generation) {
     if (closed || !session || expected !== generation)
       throw new Error("This host session is no longer connected");
@@ -24,6 +51,49 @@ export function bindSession(backend: HostServices, session: Session | null) {
     notifyFileChanges(session!.id);
   }
   const services: SessionServices = {
+    chooseUploads: async (parent) => {
+      const expected = generation;
+      return adopt(
+        await backend.chooseUploads(check("files.upload"), parent),
+        expected,
+        "files.upload",
+      );
+    },
+    chooseDownload: async (path, revision) => {
+      const expected = generation;
+      const result = await backend.chooseDownload(
+        check("files.download"),
+        path,
+        revision,
+      );
+      return (
+        (await adopt(result ? [result] : [], expected, "files.download"))[0] ??
+        null
+      );
+    },
+    runTransfer: async (ticket, onProgress) => {
+      const owned = tickets.get(ticket.id);
+      if (!owned) throw new Error("Transfer does not belong to this workspace");
+      const expected = generation;
+      const id = check(
+        owned.direction === "upload" ? "files.upload" : "files.download",
+      );
+      try {
+        const result = await backend.runTransfer(id, ticket.id, (event) => {
+          if (!closed && generation === expected) onProgress(event);
+        });
+        if (result.status === "completed" && owned.direction === "upload")
+          mutationCompleted("files.upload", expected);
+        return result;
+      } finally {
+        tickets.delete(ticket.id);
+      }
+    },
+    cancelTransfer: async (id) => {
+      if (!tickets.has(id) || !session) return;
+      await backend.cancelTransfer(session.id, id);
+      tickets.delete(id);
+    },
     createText: async (parent, name, text) => {
       const expected = generation;
       const result = await backend.createText(
@@ -125,6 +195,11 @@ export function bindSession(backend: HostServices, session: Session | null) {
     dispose: () => {
       closed = true;
       ++generation;
+      for (const id of tickets.keys())
+        void backend
+          .cancelTransfer(session!.id, id)
+          .catch((error) => reportError(`Transfer cleanup failed: ${error}`));
+      tickets.clear();
     },
   };
 }

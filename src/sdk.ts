@@ -1,7 +1,31 @@
 // SPDX-License-Identifier: MPL-2.0
 import type { ComponentType } from "react";
 export type Capability =
-  "terminal" | "files.read" | "files.edit" | "files.create" | "files.manage";
+  | "terminal"
+  | "files.read"
+  | "files.edit"
+  | "files.create"
+  | "files.manage"
+  | "files.upload"
+  | "files.download";
+export interface TransferTicket {
+  id: number;
+  name: string;
+  size: number;
+  direction: "upload" | "download";
+}
+export interface TransferProgress {
+  bytes: number;
+  total: number;
+  phase: "preparing" | "running" | "finishing";
+}
+export interface TransferOutcome {
+  status: "completed" | "canceled" | "failed";
+  bytes: number;
+  total: number;
+  message?: string | null;
+  path?: string | null;
+}
 export interface TextDocument {
   path: string;
   name: string;
@@ -65,6 +89,18 @@ export interface TerminalSession {
   close(): Promise<void>;
 }
 export interface HostServices {
+  chooseUploads(sessionId: number, parent: string): Promise<TransferTicket[]>;
+  chooseDownload(
+    sessionId: number,
+    path: string,
+    revision: string,
+  ): Promise<TransferTicket | null>;
+  runTransfer(
+    sessionId: number,
+    id: number,
+    onProgress: (event: TransferProgress) => void,
+  ): Promise<TransferOutcome>;
+  cancelTransfer(sessionId: number, id: number): Promise<void>;
   createText(
     sessionId: number,
     parent: string,
@@ -107,6 +143,16 @@ export interface HostServices {
 }
 /** Apps receive a fixed session handle, never connection administration. */
 export interface SessionServices {
+  chooseUploads(parent: string): Promise<TransferTicket[]>;
+  chooseDownload(
+    path: string,
+    revision: string,
+  ): Promise<TransferTicket | null>;
+  runTransfer(
+    ticket: TransferTicket,
+    onProgress: (event: TransferProgress) => void,
+  ): Promise<TransferOutcome>;
+  cancelTransfer(id: number): Promise<void>;
   createText(parent: string, name: string, text: string): Promise<TextDocument>;
   makeDirectory(parent: string, name: string): Promise<string>;
   renameEntry(path: string, name: string, revision: string): Promise<string>;
@@ -177,6 +223,8 @@ export function defineApps(definitions: DesktopApp[]): readonly DesktopApp[] {
               "files.edit",
               "files.create",
               "files.manage",
+              "files.upload",
+              "files.download",
             ].includes(cap),
         )
       )
@@ -204,6 +252,6 @@ export function unavailableReason(
     (cap) => !session?.info.capabilities.includes(cap),
   );
   return missing.length
-    ? `Unavailable on this device: ${missing.map((cap) => ({ "files.read": "file browsing", "files.edit": "text saving", "files.create": "file creation", "files.manage": "file changes", terminal: "terminal" })[cap]).join(", ")}`
+    ? `Unavailable on this device: ${missing.map((cap) => ({ "files.read": "file browsing", "files.edit": "text saving", "files.create": "file creation", "files.manage": "file changes", "files.upload": "uploads", "files.download": "downloads", terminal: "terminal" })[cap]).join(", ")}`
     : null;
 }

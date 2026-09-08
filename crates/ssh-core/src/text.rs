@@ -47,7 +47,7 @@ fn check_revision(actual: &str, expected: &str) -> Result<()> {
 pub struct SftpTextFiles {
     pub(crate) raw: RawSftpSession,
     atomic_replace: bool,
-    fsync: bool,
+    pub(crate) fsync: bool,
     pub(crate) save_lock: Mutex<()>,
 }
 impl SftpTextFiles {
@@ -133,7 +133,7 @@ impl SftpTextFiles {
             metadata,
         ))
     }
-    async fn extension(&self, name: &str, strings: &[&str]) -> Result<()> {
+    pub(crate) async fn extension(&self, name: &str, strings: &[&str]) -> Result<()> {
         let mut data = Vec::new();
         for value in strings {
             data.extend_from_slice(&(value.len() as u32).to_be_bytes());

@@ -18,6 +18,13 @@ function Fixture() {
   };
   clipboard.readText = async () => "fixture paste";
   const [services] = useState<SessionServices>(() => ({
+    chooseUploads: () => previewServices.chooseUploads(previewSession.id, "/"),
+    chooseDownload: (path, revision) =>
+      previewServices.chooseDownload(previewSession.id, path, revision),
+    runTransfer: (ticket, onProgress) =>
+      previewServices.runTransfer(previewSession.id, ticket.id, onProgress),
+    cancelTransfer: (id) =>
+      previewServices.cancelTransfer(previewSession.id, id),
     createText: (parent, name, text) =>
       previewServices.createText(previewSession.id, parent, name, text),
     makeDirectory: (parent, name) =>

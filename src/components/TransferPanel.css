@@ -1,0 +1,126 @@
+.transfer-panel {
+  flex: 0 1 auto;
+  max-height: 35%;
+  min-height: 38px;
+  display: flex;
+  flex-direction: column;
+  background: #16242e;
+  border-top: 1px solid #9ab7c21c;
+}
+.transfer-panel.collapsed {
+  flex-shrink: 0;
+}
+.transfer-toggle {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+.transfer-panel header .transfer-toggle {
+  color: #c3d5df;
+  font-size: 11px;
+}
+.transfer-list[hidden] {
+  display: none;
+}
+.transfer-panel > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 15px;
+  flex-shrink: 0;
+  font-size: 11px;
+}
+.transfer-panel header strong {
+  font-weight: 600;
+}
+.transfer-panel header span {
+  color: #7e9baa;
+  font-size: 10px;
+  margin-left: 8px;
+  font-weight: 400;
+}
+.transfer-panel header button {
+  font-size: 10px;
+  color: #a1cdbd;
+}
+.transfer-list {
+  overflow: auto;
+  min-height: 0;
+}
+.transfer-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 15px;
+  border-top: 1px solid #9ab7c20b;
+  color: #8fa7b3;
+}
+.transfer-detail {
+  flex: 1;
+  min-width: 0;
+}
+.transfer-detail > div {
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  align-items: center;
+}
+.transfer-detail strong {
+  font-size: 11px;
+  color: #c3d5df;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-weight: 500;
+}
+.transfer-detail span {
+  font-size: 9px;
+  white-space: nowrap;
+}
+.transfer-detail progress {
+  display: block;
+  width: 100%;
+  height: 3px;
+  margin: 7px 0 5px;
+  appearance: none;
+  border: none;
+  border-radius: 3px;
+  overflow: hidden;
+  background: #253a45;
+}
+.transfer-detail progress::-webkit-progress-bar {
+  background: #253a45;
+}
+.transfer-detail progress::-webkit-progress-value {
+  background: #9bcdb7;
+  transition: width 0.1s ease;
+}
+.transfer-detail small {
+  font-size: 9px;
+  color: #7995a5;
+}
+.transfer-detail p {
+  margin: 6px 0 0;
+  font-size: 10px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+.transfer-row > button {
+  width: 22px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  border-radius: 5px;
+}
+.transfer-row > button:hover {
+  background: #8ea6b31a;
+}
+.transfer-row.failed {
+  color: #e4aba5;
+}
+.transfer-success {
+  color: #9bcdb7;
+}
+.transfer-row.canceled {
+  opacity: 0.65;
+}

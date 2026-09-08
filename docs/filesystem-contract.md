@@ -2,7 +2,7 @@
 
 File apps treat paths as nonempty opaque strings. They display them and pass them back to the owning service without splitting, joining or rewriting separators. Entered paths and clipboard paths are passed unchanged. Providers validate their own path and filename rules.
 
-`crates/service-contracts` contains `FileSystemProvider`, `TextFileService`, `FileMutationService` and their data types. Its dependency tree contains serde, async-trait and anyhow, with no SSH, SFTP or Tauri dependency. The SSH core implements and re-exports these contracts. Lifecycle, terminal and composite-binding extraction remain separate work.
+`crates/service-contracts` contains `FileSystemProvider`, `TextFileService`, `FileMutationService`, `FileTransferService`, bounded transfer handles and their data types. Its dependency tree contains serde, async-trait and anyhow, with no SSH, SFTP or Tauri dependency. The SSH core implements and re-exports these contracts. Lifecycle, terminal and composite-binding extraction remain separate work. See [transfer ownership and publication](transfers.md).
 
 ## Navigation data
 

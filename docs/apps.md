@@ -45,6 +45,8 @@ An app's `services` is now a `SessionServices` handle: `list(path)`, `preview(pa
 
 File apps consume provider-owned locations: call `services.list()` for the default folder and use returned `name`, `parent`, `home`, `roots` and entry paths. Text documents supply their own name and parent. Do not split paths, add separators, infer an OS or invent a root. See [the filesystem contract](filesystem-contract.md).
 
+File transfers use optional `files.upload` and `files.download` capabilities. `chooseUploads(parent)` and `chooseDownload(path, revision)` return native-owned tickets; `runTransfer(ticket, onProgress)` streams through the native broker, and `cancelTransfer(id)` requests cancellation. Use the existing `TransferQueue`, retain busy guards until cancellation/completion is confirmed, and release pending tickets on disposal. Do not expose arbitrary local paths or send file bytes through the app component. See [transfer limits](transfers.md).
+
 Apps can opt into `window.multiple: true`. `context.openApp(appId, { path })` creates another eligible instance in the same workspace; its initial payload is available through `context.launch`. Launch payloads contain navigation intent only, never commands or credentials. The dock's normal click focuses an existing instance, while its menu and the titlebar plus button create a new one. Each instance has independent component state and terminal cleanup.
 
 - Render meaningful loading, empty, unavailable and failure states.

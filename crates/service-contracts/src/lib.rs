@@ -4,6 +4,46 @@
 use anyhow::Result;
 use async_trait::async_trait;
 use serde::Serialize;
+use std::sync::Arc;
+
+/// Maximum bytes per transfer operation; consumers and providers both enforce it.
+pub const TRANSFER_CHUNK: usize = 32 * 1024;
+#[derive(Clone, Debug, Serialize)]
+pub struct TransferFile {
+    pub location: FileLocation,
+    pub size: u64,
+}
+#[async_trait]
+pub trait TransferReader: Send {
+    fn file(&self) -> TransferFile;
+    /// Empty means EOF. Never returns more than TRANSFER_CHUNK bytes.
+    async fn read(&mut self) -> Result<Vec<u8>>;
+    /// Verify the source remained stable and close its handle.
+    async fn finish(&mut self) -> Result<()>;
+    async fn abort(&mut self) -> Result<()>;
+}
+#[async_trait]
+pub trait TransferWriter: Send {
+    async fn write(&mut self, bytes: &[u8]) -> Result<()>;
+    /// Publish a completed file without replacing an existing destination.
+    async fn finish(&mut self) -> Result<FileLocation>;
+    /// Release resources and remove this transfer's unpublished temporary data.
+    async fn abort(&mut self) -> Result<()>;
+}
+#[async_trait]
+pub trait FileTransferService: Send + Sync {
+    async fn download(
+        self: Arc<Self>,
+        path: &str,
+        revision: &str,
+    ) -> Result<Box<dyn TransferReader>>;
+    async fn upload(
+        self: Arc<Self>,
+        parent: &str,
+        name: &str,
+        size: u64,
+    ) -> Result<Box<dyn TransferWriter>>;
+}
 
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]

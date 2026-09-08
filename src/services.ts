@@ -1,8 +1,24 @@
 // SPDX-License-Identifier: MPL-2.0
 import { Channel, invoke, isTauri } from "@tauri-apps/api/core";
-import type { HostServices, Session, TerminalEvent } from "./sdk";
+import type {
+  HostServices,
+  Session,
+  TerminalEvent,
+  TransferProgress,
+} from "./sdk";
 export const native = isTauri();
 export const nativeServices: HostServices = {
+  chooseUploads: (sessionId, parent) =>
+    invoke("choose_upload_files", { sessionId, parent }),
+  chooseDownload: (sessionId, path, revision) =>
+    invoke("choose_download_file", { sessionId, path, revision }),
+  runTransfer: (sessionId, transferId, onProgress) => {
+    const onEvent = new Channel<TransferProgress>();
+    onEvent.onmessage = onProgress;
+    return invoke("run_transfer", { sessionId, transferId, onEvent });
+  },
+  cancelTransfer: (sessionId, transferId) =>
+    invoke("cancel_transfer", { sessionId, transferId }),
   createText: (sessionId, parent, name, text) =>
     invoke("create_text", { sessionId, parent, name, text }),
   makeDirectory: (sessionId, parent, name) =>

@@ -43,6 +43,16 @@ function directory(path = "/home/demo"): Directory {
   };
 }
 export const previewServices: HostServices = {
+  chooseUploads: async () => {
+    throw new Error("Use the native desktop app to upload local files.");
+  },
+  chooseDownload: async () => {
+    throw new Error("Use the native desktop app to download files.");
+  },
+  runTransfer: async () => {
+    throw new Error("Transfers are unavailable in the design preview.");
+  },
+  cancelTransfer: async () => {},
   createText: async () => {
     throw new Error(
       "Remote file creation is unavailable in the design preview.",

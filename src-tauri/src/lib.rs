@@ -10,6 +10,7 @@ use tokio::sync::{mpsc, Mutex};
 mod connection_attempts;
 mod profile_store;
 mod session_registry;
+mod transfers;
 use session_registry::SessionRegistry;
 
 struct ActiveSession {
@@ -17,12 +18,14 @@ struct ActiveSession {
     files: Option<Arc<dyn FileSystemProvider>>,
     text: Option<Arc<dyn TextFileService>>,
     mutations: Option<Arc<dyn FileMutationService>>,
+    transfers: Option<Arc<dyn FileTransferService>>,
 }
 #[derive(Default)]
 struct DesktopState {
     registry: Arc<Mutex<SessionRegistry<ActiveSession>>>,
     next_id: AtomicU64,
     attempts: Mutex<connection_attempts::ConnectionAttempts>,
+    transfers: Mutex<transfers::TransferRegistry>,
 }
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -108,6 +111,7 @@ async fn connect_session(
     };
     let id = state.next_id.fetch_add(1, Ordering::Relaxed) + 1;
     let mut mutations: Option<Arc<dyn FileMutationService>> = None;
+    let mut transfers: Option<Arc<dyn FileTransferService>> = None;
     let text: Option<Arc<dyn TextFileService>> = if files.is_some() {
         match connection.text_files().await {
             Ok(service) => {
@@ -116,8 +120,13 @@ async fn connect_session(
                 }
                 let service = Arc::new(service);
                 mutations = Some(service.clone());
-                info.capabilities
-                    .extend(["files.manage".into(), "files.create".into()]);
+                transfers = Some(service.clone());
+                info.capabilities.extend([
+                    "files.manage".into(),
+                    "files.create".into(),
+                    "files.upload".into(),
+                    "files.download".into(),
+                ]);
                 Some(service)
             }
             Err(_) => {
@@ -136,6 +145,7 @@ async fn connect_session(
             files,
             text,
             mutations,
+            transfers,
         },
     );
     Ok(SessionInfo { id, info })
@@ -144,6 +154,7 @@ async fn connect_session(
 #[tauri::command]
 async fn disconnect(session_id: u64, state: State<'_, DesktopState>) -> Result<(), String> {
     let removed = state.registry.lock().await.remove(session_id);
+    state.transfers.lock().await.close_session(session_id);
     if let Some(old) = removed {
         old.connection.disconnect().await.map_err(error)?;
     }
@@ -413,6 +424,7 @@ async fn close_terminal(
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_clipboard_manager::init())
+        .plugin(tauri_plugin_dialog::init())
         .manage(DesktopState::default())
         .invoke_handler(tauri::generate_handler![
             profiles,
@@ -431,6 +443,10 @@ pub fn run() {
             make_directory,
             rename_entry,
             remove_entry,
+            transfers::choose_upload_files,
+            transfers::choose_download_file,
+            transfers::run_transfer,
+            transfers::cancel_transfer,
             open_terminal,
             terminal_input,
             terminal_resize,

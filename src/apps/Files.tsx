@@ -1,5 +1,12 @@
 // SPDX-License-Identifier: MPL-2.0
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
 import {
   ArrowLeft,
   ArrowUp,
@@ -16,6 +23,8 @@ import {
   Search,
   Server,
   X,
+  Upload,
+  Download,
 } from "lucide-react";
 import type { AppContext, Directory, FileEntry } from "../sdk";
 import { ContextMenu, type MenuAction } from "../components/ContextMenu";
@@ -24,6 +33,8 @@ import { usePreferences } from "../preferences";
 import { visibleFiles } from "../file-view";
 import { FileActionDialog } from "../components/FileActionDialog";
 import { watchFileChanges } from "../file-events";
+import { TransferQueue, pendingTransfer } from "../transfer-queue";
+import { TransferPanel } from "../components/TransferPanel";
 function size(bytes: number) {
   return bytes >= 1024 * 1024
     ? `${(bytes / 1048576).toFixed(1)} MB`
@@ -39,6 +50,7 @@ export function Files({
   launch,
   openApp,
   connected = true,
+  reportError,
   setDocumentState,
 }: AppContext) {
   const { values: preferences, set: setPreference } = usePreferences();
@@ -55,6 +67,49 @@ export function Files({
   const [selected, setSelected] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
+  const queue = useMemo(
+    () => new TransferQueue(services, reportError),
+    [services],
+  );
+  const transfers = useSyncExternalStore(queue.subscribe, queue.snapshot);
+  useEffect(() => {
+    queue.activate();
+    return () => queue.dispose();
+  }, [queue]);
+  const [picking, setPicking] = useState(false);
+  const transferBusy = picking || transfers.some(pendingTransfer);
+  const canUpload =
+    connected &&
+    !!directory.path &&
+    !picking &&
+    !!session?.info.capabilities.includes("files.upload");
+  const canDownload =
+    connected &&
+    !picking &&
+    !!session?.info.capabilities.includes("files.download");
+  async function upload() {
+    if (!canUpload) return;
+    setPicking(true);
+    try {
+      queue.enqueue(await services.chooseUploads(directory.path));
+    } catch (error) {
+      setError(String(error));
+    } finally {
+      setPicking(false);
+    }
+  }
+  async function download(entry: FileEntry) {
+    if (!canDownload || !entry.revision || entry.kind !== "file") return;
+    setPicking(true);
+    try {
+      const ticket = await services.chooseDownload(entry.path, entry.revision);
+      if (ticket) queue.enqueue([ticket]);
+    } catch (error) {
+      setError(String(error));
+    } finally {
+      setPicking(false);
+    }
+  }
   const [operation, setOperation] = useState<{
     kind: "mkdir" | "rename" | "delete";
     parent: string;
@@ -73,8 +128,8 @@ export function Files({
     !busy &&
     !!session?.info.capabilities.includes("files.create");
   useEffect(() => {
-    setDocumentState?.({ dirty: false, busy });
-  }, [busy]);
+    setDocumentState?.({ dirty: false, busy: busy || transferBusy });
+  }, [busy, transferBusy]);
   const [error, setError] = useState("");
   const [document, setDocument] = useState<{
     name: string;
@@ -206,6 +261,23 @@ export function Files({
   }, [selected, directory, query, preferences.filesShowHidden]);
   function menuActions(entry?: FileEntry): MenuAction[] {
     return [
+      {
+        id: "upload",
+        label: "Upload files…",
+        disabled: !canUpload,
+        run: () => void upload(),
+      },
+      ...(entry
+        ? [
+            {
+              id: "download",
+              label: "Download…",
+              disabled:
+                !canDownload || entry.kind !== "file" || !entry.revision,
+              run: () => void download(entry),
+            },
+          ]
+        : []),
       {
         id: "mkdir",
         label: "New folder",
@@ -426,6 +498,35 @@ export function Files({
       </aside>
       <div className="file-main">
         <div className="file-toolbar">
+          <button
+            className="icon-button"
+            aria-label="Upload files"
+            title="Upload files"
+            disabled={!canUpload}
+            onClick={() => void upload()}
+          >
+            <Upload size={16} />
+          </button>
+          <button
+            className="icon-button"
+            aria-label="Download selected file"
+            title="Download selected file"
+            disabled={
+              !canDownload ||
+              !entries.some(
+                (entry) =>
+                  entry.path === selected &&
+                  entry.kind === "file" &&
+                  entry.revision,
+              )
+            }
+            onClick={() => {
+              const entry = entries.find((entry) => entry.path === selected);
+              if (entry) void download(entry);
+            }}
+          >
+            <Download size={16} />
+          </button>
           <button
             className="icon-button"
             title="Back"
@@ -651,6 +752,9 @@ export function Files({
               })
             )}
           </div>
+        )}
+        {transfers.length > 0 && (
+          <TransferPanel rows={transfers} queue={queue} />
         )}
         <footer className="files-footer">
           <span>{entries.length} items</span>

@@ -26,7 +26,7 @@ export function WorkspaceWindows({
 }) {
   // Switching keeps the handle. An explicit reconnect gets a fresh generation.
   const binding = useMemo(
-    () => bindSession(backend, workspace.session),
+    () => bindSession(backend, workspace.session, reportError),
     [backend, workspace.session?.id],
   );
   useLayoutEffect(() => {
