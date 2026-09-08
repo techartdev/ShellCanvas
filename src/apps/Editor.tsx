@@ -34,6 +34,7 @@ import {
 import "./Editor.css";
 import { usePreferences } from "../preferences";
 import { FileActionDialog } from "../components/FileActionDialog";
+import { watchFileLocations } from "../file-events";
 
 export function Editor({
   session,
@@ -52,7 +53,15 @@ export function Editor({
     future: [],
   });
   const [path, setPath] = useState(launch?.path ?? "");
-  const [busy, setBusy] = useState(false);
+  const [operationBusy, setOperationBusy] = useState(false);
+  const busyRef = useRef(false);
+  const setBusy = useCallback((value: boolean) => {
+    busyRef.current = value;
+    setOperationBusy(value);
+  }, []);
+  const [relocating, setRelocating] = useState(false);
+  const relocatingRef = useRef(false);
+  const busy = operationBusy || relocating;
   const [saveAs, setSaveAs] = useState<string | null>(null);
   const canCreate =
     connected && !busy && !!session?.info.capabilities.includes("files.create");
@@ -74,6 +83,47 @@ export function Editor({
   const request = useRef(0);
   const currentText = useRef(buffer.text);
   currentText.current = buffer.text;
+  const locationState = useRef({ document, path, saveAs, pendingPath });
+  locationState.current = { document, path, saveAs, pendingPath };
+  useEffect(() => {
+    relocatingRef.current = false;
+    setRelocating(false);
+    if (!session) return;
+    return watchFileLocations(session.id, {
+      snapshot: () => ({
+        paths: locationState.current.document
+          ? [locationState.current.document.path]
+          : [],
+        busy:
+          busyRef.current ||
+          locationState.current.saveAs !== null ||
+          locationState.current.pendingPath !== null,
+      }),
+      pending: (value) => {
+        relocatingRef.current = value;
+        setRelocating(value);
+      },
+      relocated: (mappings) => {
+        const current = locationState.current;
+        const match = mappings.find(
+          (m) => m.previous === current.document?.path,
+        );
+        if (!match || !current.document) return;
+        // Keep the original content/revision and undo history: location changes
+        // are not permission to adopt a newer remote version.
+        const next = { ...current.document, ...match.location };
+        locationState.current = {
+          ...current,
+          document: next,
+          path:
+            current.path === current.document.path ? next.path : current.path,
+        };
+        setDocument(next);
+        if (current.path === current.document.path) setPath(next.path);
+        setStatus("File location updated");
+      },
+    });
+  }, [session?.id]);
   const lineCount = useMemo(
     () => buffer.text.split("\n").length,
     [buffer.text],
@@ -117,7 +167,7 @@ export function Editor({
     if (searchOpen) searchField.current?.focus();
   }, [searchOpen]);
   async function load(nextPath: string) {
-    if (!connected || !nextPath.trim()) return;
+    if (!connected || relocatingRef.current || !nextPath.trim()) return;
     const current = ++request.current;
     setBusy(true);
     setError("");
@@ -125,6 +175,11 @@ export function Editor({
     try {
       const result = await services.readText(nextPath);
       if (current !== request.current) return;
+      locationState.current = {
+        ...locationState.current,
+        document: result,
+        path: result.path,
+      };
       setDocument(result);
       setPath(result.path);
       edit({ type: "load", text: result.text });
@@ -145,6 +200,7 @@ export function Editor({
     else void load(nextPath);
   }
   async function save() {
+    if (relocatingRef.current) return;
     if (!document && canCreate) {
       void openSaveAs();
       return;
@@ -163,6 +219,7 @@ export function Editor({
       if (current !== request.current) return;
       setDocument(result);
       setStatus("Saved to remote host");
+      locationState.current = { ...locationState.current, document: result };
     } catch (error) {
       if (current === request.current) setError(String(error));
     } finally {
@@ -170,7 +227,7 @@ export function Editor({
     }
   }
   async function openSaveAs() {
-    if (!canCreate) return;
+    if (!canCreate || relocatingRef.current) return;
     const parent = document?.parent ?? launch?.directory;
     if (parent !== undefined && parent !== null) {
       setSaveAs(parent);
@@ -571,6 +628,11 @@ export function Editor({
               document ? lineEnding(document.text) : "LF",
             );
             const saved = await services.createText(parent, name, text);
+            locationState.current = {
+              ...locationState.current,
+              document: saved,
+              path: saved.path,
+            };
             setDocument(saved);
             setPath(saved.path);
             setError("");

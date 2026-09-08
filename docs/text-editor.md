@@ -16,14 +16,19 @@ Saves are serialized across editor windows within one workspace. This is optimis
 
 ## Unsaved work
 
+Renames and moves initiated in this workspace now update already-open editors, including files inside renamed/moved folders. The provider supplies exact previous/new locations, names and parents; the editor never splits paths or guesses ancestry. Multiple editors follow independently, retaining each buffer, undo/redo history, line endings and original save revision. A manually edited address field is not replaced unless it still names the open document. No remote reload is implied, so an external content change still causes a save conflict at the new location.
+
+Moves/renames wait for running editor operations and open Save As/reload confirmation dialogs to finish (the Files form retains its input for retry). During the move, participating editors temporarily disable editing and remote operations; copying remains available. Only confirmed results in the owning active session are applied. Failed or uncertain moves leave the original editor location and draft intact. Tracking is bounded to 256 distinct open locations. Editors opened after a move begins are not redirected by its result. Changes made through a terminal, another connection or an external tool are not tracked. Files window navigation/history does not yet follow relocated folders.
+
 Closing an editor, reloading a file, disconnecting its workspace and closing the app guard unsaved changes. Running editor operations block deliberate close/disconnect until completion. Transport loss preserves the workspace and its editor buffers, disables saving, and permits copying drafts. Reconnecting creates a new session and keeps the editor buffer and original revision in the same workspace; a later save still checks for conflicts. If file support is unavailable after reconnect, the draft remains accessible with remote actions disabled. See [connection recovery](connection-recovery.md). Drafts are in memory; forced termination or a process crash can lose them. No editor content is automatically persisted or sent to an external service.
 
 ## Validation
 
 - Unit tests cover undo/redo branches, CRLF serialization, size/binary validation, revision mismatches and workspace preservation after loss.
 - The browser workspace fixture covers open from Files, save, undo/redo, close and disconnect cancellation, remote-edit conflicts and retained drafts after simulated connection loss.
+- Relocation checks passed file rename/move, parent-folder rename/move, retained dirty text and undo/redo, saving at the final path, and conflict refusal after an external edit. The opaque-provider fixture passed two editors following `moved@1` to `moved@2` with independent buffers. Unit checks cover busy/overlapping work, failure cleanup, session loss, and excluding late/new participants. The live move/rename probes passed explicit location mappings, descendant handling, saving with retained revisions, metadata preservation and exact cleanup. This checkpoint passed 45 frontend and 42 Rust tests, Clippy, production frontend build and the standard Windows debug build; native GUI relocation has not been walked through.
 - The authorized Linux test-host probe passed Unicode/CRLF reads, atomic save/readback, UID/GID/mode preservation, stale/external/concurrent save conflicts, binary and size refusal, sibling preservation and cleanup. It created and removed only its own `/tmp/shellcanvas-editor-UUID` directory.
-- Native app-close interception is wired through Tauri's close-request event and explicit close/destroy permissions. Browser dialog behavior and native compilation are checked; a native dirty-editor quit walkthrough remains pending.
+- Native app-close interception is wired through Tauri's close-request event and explicit close/destroy permissions. The earlier Windows clipboard/quit walkthrough passed canceled quit with both drafts retained and explicit discard-and-quit; see [core completion evidence](core-completion.md).
 
 To repeat the **write probe** on an explicitly authorized Linux host:
 

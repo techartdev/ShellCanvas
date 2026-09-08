@@ -12,6 +12,7 @@ import type {
   TextDocument,
 } from "../../src/sdk";
 import "../../src/styles.css";
+import { posixRelocation } from "./posix-relocation";
 const sessions = new Map<number, Session>();
 const sessionHosts = new Map<number, string>([[101, "alpha.example"]]);
 const fileKey = (id: number, path: string) =>
@@ -113,7 +114,7 @@ const backend: HostServices = {
     log(`folder created ${path}`);
     return path;
   },
-  renameEntry: async (id, path, name, revision) => {
+  renameEntry: async (id, path, name, revision, tracked) => {
     checkFilePermission();
     const { parent, entry } = await findEntry(id, path, revision);
     if (parent.entries.some((entry) => entry.name === name))
@@ -132,9 +133,42 @@ const backend: HostServices = {
       });
     }
     log(`renamed ${path} -> ${destination}`);
-    return destination;
+    if (entry.kind === "directory") {
+      for (const [key, value] of [...folders]) {
+        if (key !== fileKey(id, value.path)) continue;
+        const mapped = posixRelocation(path, destination, [value.path], true)
+          .locations[0];
+        if (!mapped) continue;
+        folders.delete(key);
+        folders.set(fileKey(id, mapped.location.path), {
+          ...value,
+          ...mapped.location,
+          entries: value.entries.map((item) => ({
+            ...item,
+            path: destination + item.path.slice(path.length),
+          })),
+        });
+      }
+      for (const [key, value] of [...documents]) {
+        if (key !== fileKey(id, value.path)) continue;
+        const mapped = posixRelocation(path, destination, [value.path], true)
+          .locations[0];
+        if (!mapped) continue;
+        documents.delete(key);
+        documents.set(fileKey(id, mapped.location.path), {
+          ...value,
+          ...mapped.location,
+        });
+      }
+    }
+    return posixRelocation(
+      path,
+      destination,
+      tracked,
+      entry.kind === "directory",
+    );
   },
-  moveEntry: async (id, path, destinationParent, revision) => {
+  moveEntry: async (id, path, destinationParent, revision, tracked) => {
     checkFilePermission();
     const { parent, entry } = await findEntry(id, path, revision);
     if (
@@ -190,7 +224,12 @@ const backend: HostServices = {
       }
     }
     log(`moved ${path} -> ${destination}`);
-    return destination;
+    return posixRelocation(
+      path,
+      destination,
+      tracked,
+      entry.kind === "directory",
+    );
   },
   removeEntry: async (id, path, revision) => {
     checkFilePermission();

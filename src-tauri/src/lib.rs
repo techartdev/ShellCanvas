@@ -423,11 +423,12 @@ async fn rename_entry(
     path: String,
     name: String,
     revision: String,
+    tracked: Vec<String>,
     state: State<'_, DesktopState>,
-) -> Result<String, String> {
+) -> Result<FileRelocation, String> {
     file_mutations(&state, session_id)
         .await?
-        .rename_entry(&path, &name, &revision)
+        .rename_tracked(&path, &name, &revision, &tracked)
         .await
         .map_err(|e| format!("{e:#}"))
 }
@@ -437,8 +438,9 @@ async fn move_entry(
     path: String,
     parent: String,
     revision: String,
+    tracked: Vec<String>,
     state: State<'_, DesktopState>,
-) -> Result<String, String> {
+) -> Result<FileRelocation, String> {
     let service = state
         .registry
         .lock()
@@ -448,7 +450,7 @@ async fn move_entry(
         .and_then(|s| s.moves.clone())
         .ok_or("Moving files is unavailable for this session")?;
     service
-        .move_entry(&path, &parent, &revision)
+        .move_tracked(&path, &parent, &revision, &tracked)
         .await
         .map_err(|e| format!("{e:#}"))
 }

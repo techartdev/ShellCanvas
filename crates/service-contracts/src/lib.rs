@@ -64,6 +64,20 @@ pub struct FileLocation {
     pub name: String,
     pub parent: Option<String>,
 }
+/// Confirmed relocation of tracked opaque locations. The provider alone maps
+/// descendants; consumers never infer ancestry by parsing a path.
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RelocatedLocation {
+    pub previous: String,
+    pub location: FileLocation,
+}
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FileRelocation {
+    pub path: String,
+    pub locations: Vec<RelocatedLocation>,
+}
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FileEntry {
@@ -116,7 +130,16 @@ pub trait TextFileService: Send + Sync {
 #[async_trait]
 pub trait FileMutationService: Send + Sync {
     async fn make_directory(&self, parent: &str, name: &str) -> Result<String>;
-    async fn rename_entry(&self, path: &str, name: &str, revision: &str) -> Result<String>;
+    async fn rename_entry(&self, path: &str, name: &str, revision: &str) -> Result<String> {
+        Ok(self.rename_tracked(path, name, revision, &[]).await?.path)
+    }
+    async fn rename_tracked(
+        &self,
+        path: &str,
+        name: &str,
+        revision: &str,
+        tracked: &[String],
+    ) -> Result<FileRelocation>;
     async fn remove_entry(&self, path: &str, revision: &str) -> Result<()>;
 }
 
@@ -124,5 +147,14 @@ pub trait FileMutationService: Send + Sync {
 /// Paths remain opaque; the provider resolves the destination folder and item name.
 #[async_trait]
 pub trait FileMoveService: Send + Sync {
-    async fn move_entry(&self, path: &str, parent: &str, revision: &str) -> Result<String>;
+    async fn move_entry(&self, path: &str, parent: &str, revision: &str) -> Result<String> {
+        Ok(self.move_tracked(path, parent, revision, &[]).await?.path)
+    }
+    async fn move_tracked(
+        &self,
+        path: &str,
+        parent: &str,
+        revision: &str,
+        tracked: &[String],
+    ) -> Result<FileRelocation>;
 }

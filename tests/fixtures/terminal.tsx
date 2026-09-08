@@ -33,10 +33,26 @@ function Fixture() {
       previewServices.createText(previewSession.id, parent, name, text),
     makeDirectory: (parent, name) =>
       previewServices.makeDirectory(previewSession.id, parent, name),
-    renameEntry: (path, name, revision) =>
-      previewServices.renameEntry(previewSession.id, path, name, revision),
-    moveEntry: (path, parent, revision) =>
-      previewServices.moveEntry(previewSession.id, path, parent, revision),
+    renameEntry: async (path, name, revision) =>
+      (
+        await previewServices.renameEntry(
+          previewSession.id,
+          path,
+          name,
+          revision,
+          [],
+        )
+      ).path,
+    moveEntry: async (path, parent, revision) =>
+      (
+        await previewServices.moveEntry(
+          previewSession.id,
+          path,
+          parent,
+          revision,
+          [],
+        )
+      ).path,
     removeEntry: (path, revision) =>
       previewServices.removeEntry(previewSession.id, path, revision),
     readText: (path) => previewServices.readText(previewSession.id, path),

@@ -88,10 +88,28 @@ async fn main() -> Result<()> {
         );
         let current = revision(&fs, &from, name).await?;
         let before = fs.0.metadata(&source).await?;
+        let open_document = moves.read_text(&source).await?;
+        let relocation = moves
+            .move_tracked(&source, &to, &current, &[source.clone(), alias.clone()])
+            .await?;
         ensure!(
-            moves.move_entry(&source, &to, &current).await? == destination,
+            relocation.path == destination
+                && relocation.locations.len() == 1
+                && relocation.locations[0].previous == source,
             "Wrong returned destination"
         );
+        ensure!(
+            relocation.locations[0].location.parent.as_deref() == Some(to.as_str()),
+            "Wrong editor parent"
+        );
+        // A retained editor revision remains usable after location-only changes.
+        moves
+            .save_text(
+                &relocation.locations[0].location.path,
+                &open_document.text,
+                &open_document.revision,
+            )
+            .await?;
         ensure!(
             fs.0.symlink_metadata(&source).await.is_err(),
             "Source still exists after move"
@@ -128,10 +146,34 @@ async fn main() -> Result<()> {
                 .is_err(),
             "Folder moved into a child"
         );
+        let child = moves.read_text(&format!("{tree}/child.txt")).await?;
+        let relocation = moves
+            .move_tracked(
+                &tree,
+                &to,
+                &tree_rev,
+                &[
+                    child.path.clone(),
+                    tree.clone(),
+                    format!("{tree}s/unrelated"),
+                ],
+            )
+            .await?;
         ensure!(
-            moves.move_entry(&tree, &to, &tree_rev).await? == moved_tree,
+            relocation.path == moved_tree && relocation.locations.len() == 2,
             "Folder move failed"
         );
+        ensure!(
+            relocation.locations[0].location.path == format!("{moved_tree}/child.txt"),
+            "Descendant editor did not follow folder move"
+        );
+        moves
+            .save_text(
+                &relocation.locations[0].location.path,
+                &child.text,
+                &child.revision,
+            )
+            .await?;
         ensure!(
             fs.0.read(format!("{moved_tree}/child.txt")).await? == b"keep child",
             "Folder child lost"

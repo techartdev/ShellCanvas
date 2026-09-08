@@ -2,13 +2,13 @@
 import { expect, it, vi } from "vitest";
 import { bindSession } from "./session-services";
 import { previewServices, previewSession } from "./preview";
-import type { Directory, TerminalSession } from "./sdk";
+import type { Directory, TerminalSession, FileRelocation } from "./sdk";
 import { watchFileChanges } from "./file-events";
 it("moves opaque locations only in the owning capable session, with stale completion reporting", async () => {
-  let finish!: (location: string) => void;
+  let finish!: (location: FileRelocation) => void;
   const moveEntry = vi.fn(
     () =>
-      new Promise<string>((resolve) => {
+      new Promise<FileRelocation>((resolve) => {
         finish = resolve;
       }),
   );
@@ -32,14 +32,14 @@ it("moves opaque locations only in the owning capable session, with stale comple
   const stop = watchFileChanges(81, changed),
     stopOther = watchFileChanges(82, other);
   const moved = binding.services.moveEntry("item:1", "folder:2", "rev");
-  expect(moveEntry).toHaveBeenCalledWith(81, "item:1", "folder:2", "rev");
-  finish("item:3");
+  expect(moveEntry).toHaveBeenCalledWith(81, "item:1", "folder:2", "rev", []);
+  finish({ path: "item:3", locations: [] });
   await expect(moved).resolves.toBe("item:3");
   expect(changed).toHaveBeenCalledOnce();
   expect(other).not.toHaveBeenCalled();
   const pending = binding.services.moveEntry("item:4", "folder:2", "rev2");
   binding.dispose();
-  finish("item:5");
+  finish({ path: "item:5", locations: [] });
   await expect(pending).rejects.toThrow("may have completed");
   expect(changed).toHaveBeenCalledOnce();
   await expect(

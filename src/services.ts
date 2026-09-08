@@ -27,10 +27,10 @@ export const nativeServices: HostServices = {
     invoke("create_text", { sessionId, parent, name, text }),
   makeDirectory: (sessionId, parent, name) =>
     invoke("make_directory", { sessionId, parent, name }),
-  renameEntry: (sessionId, path, name, revision) =>
-    invoke("rename_entry", { sessionId, path, name, revision }),
-  moveEntry: (sessionId, path, parent, revision) =>
-    invoke("move_entry", { sessionId, path, parent, revision }),
+  renameEntry: (sessionId, path, name, revision, tracked) =>
+    invoke("rename_entry", { sessionId, path, name, revision, tracked }),
+  moveEntry: (sessionId, path, parent, revision, tracked) =>
+    invoke("move_entry", { sessionId, path, parent, revision, tracked }),
   removeEntry: (sessionId, path, revision) =>
     invoke("remove_entry", { sessionId, path, revision }),
   profiles: () => invoke("profiles"),

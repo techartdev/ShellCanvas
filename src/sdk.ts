@@ -58,6 +58,15 @@ export interface TextDocument {
   revision: string;
   writable: boolean;
 }
+export interface FileLocation {
+  path: string;
+  name: string;
+  parent: string | null;
+}
+export interface FileRelocation {
+  path: string;
+  locations: { previous: string; location: FileLocation }[];
+}
 export interface HostProfile {
   id?: string;
   name: string;
@@ -156,14 +165,16 @@ export interface HostServices {
     path: string,
     name: string,
     revision: string,
-  ): Promise<string>;
+    tracked: string[],
+  ): Promise<FileRelocation>;
   removeEntry(sessionId: number, path: string, revision: string): Promise<void>;
   moveEntry(
     sessionId: number,
     path: string,
     parent: string,
     revision: string,
-  ): Promise<string>;
+    tracked: string[],
+  ): Promise<FileRelocation>;
   profiles(): Promise<HostProfile[]>;
   saveProfile(profile: HostProfile): Promise<HostProfile>;
   removeProfile(id: string): Promise<void>;

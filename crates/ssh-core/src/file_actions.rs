@@ -1,5 +1,8 @@
 // SPDX-License-Identifier: MPL-2.0
-use crate::{text::validate_path, FileMoveService, FileMutationService, SftpTextFiles};
+use crate::{
+    text::validate_path, FileLocation, FileMoveService, FileMutationService, FileRelocation,
+    RelocatedLocation, SftpTextFiles,
+};
 use anyhow::{bail, Context, Result};
 use async_trait::async_trait;
 use russh_sftp::{
@@ -96,16 +99,26 @@ impl FileMutationService for SftpTextFiles {
             .context("Folder creation was not confirmed. Check the directory before retrying")?;
         Ok(path)
     }
-    async fn rename_entry(&self, path: &str, name: &str, revision: &str) -> Result<String> {
+    async fn rename_tracked(
+        &self,
+        path: &str,
+        name: &str,
+        revision: &str,
+        tracked: &[String],
+    ) -> Result<FileRelocation> {
         let _lock = self.save_lock.lock().await;
-        self.checked_entry(path, revision).await?;
+        let attrs = self.checked_entry(path, revision).await?;
         let (parent, _) = path.rsplit_once('/').context("Unsupported remote path")?;
         let destination = self
             .child_path(if parent.is_empty() { "/" } else { parent }, name)
             .await?;
         self.require_absent(&destination).await?;
+        let locations = relocated_locations(tracked, path, &destination, attrs.is_dir())?;
         self.raw.rename(path, &destination).await.context("Rename was not confirmed. Refresh the directory before retrying; no overwrite was requested")?;
-        Ok(destination)
+        Ok(FileRelocation {
+            path: destination,
+            locations,
+        })
     }
     async fn remove_entry(&self, path: &str, revision: &str) -> Result<()> {
         let _lock = self.save_lock.lock().await;
@@ -124,7 +137,13 @@ impl FileMutationService for SftpTextFiles {
 }
 #[async_trait]
 impl FileMoveService for SftpTextFiles {
-    async fn move_entry(&self, path: &str, parent: &str, revision: &str) -> Result<String> {
+    async fn move_tracked(
+        &self,
+        path: &str,
+        parent: &str,
+        revision: &str,
+        tracked: &[String],
+    ) -> Result<FileRelocation> {
         let _lock = self.save_lock.lock().await;
         let attrs = self.checked_entry(path, revision).await?;
         let (_, name) = path.rsplit_once('/').context("Unsupported remote path")?;
@@ -137,17 +156,91 @@ impl FileMoveService for SftpTextFiles {
             bail!("A folder cannot be moved into itself or one of its children.");
         }
         self.require_absent(&destination).await?;
+        let locations = relocated_locations(tracked, path, &destination, attrs.is_dir())?;
         // Standard v3 rename refuses replacement; never use posix-rename here or
         // silently fall back to copy/delete when filesystems differ.
         self.raw.rename(path, &destination).await.context(
             "Move was not confirmed. Inspect both folders before retrying; nothing was intentionally replaced. The server may prohibit moves between filesystems",
         )?;
-        Ok(destination)
+        Ok(FileRelocation {
+            path: destination,
+            locations,
+        })
     }
+}
+fn relocated_locations(
+    tracked: &[String],
+    source: &str,
+    destination: &str,
+    directory: bool,
+) -> Result<Vec<RelocatedLocation>> {
+    if tracked.len() > 256 {
+        bail!("Too many tracked file locations (maximum 256)");
+    }
+    let mut result = Vec::new();
+    for previous in tracked {
+        validate_path(previous)?;
+        // Tracked locations came from this provider. Noncanonical spelling does
+        // not prove ancestry, and must never be redirected to another file.
+        if !previous.starts_with('/') || previous.split('/').any(|s| matches!(s, "." | "..")) {
+            continue;
+        }
+        let suffix = if previous == source {
+            ""
+        } else if directory {
+            match previous.strip_prefix(&format!("{source}/")) {
+                Some(suffix) => suffix,
+                None => continue,
+            }
+        } else {
+            continue;
+        };
+        let path = if suffix.is_empty() {
+            destination.to_string()
+        } else {
+            format!("{destination}/{suffix}")
+        };
+        validate_path(&path)?;
+        let (parent, name) = path
+            .rsplit_once('/')
+            .context("Unsupported destination path")?;
+        result.push(RelocatedLocation {
+            previous: previous.clone(),
+            location: FileLocation {
+                name: name.into(),
+                parent: Some(if parent.is_empty() { "/" } else { parent }.into()),
+                path,
+            },
+        });
+    }
+    Ok(result)
 }
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn relocation_maps_exact_and_descendant_locations_without_following_links_or_sibling_prefixes()
+    {
+        let tracked = [
+            "/root/tree",
+            "/root/tree/a 🌍.txt",
+            "/root/tree/sub/a",
+            "/root/trees/a",
+            "/elsewhere/a",
+            "/root/tree/../secret",
+        ]
+        .map(String::from);
+        let mapped = relocated_locations(&tracked, "/root/tree", "/dest/new", true).unwrap();
+        assert_eq!(mapped.len(), 3);
+        assert_eq!(mapped[0].location.name, "new");
+        assert_eq!(mapped[0].location.parent.as_deref(), Some("/dest"));
+        assert_eq!(mapped[1].location.path, "/dest/new/a 🌍.txt");
+        assert_eq!(mapped[2].location.parent.as_deref(), Some("/dest/new/sub"));
+        let exact = relocated_locations(&tracked, "/root/tree", "/renamed", false).unwrap();
+        assert_eq!(exact.len(), 1); // Files and symlinks cannot relocate descendants.
+        assert_eq!(exact[0].location.parent.as_deref(), Some("/"));
+        assert!(relocated_locations(&vec!["/a".into(); 257], "/a", "/b", true).is_err());
+    }
     #[test]
     fn validates_names_and_listing_preconditions() {
         for invalid in ["", " ", ".", "..", "a/b", "a\0b", "a\nb"] {

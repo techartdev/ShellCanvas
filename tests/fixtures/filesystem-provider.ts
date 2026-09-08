@@ -126,7 +126,7 @@ export function filesystemFixture(
       return { ...doc };
     },
     preview: async (_, path) => documents.get(path)?.text ?? "No fixture text",
-    moveEntry: async (_, path, parent, revision) => {
+    moveEntry: async (_, path, parent, revision, tracked) => {
       const source = [...folders.values()].find((folder) =>
         folder.entries.some((item) => item.path === path),
       );
@@ -151,7 +151,15 @@ export function filesystemFixture(
         documents.set(destination, { ...doc, path: destination, parent });
       }
       log(`move ${path} -> ${parent} :: ${destination}`);
-      return destination;
+      return {
+        path: destination,
+        locations: tracked
+          .filter((previous) => previous === path)
+          .map((previous) => ({
+            previous,
+            location: { path: destination, parent, name: item.name },
+          })),
+      };
     },
     createText: async (_, parent, name, text) => {
       const directory = folders.get(parent);

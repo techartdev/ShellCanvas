@@ -14,6 +14,9 @@ Moving passes the original opaque location, destination folder location and list
 - `TextDocument` includes display `name` and optional `parent` alongside canonical `path`, text, revision and writability. Editor titles and Save As use this metadata. A new draft obtains its destination from the provider's default directory when Files has not supplied one.
 - Rust `locate(path)` resolves file metadata for a read-only editor fallback. The native desktop does not derive a parent from a path string.
 - Creation takes a parent location plus a separate name; the provider validates the name and returns the canonical location. A name need not share the encoding or separator conventions of its path identifier.
+- Tracked rename/move methods accept a bounded set of open locations and return `FileRelocation`: the confirmed destination plus explicit previous/new `FileLocation` mappings. Providers decide descendant identity and whether their IDs change. SFTP computes canonical POSIX descendant mappings only for actual directories; files/symlinks map exact locations only. Unrelated paths and sibling prefixes are excluded. The app broker applies these only after a confirmed, still-owned operation. Convenience Rust methods that do not track locations still return the destination path.
+
+Relocation mappings carry no text or replacement revision. Providers supporting relocation with text editing should keep revision validity independent of location-only changes, while continuing to reject changes to content or protected metadata. A provider whose old revision becomes invalid must reject the later save; the desktop must not silently read a new revision to bypass that check.
 
 The SFTP adapter currently implements POSIX SFTP conventions, including `/` and the server's canonical `.` directory. Those assumptions stay inside the adapter. This change does not add production Windows or appliance support.
 

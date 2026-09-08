@@ -6,7 +6,7 @@ import type {
   SessionServices,
   TransferTicket,
 } from "./sdk";
-import { notifyFileChanges } from "./file-events";
+import { notifyFileChanges, beginFileRelocation } from "./file-events";
 
 /** Lifetime and capability checks complement native ownership checks; not a sandbox. */
 export function bindSession(
@@ -140,14 +140,22 @@ export function bindSession(
     },
     renameEntry: async (path, name, revision) => {
       const expected = generation;
-      const result = await backend.renameEntry(
-        check("files.manage"),
-        path,
-        name,
-        revision,
-      );
-      mutationCompleted("files.manage", expected);
-      return result;
+      const id = check("files.manage");
+      const follow = beginFileRelocation(id);
+      try {
+        const result = await backend.renameEntry(
+          id,
+          path,
+          name,
+          revision,
+          follow.tracked,
+        );
+        mutationCompleted("files.manage", expected);
+        follow.apply(result);
+        return result.path;
+      } finally {
+        follow.finish();
+      }
     },
     removeEntry: async (path, revision) => {
       const expected = generation;
@@ -156,14 +164,22 @@ export function bindSession(
     },
     moveEntry: async (path, parent, revision) => {
       const expected = generation;
-      const result = await backend.moveEntry(
-        check("files.move"),
-        path,
-        parent,
-        revision,
-      );
-      mutationCompleted("files.move", expected);
-      return result;
+      const id = check("files.move");
+      const follow = beginFileRelocation(id);
+      try {
+        const result = await backend.moveEntry(
+          id,
+          path,
+          parent,
+          revision,
+          follow.tracked,
+        );
+        mutationCompleted("files.move", expected);
+        follow.apply(result);
+        return result.path;
+      } finally {
+        follow.finish();
+      }
     },
     readText: async (path) => {
       const expected = generation;

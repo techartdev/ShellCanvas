@@ -102,11 +102,19 @@ async fn main() -> Result<()> {
                 .is_err(),
             "Rename replaced a sibling"
         );
-        let path = actions
-            .rename_entry(&original, "renamed '🌍'.txt", &entry.revision)
+        let relocation = actions
+            .rename_tracked(
+                &original,
+                "renamed '🌍'.txt",
+                &entry.revision,
+                std::slice::from_ref(&original),
+            )
             .await?;
         ensure!(
-            path == renamed && fs.0.read(&renamed).await? == saved.text.as_bytes(),
+            relocation.path == renamed
+                && relocation.locations.len() == 1
+                && relocation.locations[0].location.name == "renamed '🌍'.txt"
+                && fs.0.read(&renamed).await? == saved.text.as_bytes(),
             "Rename failed"
         );
         let stale = fs
