@@ -33,7 +33,8 @@ import { usePreferences } from "../preferences";
 import { visibleFiles } from "../file-view";
 import { FileActionDialog } from "../components/FileActionDialog";
 import { MoveFileDialog } from "../components/MoveFileDialog";
-import { watchFileChanges } from "../file-events";
+import { watchFileChanges, watchFileLocations } from "../file-events";
+import { relocateNavigation, trackedNavigation } from "../file-navigation";
 import { TransferQueue, pendingTransfer } from "../transfer-queue";
 import { TransferPanel } from "../components/TransferPanel";
 function size(bytes: number) {
@@ -66,7 +67,10 @@ export function Files({
   const [query, setQuery] = useState("");
   const [pathInput, setPathInput] = useState("");
   const [selected, setSelected] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [reading, setLoading] = useState(true);
+  const [relocating, setRelocating] = useState(false);
+  const relocatingRef = useRef(false);
+  const loading = reading || relocating;
   const [busy, setBusy] = useState(false);
   const queue = useMemo(
     () => new TransferQueue(services, reportError),
@@ -83,10 +87,12 @@ export function Files({
     connected &&
     !!directory.path &&
     !picking &&
+    !relocating &&
     !!session?.info.capabilities.includes("files.upload");
   const canDownload =
     connected &&
     !picking &&
+    !relocating &&
     !!session?.info.capabilities.includes("files.download");
   async function upload() {
     if (!canUpload) return;
@@ -150,8 +156,11 @@ export function Files({
     !busy &&
     !!session?.info.capabilities.includes("files.create");
   useEffect(() => {
-    setDocumentState?.({ dirty: false, busy: busy || transferBusy });
-  }, [busy, transferBusy]);
+    setDocumentState?.({
+      dirty: false,
+      busy: busy || transferBusy || relocating,
+    });
+  }, [busy, transferBusy, relocating]);
   const [error, setError] = useState("");
   const [document, setDocument] = useState<{
     name: string;
@@ -161,6 +170,7 @@ export function Files({
   const [history, setHistory] = useState<string[]>([]);
   const request = useRef(0);
   const previewRequest = useRef(0);
+  const previewPending = useRef(false);
   const root = useRef<HTMLDivElement>(null);
   const pathField = useRef<HTMLInputElement>(null);
   const [menu, setMenu] = useState<{
@@ -169,14 +179,64 @@ export function Files({
     entry?: FileEntry;
   } | null>(null);
   const closeMenu = useCallback(() => setMenu(null), []);
-  const refresh = useRef(() => {});
-  refresh.current = () => {
-    void navigate(directory.path, false);
+  const view = useRef({ directory, pathInput, selected, document, history });
+  view.current = { directory, pathInput, selected, document, history };
+  const transferState = useRef(transferBusy);
+  transferState.current = transferBusy;
+  const keepPreview = useRef(true);
+  const refresh = useRef((_preservePreview = false) => {});
+  refresh.current = (preservePreview = false) => {
+    if (relocatingRef.current) {
+      if (!preservePreview) keepPreview.current = false;
+      return;
+    }
+    void navigate(view.current.directory.path, false, {
+      background: true,
+      preservePreview,
+    });
   };
+  useEffect(() => {
+    relocatingRef.current = false;
+    setRelocating(false);
+    if (!session) return;
+    return watchFileLocations(session.id, {
+      snapshot: () => ({
+        paths: trackedNavigation(view.current),
+        busy: transferState.current,
+      }),
+      pending: (value) => {
+        relocatingRef.current = value;
+        setRelocating(value);
+        if (value) {
+          ++request.current;
+          ++previewRequest.current;
+          setLoading(false);
+          closeMenu();
+          keepPreview.current = !previewPending.current;
+          if (previewPending.current) {
+            view.current.document = null;
+            setDocument(null);
+          }
+          previewPending.current = false;
+        } else refresh.current(keepPreview.current);
+      },
+      relocated: (mappings) => {
+        const next = relocateNavigation(view.current, mappings);
+        view.current = next;
+        setDirectory(next.directory);
+        setHistory(next.history);
+        setPathInput(next.pathInput);
+        setSelected(next.selected);
+        setDocument(next.document);
+      },
+    });
+  }, [session?.id]);
   useEffect(
     () =>
       session
-        ? watchFileChanges(session.id, () => refresh.current())
+        ? watchFileChanges(session.id, (kind) =>
+            refresh.current(kind === "relocation"),
+          )
         : undefined,
     [session?.id],
   );
@@ -186,8 +246,7 @@ export function Files({
   function back() {
     const previous = history.at(-1);
     if (previous && !loading && connected) {
-      setHistory(history.slice(0, -1));
-      void navigate(previous, false);
+      void navigate(previous, false, { back: true });
     }
   }
   function parent() {
@@ -213,21 +272,56 @@ export function Files({
       setError(`Cannot open clipboard path: ${e}`);
     }
   }
-  async function navigate(path?: string, remember = true) {
-    if (!session || !connected) return;
+  async function navigate(
+    path?: string,
+    remember = true,
+    options: {
+      background?: boolean;
+      preservePreview?: boolean;
+      back?: boolean;
+    } = {},
+  ) {
+    if (!session || !connected || relocatingRef.current) return;
     const current = ++request.current;
     ++previewRequest.current;
+    previewPending.current = false;
     setLoading(true);
     setError("");
-    setDocument(null);
+    if (!options.preservePreview) {
+      view.current.document = null;
+      setDocument(null);
+    }
     try {
       const result = await services.list(path === "" ? undefined : path);
       if (current !== request.current) return;
-      if (remember && directory.path && directory.path !== result.path)
-        setHistory((previous) => [...previous, directory.path]);
+      const previous = view.current;
+      const nextHistory = options.back
+        ? previous.history.slice(0, -1)
+        : remember &&
+            previous.directory.path &&
+            previous.directory.path !== result.path
+          ? [...previous.history.slice(-49), previous.directory.path]
+          : previous.history;
+      const nextInput =
+        options.background && previous.pathInput !== previous.directory.path
+          ? previous.pathInput
+          : result.path;
+      const nextSelected =
+        options.background &&
+        result.entries.some((entry) => entry.path === previous.selected)
+          ? previous.selected
+          : null;
+      view.current = {
+        ...previous,
+        directory: result,
+        history: nextHistory,
+        pathInput: nextInput,
+        selected: nextSelected,
+      };
+      setHistory(nextHistory);
       setDirectory(result);
-      setPathInput(result.path);
-      setSelected(null);
+      setPathInput(nextInput);
+      setSelected(nextSelected);
     } catch (e) {
       if (current === request.current) setError(String(e));
     } finally {
@@ -243,13 +337,19 @@ export function Files({
     };
   }, [session?.id, connected]);
   async function open(entry: FileEntry) {
-    if (!connected) return;
+    if (!connected || relocatingRef.current) return;
     if (entry.kind === "directory") {
       void navigate(entry.path);
       return;
     }
     const current = ++previewRequest.current;
+    previewPending.current = true;
     setError("");
+    view.current.document = {
+      name: entry.name,
+      text: "Loading preview…",
+      path: entry.path,
+    };
     setDocument({
       name: entry.name,
       text: "Loading preview…",
@@ -257,13 +357,18 @@ export function Files({
     });
     try {
       const text = await services.preview(entry.path);
-      if (current === previewRequest.current)
-        setDocument({ name: entry.name, text, path: entry.path });
+      if (current === previewRequest.current) {
+        view.current.document = { name: entry.name, text, path: entry.path };
+        setDocument(view.current.document);
+      }
     } catch (e) {
       if (current === previewRequest.current) {
+        view.current.document = null;
         setDocument(null);
         setError(String(e));
       }
+    } finally {
+      if (current === previewRequest.current) previewPending.current = false;
     }
   }
   const entries = useMemo(
@@ -278,9 +383,13 @@ export function Files({
     ],
   );
   useEffect(() => {
-    if (selected && !entries.some((entry) => entry.path === selected))
+    if (
+      !loading &&
+      selected &&
+      !entries.some((entry) => entry.path === selected)
+    )
       setSelected(null);
-  }, [selected, directory, query, preferences.filesShowHidden]);
+  }, [selected, directory, query, preferences.filesShowHidden, loading]);
   function menuActions(entry?: FileEntry): MenuAction[] {
     return [
       {
@@ -495,7 +604,7 @@ export function Files({
         {directory.home && (
           <button
             className={directory.path === directory.home.path ? "selected" : ""}
-            disabled={!connected}
+            disabled={!connected || relocating}
             onClick={() => void navigate(directory.home!.path)}
           >
             <Home size={16} /> {directory.home.name}
@@ -505,7 +614,7 @@ export function Files({
           <button
             key={root.path}
             className={directory.path === root.path ? "selected" : ""}
-            disabled={!connected}
+            disabled={!connected || relocating}
             onClick={() => void navigate(root.path)}
           >
             <Server size={16} /> {root.name}
@@ -666,6 +775,8 @@ export function Files({
                 aria-label="Close preview"
                 onClick={() => {
                   ++previewRequest.current;
+                  previewPending.current = false;
+                  view.current.document = null;
                   setDocument(null);
                 }}
               >

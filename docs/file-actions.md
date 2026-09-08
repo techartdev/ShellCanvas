@@ -18,7 +18,7 @@ The Editor supports **Save as new file** (Ctrl+Shift+S). Saving an unnamed draft
 
 ## Current limits
 
-Only files, symlinks and **empty** directories can be deleted. There is no recursive delete, remote trash, undo, cross-host move, copy/paste of remote file objects, or Save As overwrite confirmation yet. Already-open editors now follow confirmed workspace rename/move results, including descendants of folders, while preserving drafts and conflict revisions; see [editor coordination](text-editor.md). Files window navigation/history and externally initiated moves are not tracked yet. Regular-file upload/download and cancellation are described in [transfers](transfers.md). Navigation is provider-owned; the production adapter still uses POSIX SFTP conventions. Other production providers, composite adapters and native Files clipboard integration remain backlog items.
+Only files, symlinks and **empty** directories can be deleted. There is no recursive delete, remote trash, undo, cross-host move, copy/paste of remote file objects, or Save As overwrite confirmation yet. Already-open editors follow confirmed workspace rename/move results, including descendants of folders, while preserving drafts and conflict revisions; see [editor coordination](text-editor.md). [Files navigation, history and previews](file-navigation.md) also follow confirmed workspace relocations. Externally initiated moves are not tracked. Regular-file upload/download and cancellation are described in [transfers](transfers.md). Navigation is provider-owned; the production adapter still uses POSIX SFTP conventions. Other production providers, composite adapters and native Files clipboard integration remain backlog items.
 
 ## Evidence
 

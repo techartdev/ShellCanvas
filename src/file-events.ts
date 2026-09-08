@@ -1,8 +1,13 @@
 // SPDX-License-Identifier: MPL-2.0
 import type { FileRelocation } from "./sdk";
-const listeners = new Map<number, Set<() => void>>();
-export function watchFileChanges(sessionId: number, listener: () => void) {
-  const group = listeners.get(sessionId) ?? new Set<() => void>();
+type FileChange = "content" | "relocation";
+const listeners = new Map<number, Set<(kind: FileChange) => void>>();
+export function watchFileChanges(
+  sessionId: number,
+  listener: (kind: FileChange) => void,
+) {
+  const group =
+    listeners.get(sessionId) ?? new Set<(kind: FileChange) => void>();
   group.add(listener);
   listeners.set(sessionId, group);
   return () => {
@@ -10,8 +15,11 @@ export function watchFileChanges(sessionId: number, listener: () => void) {
     if (!group.size) listeners.delete(sessionId);
   };
 }
-export function notifyFileChanges(sessionId: number) {
-  listeners.get(sessionId)?.forEach((listener) => listener());
+export function notifyFileChanges(
+  sessionId: number,
+  kind: FileChange = "content",
+) {
+  listeners.get(sessionId)?.forEach((listener) => listener(kind));
 }
 
 interface LocationWatcher {
@@ -33,7 +41,7 @@ export function watchFileLocations(
     if (!group.size) locations.delete(sessionId);
   };
 }
-/** Freeze tracked editors for one confirmed operation; drafts never reload. */
+/** Freeze tracked views for one confirmed operation; drafts never reload. */
 export function beginFileRelocation(sessionId: number) {
   if (relocating.has(sessionId))
     throw new Error(
@@ -43,7 +51,7 @@ export function beginFileRelocation(sessionId: number) {
   const snapshots = participants.map((w) => w.snapshot());
   if (snapshots.some((s) => s.busy))
     throw new Error(
-      "Wait for open editor operations or dialogs to finish before moving or renaming files.",
+      "Wait for file transfers and editor operations or dialogs to finish before moving or renaming files.",
     );
   const tracked = [...new Set(snapshots.flatMap((s) => s.paths))];
   if (tracked.length > 256)

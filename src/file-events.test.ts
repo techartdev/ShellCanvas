@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 import { expect, it, vi } from "vitest";
-import { watchFileLocations } from "./file-events";
+import { watchFileLocations, watchFileChanges } from "./file-events";
 import { bindSession } from "./session-services";
 import { previewServices, previewSession } from "./preview";
 import type { FileRelocation } from "./sdk";
@@ -43,6 +43,8 @@ it("coordinates open locations, blocks overlapping work and never applies failed
     relocated,
   });
   const other = vi.fn();
+  const refreshed = vi.fn(() => path);
+  const stopRefresh = watchFileChanges(995, refreshed);
   const stopOther = watchFileLocations(996, {
     snapshot: () => ({ paths: [path], busy: false }),
     pending: other,
@@ -80,6 +82,8 @@ it("coordinates open locations, blocks overlapping work and never applies failed
     done(result);
     await expect(moved).resolves.toBe("opaque@new");
     expect(path).toBe("opaque@new");
+    expect(refreshed).toHaveBeenCalledWith("relocation");
+    expect(refreshed.mock.results[0].value).toBe("opaque@new");
     expect(pending).toHaveBeenLastCalledWith(false);
     expect(other).not.toHaveBeenCalled();
     const failed = binding.services.moveEntry("source", "target", "rev");
@@ -97,6 +101,7 @@ it("coordinates open locations, blocks overlapping work and never applies failed
   } finally {
     stop();
     stopOther();
+    stopRefresh();
     binding.dispose();
   }
 });

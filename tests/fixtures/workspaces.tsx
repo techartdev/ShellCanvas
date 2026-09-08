@@ -19,6 +19,8 @@ const fileKey = (id: number, path: string) =>
   `${sessionHosts.get(id) ?? id}:${path}`;
 let nextWithoutFiles = false;
 let denyNextFileChange = false;
+let delayNextListing = false;
+let failNextListing = false;
 function checkFilePermission() {
   if (!denyNextFileChange) return;
   denyNextFileChange = false;
@@ -315,11 +317,22 @@ const backend: HostServices = {
   },
   alive: async (id) => sessions.has(id),
   list: async (id, path) => {
+    if (failNextListing) {
+      failNextListing = false;
+      throw new Error("Fixture directory read failed");
+    }
     const result = await folder(id, path);
-    return {
+    const snapshot = {
       ...result,
       entries: result.entries.map((entry: FileEntry) => ({ ...entry })),
     };
+    if (delayNextListing) {
+      delayNextListing = false;
+      log(`delayed listing ${snapshot.path}`);
+      await new Promise((resolve) => setTimeout(resolve, 2500));
+      log(`released old listing ${snapshot.path}`);
+    }
+    return snapshot;
   },
   terminal: async (id, _, __, event) => {
     log(`shell opened ${id}`);
@@ -367,6 +380,20 @@ function Fixture() {
         }}
       >
         <summary>Fixture events</summary>
+        <button
+          onClick={() => {
+            delayNextListing = true;
+          }}
+        >
+          Delay next directory read
+        </button>
+        <button
+          onClick={() => {
+            failNextListing = true;
+          }}
+        >
+          Fail next directory read
+        </button>
         <button
           onClick={() => {
             denyNextFileChange = true;

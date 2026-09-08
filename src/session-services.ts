@@ -40,7 +40,11 @@ export function bindSession(
       throw new Error(`Unavailable on this device: ${capability}`);
     return session.id;
   }
-  function mutationCompleted(capability: Capability, expected: number) {
+  function mutationCompleted(
+    capability: Capability,
+    expected: number,
+    relocate?: () => void,
+  ) {
     try {
       check(capability, expected);
     } catch {
@@ -48,7 +52,8 @@ export function bindSession(
         "Connection changed before the operation was confirmed. The remote change may have completed; verify the destination before retrying.",
       );
     }
-    notifyFileChanges(session!.id);
+    relocate?.();
+    notifyFileChanges(session!.id, relocate ? "relocation" : "content");
   }
   const services: SessionServices = {
     readHostSettings: async () => {
@@ -150,8 +155,7 @@ export function bindSession(
           revision,
           follow.tracked,
         );
-        mutationCompleted("files.manage", expected);
-        follow.apply(result);
+        mutationCompleted("files.manage", expected, () => follow.apply(result));
         return result.path;
       } finally {
         follow.finish();
@@ -174,8 +178,7 @@ export function bindSession(
           revision,
           follow.tracked,
         );
-        mutationCompleted("files.move", expected);
-        follow.apply(result);
+        mutationCompleted("files.move", expected, () => follow.apply(result));
         return result.path;
       } finally {
         follow.finish();
