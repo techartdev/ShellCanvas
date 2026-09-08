@@ -18,6 +18,9 @@ function Fixture() {
   };
   clipboard.readText = async () => "fixture paste";
   const [services] = useState<SessionServices>(() => ({
+    prepareCopy: async () => {
+      throw new Error("Unavailable");
+    },
     readHostSettings: async () => [],
     applyHostSetting: async () => {
       throw new Error("Unavailable");

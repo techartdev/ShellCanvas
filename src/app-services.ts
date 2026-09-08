@@ -6,6 +6,7 @@ import type {
   TransferTicket,
 } from "./sdk";
 import { shareFileClipboard } from "./file-clipboard";
+import { transferCapability } from "./sdk";
 
 const scopes = new WeakMap<
   SessionServices,
@@ -48,6 +49,11 @@ export function scopeAppServices(
     return { ...ticket };
   }
   const services: SessionServices = {
+    prepareCopy: guard(
+      "files.copy",
+      async (path: string, revision: string, parent: string) =>
+        adopt(await base.prepareCopy(path, revision, parent)),
+    ),
     list: guard("files.read", base.list.bind(base)),
     preview: guard("files.read", base.preview.bind(base)),
     readText: guard("files.read", base.readText.bind(base)),
@@ -73,7 +79,7 @@ export function scopeAppServices(
     runTransfer: async (ticket, onProgress) => {
       const owned = tickets.get(ticket.id);
       if (!owned) throw new Error("Transfer does not belong to this app");
-      check(owned.direction === "upload" ? "files.upload" : "files.download");
+      check(transferCapability(owned.direction));
       try {
         return await base.runTransfer({ ...owned }, onProgress);
       } finally {

@@ -43,6 +43,9 @@ function directory(path = "/home/demo"): Directory {
   };
 }
 export const previewServices: HostServices = {
+  prepareCopy: async () => {
+    throw new Error("File copying is unavailable in the design preview.");
+  },
   readHostSettings: async () => {
     throw new Error("Remote settings are unavailable in the design preview.");
   },

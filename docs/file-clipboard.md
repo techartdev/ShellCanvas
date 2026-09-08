@@ -10,7 +10,7 @@ Copy also handles native edit-menu events, which can arrive without a keyboard e
 
 Only one clipboard move can run at a time. While it runs, the item cannot be replaced or canceled. A failed move retains the original item/revision and displays the error; retry is always explicit. For an uncertain remote outcome, inspect the destination before retrying. The underlying SFTP revision is a metadata precondition, with the [same limitations as other file actions](file-actions.md); it is not a content hash or distributed lock. A confirmed rename/move of the cut item or its parent clears the cut because relocation mappings do not include a replacement revision. Confirmed deletion clears it too. External changes are checked by the provider on Paste and may require refreshing and cutting again.
 
-Cut/Paste requires `files.move`. Source/destination tokens are opaque: the clipboard never constructs paths. Its two tracked locations count toward the existing 256-location relocation limit. Read-only sessions cannot gain move access through the clipboard. There is no remote copy/duplicate, multi-selection, cross-host transfer or persistent clipboard yet.
+Cut/Paste requires `files.move`. Source/destination tokens are opaque: the clipboard never constructs paths. Its two tracked locations count toward the existing 256-location relocation limit. Read-only sessions cannot gain move access through the clipboard. The separate [Copy to folder action](transfers.md#copy-to-folder) copies one regular file through the transfer queue. Remote Copy/Paste, multi-selection, cross-host transfer and persistent clipboard remain unimplemented.
 
 ## Verification
 

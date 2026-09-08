@@ -8,6 +8,20 @@ Each Files window has a sequential queue with progress, cancellation, clearable 
 
 ## Service boundaries
 
+### Copy to folder
+
+The selected regular file's context menu offers **Copy to folder…** when `files.copy` is available. The destination browser keeps the original filename, requires a different folder, and queues the copy alongside uploads/downloads. The source remains in place and existing destinations are refused. Completion refreshes Files windows in that workspace. Clipboard Copy continues to copy text/path; Cut/Paste continues to move an item.
+
+The transport-neutral `copy_regular_file` helper streams through one explicitly bound `FileTransferService`, with one 32 KiB chunk in memory. Bytes travel through the desktop process, without JavaScript buffers, local staging files or remote shell commands. Both size and the provider's final source revision are checked before publishing. Cancellation or failure aborts both handles; cleanup failures remain visible. Successful publication still reports success if cancellation arrives afterward. This inherits the SFTP metadata-revision limitations below.
+
+This first action covers one regular file within one workspace file service. Directory/symlink copies, cross-host copying, renamed duplicates and remote Copy/Paste are separate work.
+
+Verification on 2026-09-08: 72 frontend tests, 56 Rust tests, all-target Clippy and the standard Windows debug build passed. The copy browser fixture checked cancellation leaving an empty destination, successful source/destination browsing in separate windows, and a visible collision error. The live `copy_probe` copied 1 MiB + 7 patterned binary bytes with a quoted Unicode filename, verified both files, refused collision and stale revision, canceled a partial copy, and removed its owned `/tmp/shellcanvas-copy-UUID` directory. This probe exercises the provider/helper; the new action's native GUI/IPC walkthrough and physical-network interruption remain separate gates.
+
+```sh
+cargo run -p shellcanvas-core --example copy_probe -- HOST USER KEY_PATH
+```
+
 `FileTransferService`, `TransferReader` and `TransferWriter` live in `crates/service-contracts`, without SSH or desktop dependencies. Locations remain provider-owned strings. A reader declares its size, streams bounded chunks and verifies the source at finish. A writer receives a parent/name and declared size, accepts bounded chunks, and publishes without overwriting at finish. Both have explicit abort cleanup. The initial implementation is SFTP; this does not add another production protocol.
 
 Native Rust owns local file dialogs and retained upload handles. Frontend apps receive session-owned transfer tickets, never a general local-path read/write API. Tickets can start once; another host cannot run or cancel them. The registry allows 32 queued/running tickets, and its semaphore allows four active streams across all windows. Streams use 32 KiB chunks; file bytes do not pass through JavaScript or load entirely into memory. The frontend queue keeps at most 50 previous finished entries when adding more work.

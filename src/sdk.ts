@@ -7,6 +7,7 @@ export type Capability =
   | "files.create"
   | "files.manage"
   | "files.move"
+  | "files.copy"
   | "files.upload"
   | "files.download"
   | "host.settings";
@@ -28,6 +29,7 @@ export const capabilityLabels: Record<Capability, string> = {
   "files.create": "New text files",
   "files.manage": "File changes",
   "files.move": "Move files and folders",
+  "files.copy": "Copy files",
   "files.upload": "Uploads",
   "files.download": "Downloads",
   "host.settings": "Remote settings",
@@ -36,7 +38,16 @@ export interface TransferTicket {
   id: number;
   name: string;
   size: number;
-  direction: "upload" | "download";
+  direction: "upload" | "download" | "copy";
+}
+export function transferCapability(
+  direction: TransferTicket["direction"],
+): Capability {
+  return direction === "copy"
+    ? "files.copy"
+    : direction === "upload"
+      ? "files.upload"
+      : "files.download";
 }
 export interface TransferProgress {
   bytes: number;
@@ -171,6 +182,12 @@ export interface TerminalSession {
   close(): Promise<void>;
 }
 export interface HostServices {
+  prepareCopy(
+    sessionId: number,
+    path: string,
+    revision: string,
+    parent: string,
+  ): Promise<TransferTicket>;
   readHostSettings(sessionId: number): Promise<HostSetting[]>;
   applyHostSetting(
     sessionId: number,
@@ -245,6 +262,11 @@ export interface HostServices {
 }
 /** Apps receive a fixed session handle, never connection administration. */
 export interface SessionServices {
+  prepareCopy(
+    path: string,
+    revision: string,
+    parent: string,
+  ): Promise<TransferTicket>;
   readHostSettings(): Promise<HostSetting[]>;
   applyHostSetting(
     id: string,
@@ -335,6 +357,7 @@ export function defineApps(definitions: DesktopApp[]): readonly DesktopApp[] {
               "files.create",
               "files.manage",
               "files.move",
+              "files.copy",
               "files.upload",
               "files.download",
               "host.settings",

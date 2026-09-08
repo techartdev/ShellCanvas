@@ -45,6 +45,12 @@ pub struct Outcome {
     pub path: Option<String>,
 }
 enum Job {
+    Copy {
+        path: String,
+        revision: String,
+        parent: String,
+        name: String,
+    },
     Upload {
         file: std::fs::File,
         parent: String,
@@ -295,6 +301,48 @@ pub async fn cancel_transfer(
 ) -> Result<(), String> {
     state.transfers.lock().await.cancel(session_id, transfer_id)
 }
+
+#[tauri::command]
+pub async fn prepare_file_copy(
+    session_id: u64,
+    path: String,
+    revision: String,
+    parent: String,
+    state: State<'_, DesktopState>,
+) -> Result<Ticket, String> {
+    if revision.is_empty() || parent.is_empty() {
+        return Err("Refresh the file and choose a destination folder".into());
+    }
+    provider(&state, session_id).await?;
+    let location = crate::filesystem(&state, session_id)
+        .await?
+        .locate(&path)
+        .await
+        .map_err(error)?;
+    if location.parent.as_deref() == Some(parent.as_str()) {
+        return Err("Choose a different destination folder".into());
+    }
+    let registry = state.registry.lock().await;
+    if !registry.sessions.contains_key(&session_id) {
+        return Err("The host disconnected while preparing the copy".into());
+    }
+    let name = location.name;
+    let mut tickets = state.transfers.lock().await.add(
+        session_id,
+        vec![(
+            Job::Copy {
+                path: location.path,
+                revision,
+                parent,
+                name: name.clone(),
+            },
+            name,
+            0,
+            "copy",
+        )],
+    )?;
+    tickets.pop().ok_or("Copy preparation failed".into())
+}
 fn checkpoint(cancel: &watch::Receiver<bool>) -> Result<()> {
     if *cancel.borrow() {
         bail!("Transfer canceled");
@@ -315,6 +363,32 @@ async fn execute(
 ) -> Result<String> {
     checkpoint(cancel)?;
     match job {
+        Job::Copy {
+            path,
+            revision,
+            parent,
+            name,
+        } => shellcanvas_services::copy_regular_file(
+            service,
+            &path,
+            &revision,
+            &parent,
+            &name,
+            || *cancel.borrow(),
+            &mut |event| {
+                progress(Progress {
+                    bytes: event.bytes,
+                    total: event.total,
+                    phase: if event.finishing {
+                        "finishing"
+                    } else {
+                        "running"
+                    },
+                });
+            },
+        )
+        .await
+        .map(|location| location.path),
         Job::Upload {
             file,
             parent,

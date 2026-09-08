@@ -145,9 +145,11 @@ export function Files({
       "files.create",
       "files.edit",
       "files.upload",
+      "files.copy",
     ].includes(capability),
   );
   const [moveTarget, setMoveTarget] = useState<{
+    copy?: boolean;
     entry: FileEntry;
     parent: string;
     sessionId: number;
@@ -461,6 +463,26 @@ export function Files({
               disabled:
                 !canDownload || entry.kind !== "file" || !entry.revision,
               run: () => void download(entry),
+            },
+            {
+              id: "copy-file",
+              label: "Copy to folder…",
+              disabled:
+                !connected ||
+                loading ||
+                busy ||
+                picking ||
+                entry.kind !== "file" ||
+                !entry.revision ||
+                !session?.info.capabilities.includes("files.copy"),
+              run: () =>
+                setMoveTarget({
+                  entry: { ...entry },
+                  parent: directory.path,
+                  sessionId: session!.id,
+                  services,
+                  copy: true,
+                }),
             },
           ]
         : []),
@@ -1129,10 +1151,15 @@ export function Files({
           entry={moveTarget.entry}
           initialParent={moveTarget.parent}
           services={moveTarget.services}
+          copy={moveTarget.copy}
+          prepared={(ticket) => queue.enqueue([ticket])}
           disabled={
             !connected ||
             session?.id !== moveTarget.sessionId ||
-            !session.info.capabilities.includes("files.move")
+            services !== moveTarget.services ||
+            !session.info.capabilities.includes(
+              moveTarget.copy ? "files.copy" : "files.move",
+            )
           }
           close={() => setMoveTarget(null)}
           setBusy={setBusy}

@@ -6,7 +6,12 @@ import type {
   SessionServices,
   TransferTicket,
 } from "./sdk";
-import { capabilityStatus, capabilityReason, capabilityLabels } from "./sdk";
+import {
+  capabilityStatus,
+  capabilityReason,
+  capabilityLabels,
+  transferCapability,
+} from "./sdk";
 import { notifyFileChanges, beginFileRelocation } from "./file-events";
 import { fileClipboard } from "./file-clipboard";
 
@@ -79,6 +84,23 @@ export function bindSession(
     notifyFileChanges(session!.id, relocate ? "relocation" : "content");
   }
   const services: SessionServices = {
+    prepareCopy: async (path, revision, parent) => {
+      const expected = generation;
+      return (
+        await adopt(
+          [
+            await backend.prepareCopy(
+              check("files.copy"),
+              path,
+              revision,
+              parent,
+            ),
+          ],
+          expected,
+          "files.copy",
+        )
+      )[0];
+    },
     readHostSettings: async () => {
       const expected = generation;
       const result = await backend.readHostSettings(check("host.settings"));
@@ -126,21 +148,14 @@ export function bindSession(
       const owned = tickets.get(ticket.id);
       if (!owned) throw new Error("Transfer does not belong to this workspace");
       const expected = generation;
-      const id = check(
-        owned.direction === "upload" ? "files.upload" : "files.download",
-      );
+      const id = check(transferCapability(owned.direction));
       try {
         const result = await backend.runTransfer(id, ticket.id, (event) => {
-          if (
-            valid(
-              owned.direction === "upload" ? "files.upload" : "files.download",
-              expected,
-            )
-          )
+          if (valid(transferCapability(owned.direction), expected))
             onProgress(event);
         });
-        if (result.status === "completed" && owned.direction === "upload")
-          mutationCompleted("files.upload", expected);
+        if (result.status === "completed" && owned.direction !== "download")
+          mutationCompleted(transferCapability(owned.direction), expected);
         if (
           result.status === "completed" &&
           owned.direction === "download" &&
@@ -315,8 +330,7 @@ export function bindSession(
         if (valid("files.move", generation)) fileClipboard(services).activate();
       }
       for (const [id, ticket] of tickets) {
-        const capability =
-          ticket.direction === "upload" ? "files.upload" : "files.download";
+        const capability = transferCapability(ticket.direction);
         if (!changes.includes(capability)) continue;
         void backend
           .cancelTransfer(next.id, id)

@@ -8,6 +8,7 @@ import {
   AlertCircle,
   ChevronDown,
   ChevronUp,
+  Copy,
 } from "lucide-react";
 import { useState } from "react";
 import {
@@ -66,12 +67,18 @@ export function TransferPanel({
       <div className="transfer-list" hidden={!expanded}>
         {visibleRows.map((row) => {
           const Icon =
-            row.direction === "upload" ? ArrowUpFromLine : ArrowDownToLine;
+            row.direction === "copy"
+              ? Copy
+              : row.direction === "upload"
+                ? ArrowUpFromLine
+                : ArrowDownToLine;
           const label =
             row.status === "running"
               ? row.phase === "finishing"
                 ? "Finishing…"
-                : "Transferring…"
+                : row.direction === "copy"
+                  ? "Copying…"
+                  : "Transferring…"
               : {
                   queued: "Queued",
                   canceling: "Canceling…",
@@ -89,7 +96,7 @@ export function TransferPanel({
                   <span>{label}</span>
                 </div>
                 <progress
-                  aria-label={`${row.direction === "upload" ? "Upload" : "Download"} ${row.name}`}
+                  aria-label={`${row.direction === "copy" ? "Copy" : row.direction === "upload" ? "Upload" : "Download"} ${row.name}`}
                   max={Math.max(1, row.total)}
                   value={
                     row.status === "completed"
@@ -98,8 +105,12 @@ export function TransferPanel({
                   }
                 />
                 <small>
-                  {row.direction === "upload" ? "To host" : "To this device"} ·{" "}
-                  {bytes(row.bytes)}
+                  {row.direction === "copy"
+                    ? "On this host"
+                    : row.direction === "upload"
+                      ? "To host"
+                      : "To this device"}{" "}
+                  · {bytes(row.bytes)}
                   {row.total > 0 ? ` / ${bytes(row.total)}` : ""}
                 </small>
                 {row.message && (

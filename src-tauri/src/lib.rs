@@ -175,6 +175,7 @@ async fn connect_session(
                     "files.create".into(),
                     "files.upload".into(),
                     "files.download".into(),
+                    "files.copy".into(),
                 ]);
                 Some(service)
             }
@@ -617,6 +618,7 @@ pub fn run() {
             remove_entry,
             transfers::choose_upload_files,
             transfers::choose_download_file,
+            transfers::prepare_file_copy,
             transfers::run_transfer,
             transfers::cancel_transfer,
             open_terminal,

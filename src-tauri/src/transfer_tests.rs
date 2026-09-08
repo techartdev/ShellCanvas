@@ -99,6 +99,52 @@ fn download_job(destination: &Path) -> Job {
         revision: "revision".into(),
     }
 }
+fn copy_job() -> Job {
+    Job::Copy {
+        path: "object@1".into(),
+        revision: "revision".into(),
+        parent: "folder@other".into(),
+        name: "binary.bin".into(),
+    }
+}
+#[tokio::test]
+async fn remote_copy_streams_and_publishes_once_after_source_verification() {
+    let memory = Memory::new(false);
+    let (cancel, canceled) = watch::channel(false);
+    let path = execute(copy_job(), memory.clone(), &canceled, &mut |event| {
+        // Publication already started; a late request cannot hide success.
+        if event.phase == "finishing" {
+            cancel.send_replace(true);
+        }
+    })
+    .await
+    .unwrap();
+    assert_eq!(path, "uploaded@1");
+    assert_eq!(*memory.writes.lock().unwrap(), memory.data);
+    assert_eq!(memory.commits.load(Ordering::SeqCst), 1);
+    assert_eq!(memory.aborts.load(Ordering::SeqCst), 0);
+}
+#[tokio::test]
+async fn remote_copy_cancellation_and_source_change_abort_both_handles_without_publication() {
+    for fail_verify in [false, true] {
+        let memory = Memory::new(fail_verify);
+        let (cancel, canceled) = watch::channel(false);
+        let result = execute(copy_job(), memory.clone(), &canceled, &mut |event| {
+            if !fail_verify && event.bytes > 0 {
+                cancel.send_replace(true);
+            }
+        })
+        .await
+        .unwrap_err();
+        assert!(result.to_string().contains(if fail_verify {
+            "Source changed"
+        } else {
+            "Transfer canceled"
+        }));
+        assert_eq!(memory.commits.load(Ordering::SeqCst), 0);
+        assert_eq!(memory.aborts.load(Ordering::SeqCst), 2);
+    }
+}
 fn upload_job(path: &Path) -> Job {
     let (file, size, modified) = source(path).unwrap();
     Job::Upload {

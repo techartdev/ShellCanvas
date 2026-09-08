@@ -171,6 +171,7 @@ impl WorkspaceServices {
             ("files.move", "moves"),
             ("files.upload", "transfers"),
             ("files.download", "transfers"),
+            ("files.copy", "transfers"),
             ("host.settings", "settings"),
         ]
         .into_iter()

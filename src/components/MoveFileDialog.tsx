@@ -8,7 +8,12 @@ import {
   FolderInput,
   LoaderCircle,
 } from "lucide-react";
-import type { Directory, FileEntry, SessionServices } from "../sdk";
+import type {
+  Directory,
+  FileEntry,
+  SessionServices,
+  TransferTicket,
+} from "../sdk";
 import "./FileActionDialog.css";
 
 export function MoveFileDialog({
@@ -18,6 +23,8 @@ export function MoveFileDialog({
   disabled,
   close,
   setBusy,
+  copy = false,
+  prepared,
 }: {
   entry: FileEntry;
   initialParent: string;
@@ -25,6 +32,8 @@ export function MoveFileDialog({
   disabled: boolean;
   close(): void;
   setBusy(value: boolean): void;
+  copy?: boolean;
+  prepared?(ticket: TransferTicket): void;
 }) {
   const dialog = useRef<HTMLDialogElement>(null);
   const addressId = useId();
@@ -85,7 +94,16 @@ export function MoveFileDialog({
     setBusy(true);
     setError("");
     try {
-      await services.moveEntry(entry.path, directory.path, entry.revision);
+      if (copy) {
+        const ticket = await services.prepareCopy(
+          entry.path,
+          entry.revision,
+          directory.path,
+        );
+        if (prepared) prepared(ticket);
+        else await services.cancelTransfer(ticket.id);
+      } else
+        await services.moveEntry(entry.path, directory.path, entry.revision);
       close();
     } catch (error) {
       setError(String(error));
@@ -98,7 +116,7 @@ export function MoveFileDialog({
     <dialog
       ref={dialog}
       className="file-action-dialog move-file-dialog"
-      aria-label="Move to folder"
+      aria-label={copy ? "Copy to folder" : "Move to folder"}
       onCancel={(event) => {
         event.preventDefault();
         if (!working) close();
@@ -108,10 +126,12 @@ export function MoveFileDialog({
         <FolderInput size={23} />
       </div>
       <p className="eyebrow">REMOTE FILES</p>
-      <h2>Move to folder</h2>
+      <h2>{copy ? "Copy to folder" : "Move to folder"}</h2>
       <p className="file-action-description">
         Choose a destination on this host. The name stays the same; existing
         items are never replaced.
+        {copy &&
+          " The source stays in place. Follow progress or cancel from the transfer list."}
       </p>
       <div className="file-action-target">
         <strong>{entry.name}</strong>
@@ -216,7 +236,7 @@ export function MoveFileDialog({
           "This item is already in this folder."
         ) : (
           <>
-            Move <strong>{entry.name}</strong> into{" "}
+            {copy ? "Copy" : "Move"} <strong>{entry.name}</strong> into{" "}
             <strong>{directory?.path}</strong>
           </>
         )}
@@ -238,8 +258,11 @@ export function MoveFileDialog({
         >
           {working ? (
             <>
-              <LoaderCircle size={14} className="spin" /> Moving…
+              <LoaderCircle size={14} className="spin" />{" "}
+              {copy ? "Preparing…" : "Moving…"}
             </>
+          ) : copy ? (
+            "Copy here"
           ) : (
             "Move here"
           )}
