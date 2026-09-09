@@ -49,6 +49,60 @@ const capableSession = {
   },
 };
 
+it("Cut exports references by default and requires a separate download grant for contents", async () => {
+  const cutToSystem = vi.fn(async () => 43);
+  const binding = bindSession(
+    { ...previewServices, cutToSystem },
+    capableSession,
+  );
+  const mover = scopeAppServices(
+    binding.services,
+    manifest("mover", ["files.move"]),
+  );
+  const exporter = scopeAppServices(
+    binding.services,
+    manifest("exporter", ["files.move", "files.download"]),
+  );
+  try {
+    await mover.cutToSystem("opaque", "rev");
+    expect(cutToSystem).toHaveBeenLastCalledWith(
+      1201,
+      "opaque",
+      "rev",
+      undefined,
+      false,
+    );
+    await expect(
+      mover.cutToSystem("opaque", "rev", undefined, true),
+    ).rejects.toThrow("did not declare");
+    expect(cutToSystem).toHaveBeenCalledOnce();
+    await exporter.cutToSystem("opaque", "rev", undefined, true);
+    expect(cutToSystem).toHaveBeenLastCalledWith(
+      1201,
+      "opaque",
+      "rev",
+      undefined,
+      true,
+    );
+  } finally {
+    binding.dispose();
+  }
+  const restricted = bindSession(
+    { ...previewServices, cutToSystem },
+    {
+      ...capableSession,
+      info: { ...capableSession.info, capabilities: ["files.move"] },
+    },
+  );
+  try {
+    await expect(
+      restricted.services.cutToSystem("opaque", "rev", undefined, true),
+    ).rejects.toThrow("files.download");
+    expect(cutToSystem).toHaveBeenCalledTimes(2);
+  } finally {
+    restricted.dispose();
+  }
+});
 it("routes allowed app directory readers without materializing a list", async () => {
   const reader = { next: vi.fn(), close: vi.fn(async () => {}) };
   const openDirectory = vi.fn(async () => reader);

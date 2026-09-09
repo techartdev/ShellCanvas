@@ -77,7 +77,7 @@ native publication; inspect uncertain outcomes before retrying. File/custom-form
 clipboard publication and mobile image support are not provided by this API.
 
 `clipboard.pasteFiles({ binding, path }, signal?)` prepares native clipboard files
-and folders for upload, same-workspace remote copy, or a bundled Cut move. It requires
+and folders for upload, same-workspace remote copy, or a Cut move. It requires
 `system.clipboard.files.read` and the corresponding `files.upload`, `files.copy` or `files.move`
 grant. The returned array contains owned transfer handles; preparation
 does not start them. Call `run`, inspect the result, and `close` each handle using
@@ -91,7 +91,15 @@ Pending native preparation remains busy until it returns, even after cancellatio
 A cut produces a `direction: "move"` job bound to its original workspace/provider.
 Only one paste may reserve it. Cancel before dispatch to release that reservation;
 after dispatch, await the authoritative outcome and never automatically retry an
-uncertain move. Public Cut publication and cross-process moves remain follow-ups.
+uncertain move. Multiple-item cuts and cross-process moves remain follow-ups.
+`clipboard.cutFile({ binding, path, revision }, signal?)` publishes one current
+file or folder as a move reference. Declare `system.clipboard.files.write` and
+`files.move`. It does not move the item until Paste runs. Installed apps and
+bundled Files can paste it in the original workspace and ShellCanvas process.
+This method does not expose file contents to Explorer: Move permission alone
+does not grant Download. Use `copyFiles` for external content export. Cut shares
+Copy's mandatory publication busy guard; cancellation after dispatch may be too
+late, so never automatically retry an uncertain publication.
 `clipboard.copyFiles(entries, signal?)` exports remote `{ binding, path, revision }`
 entries to the Windows clipboard. Declare `system.clipboard.files.write` and
 `files.download`. References must use one accepted binding and current revisions.
@@ -105,7 +113,7 @@ app's reported document state. Remote Copy selections are shared between install
 apps and bundled Files in the original workspace. Another workspace or replaced
 file-service connection is refused. The SDK captures and checks the clipboard
 version before preparation; it never falls back to another transfer permission.
-Public Cut, cross-process selection sharing and custom formats remain follow-ups.
+Multiple-item cuts, cross-process selection sharing and custom formats remain follow-ups.
 
 `call(method, params?, signal?)` uses the explicit broker method map and permission checks. It is not a native-command escape hatch. Use `services.call` for custom adapter methods. Discover methods first; `granted` and `available` are separate. Custom entries include the advertised service version and an opaque `source` identity. Declare `services.acme.sensor` to request access to a selected `acme.sensor` service; all its advertised methods share that grant. The app never supplies a native session or source ID. Custom JSON result validation belongs to the app and adapter contract.
 

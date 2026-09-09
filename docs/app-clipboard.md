@@ -32,15 +32,40 @@ retirement cannot silently reroute deferred streams to a different device.
 
 This API currently publishes to the Windows system clipboard. That selection
 can also be pasted by installed apps and the bundled Files window in the same
-ShellCanvas process and original workspace. Public Cut, custom formats, other
+ShellCanvas process and original workspace. Custom formats, other
 native platforms and transfer between separate ShellCanvas processes remain
 follow-ups. Neither text nor image grants authorize file exports.
 
-Seven SDK/broker tests cover chunking, captured revisions, grants, ownership,
+SDK/broker tests cover chunking, captured revisions, grants, ownership,
 malformed staging, cancellation/registration races, replacement and closure.
-The independently built app passes 77 Windows integration checks, including export,
+The independently built app passes 91 Windows integration checks, including export,
 denial and mandatory busy guards through cancellation. It uses synthetic clipboard
 services; it does not touch the user's clipboard or claim a new Explorer test.
+
+## Cut remote files and folders
+
+`client.clipboard.cutFile(entry, signal?)` publishes one revision-checked move
+reference on Windows. Supply `{ binding, path, revision }` from the accepted
+workspace, and declare `system.clipboard.files.write` plus `files.move`.
+
+```ts
+await client.clipboard.cutFile(selectedEntry, signal);
+```
+
+Publication does not move or delete the item. An installed app or bundled Files
+can paste it within the same ShellCanvas process and original workspace/provider.
+The public Cut method does not export file contents to Explorer: Move permission
+does not imply Download permission. Use `copyFiles` with `files.download` for
+external file content export. Bundled Files can additionally offer Explorer a
+streamed copy when its workspace supports Download; that external copy retains
+the remote source.
+
+Cut snapshots the entry before awaiting and shares Copy's exclusive publication
+slot and mandatory busy guard. Cancellation requests cleanup; a publication
+already dispatched may still complete. Do not automatically retry an uncertain
+result. Source replacement never redirects the pending publication. Once
+published, the native selection outlives the app window, subject to its original
+source lifetime. Multiple-item cuts remain pending.
 
 ## Files copied on this device
 
@@ -59,7 +84,7 @@ they do not mutate the published selection. A clipboard change after a paste has
 captured its selection does not redirect that transfer. Source revisions are
 checked through normal discovery and transfer operations.
 
-A bundled Cut now retains its move intent when an installed app pastes it in the
+A Cut retains its move intent when an installed app pastes it in the
 same process and original workspace. Its handle has `direction: "move"` and needs
 only the provider's move service, not upload/download/copy services. One native
 reservation owns the cut: another paste is refused while it is pending. Canceling
@@ -82,11 +107,13 @@ a newer clipboard operation.
 Native unit tests cover reservation ownership, move-only providers, late cancellation,
 provider errors/panics and abandoned operations. SDK/broker/session tests cover grants,
 stale binding cleanup and relocation tracking. The Windows native desktop fixture
-passes 88 checks at both 1360×900 and 800×900, including bundled Cut into an installed app, move-grant
-denial, failed reservation cleanup, retry controls and close guards. It runs the
+passes 91 checks at 1360×900, including installed-app Cut into bundled Files,
+bundled Cut into an installed app, publication/move-grant denial, failed reservation
+cleanup, retry controls and close guards. The preceding 88-check checkpoint also
+passed at 800×900. It runs the
 real app frame/SDK/broker/UI with synthetic host and clipboard services. This does
 not establish new Explorer/Finder interoperability.
-Public Cut publication, multiple-item cuts and moves across processes remain open.
+Multiple-item cuts and moves across processes remain open.
 
 ```ts
 const jobs = await client.clipboard.pasteFiles(destination, signal);
@@ -113,8 +140,8 @@ fields. Files and folders share one disk-backed selection catalog and one queued
 job; file contents open on demand and are checked against captured metadata.
 Folders require provider folder-transfer support. A locally cut selection uploads
 a copy and retains its source. Other applications' virtual-file formats and native
-macOS/Linux file clipboard input are not yet supported. Public Cut and
-custom-format APIs remain separate work.
+macOS/Linux file clipboard input are not yet supported. Custom-format APIs remain
+separate work.
 
 ## Images
 
@@ -160,7 +187,7 @@ checks denied reads after a permission change. It does not overwrite the user's
 OS clipboard or establish a Paint/Explorer image interoperability result.
 The complete fixture passes 71 checks at both 1360×900 and 800×900.
 
-Public Cut, cross-process clipboard integration and custom formats remain separate work.
+Cross-process clipboard integration and custom formats remain separate work.
 
 The file-paste checkpoint passes 73 Windows installed-app checks at 1360×900,
 including successful paste through the independently packaged SDK and denied
@@ -207,8 +234,9 @@ Clipboard services in these integration checks are synthetic.
 The app API provides text, images, native file paste and native file export. The
 bundled Files app's workspace Copy/Cut path is documented separately in
 [system-clipboard.md](system-clipboard.md). Copy selections are shared with
-installed apps on Windows. A bundled Cut pasted through the public API currently
-copies and retains the source; exposing move intent and custom formats remains open.
+installed apps on Windows. Cut selections retain their move intent across installed
+apps and bundled Files in the original workspace. Cross-process moves and custom
+formats remain open.
 
 `npm test -- src/extensions/clipboard-api.test.ts` exercises real RPC channels with synthetic clipboard contents: a text value larger than one RPC envelope, split surrogate pairs, empty text, snapshot consistency, separate permissions, foreign handles, ordered chunks, incomplete commits, cancellation during staging/startup, late completion, exclusive native publication and close cleanup.
 

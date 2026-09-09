@@ -102,7 +102,13 @@ function createNativeServices(pins?: SourcePins): HostServices {
         parent,
         ...(sequence === undefined ? {} : { sequence }),
       }),
-    cutToSystem: (sessionId, path, revision, preparation) => {
+    cutToSystem: (
+      sessionId,
+      path,
+      revision,
+      preparation,
+      exportContents = false,
+    ) => {
       const onEvent = new Channel<TransferProgress>();
       onEvent.onmessage = preparation?.onProgress ?? (() => {});
       return invoke("cut_system_file", {
@@ -110,6 +116,7 @@ function createNativeServices(pins?: SourcePins): HostServices {
         path,
         revision,
         operation: preparation?.id,
+        exportContents,
         onEvent,
       });
     },

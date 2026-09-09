@@ -32,6 +32,30 @@ is a small custom-service adapter with concurrent echo and cancelable wait
 operations. It requires no device or credentials. Native adapter programs have
 the user's OS permissions; this SDK is not a sandbox.
 
+## Implement only the device's useful capabilities
+
+Start with one service. The echo example above is a complete small adapter:
+initialization advertises methods, dispatch implements them, and `run` handles
+the process protocol. A real sensor can follow the same structure with its own
+namespaced methods; it does not need to pretend it has files or a terminal.
+
+For standard desktop features, choose the closest generated starter:
+
+| Device access                      | Starting point                  | Not required               |
+| ---------------------------------- | ------------------------------- | -------------------------- |
+| Serial/Telnet-like console         | `--template console`            | Files, transfer, settings  |
+| Read-only file browser             | `--template files`              | Writes, copy/move, console |
+| Device configuration               | `--template settings`           | Files or console           |
+| Vendor API with unusual operations | Default custom-service template | Any standard service       |
+
+These templates demonstrate contracts, not actual protocol implementations. Add
+the real device I/O and expose only operations it can honor. The SDK owns framing,
+negotiation and request dispatch; the adapter owns device access, validation,
+concurrency and cleanup for its own operations. Streaming and revision rules
+apply when implementing those features, not to every adapter. Compose separate
+file and console adapters in a workspace instead of building a monolithic device
+driver. No changes to the desktop or its SSH implementation are required.
+
 ## Independent build verification
 
 With Rust, Cargo, Node and `tar` installed, and the locked dependencies cached:

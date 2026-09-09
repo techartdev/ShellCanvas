@@ -21,6 +21,57 @@ node packages/app-sdk/bin/shellcanvas-app.mjs init .local/my-notes --id org.exam
 
 In the generated directory, run `npm install` and `npm run build`. Install its `dist/app.shellcanvas.json` through the desktop Apps manager. An independent developer needs the SDK tarball and Node, not the ShellCanvas source checkout. The package includes built JavaScript, TypeScript declarations, schemas, a starter, build/validation tools and the MPL-2.0 license. See [the API and error reference](../packages/app-sdk/README.md).
 
+## Start with one feature
+
+The generated notebook demonstrates several services; its full implementation is
+not the minimum required for an app. For a first local utility, replace `main.ts`
+with the following and reduce `shellcanvas.json` permissions to `["system.dialogs"]`:
+
+```ts
+import { connectToShellCanvas } from "@shellcanvas/app-sdk";
+
+const root = document.querySelector<HTMLDivElement>("#root")!;
+root.innerHTML =
+  '<button disabled>Say hello</button><output role="status"></output>';
+const button = root.querySelector("button")!;
+const report = (error: unknown) => {
+  root.querySelector("output")!.textContent = String(error);
+};
+connectToShellCanvas()
+  .then((desktop) => {
+    button.disabled = false;
+    button.onclick = () => {
+      void desktop.system.dialogs
+        .messageBox({
+          title: "Hello",
+          message: "A local app using a shared desktop dialog.",
+        })
+        .catch(report);
+    };
+  })
+  .catch(report);
+```
+
+Build and install it with the same commands. This app needs no remote host,
+adapter, file handles, connection events or custom close handler. The desktop
+owns the dialog's lifetime. Denied permission is reported as an error; use
+`services.list()` if the app should disable a denied or unavailable feature.
+
+Add responsibilities only when the app gains the corresponding behavior:
+
+| App behavior            | What its author adds                                              |
+| ----------------------- | ----------------------------------------------------------------- |
+| Unsaved edits           | Dirty state; retain drafts after failed saves                     |
+| Local persistent data   | App storage and its revision checks                               |
+| Remote files            | File grants, opaque locations/revisions and availability handling |
+| Console or transfer     | Own the returned stream/job and close it when finished            |
+| Device-specific actions | A grant and call for that adapter's custom service                |
+
+Apps do not implement transports, broker messages, native session identifiers,
+package leases or host cleanup. Those are desktop/SDK responsibilities. See the
+[base API boundary](kernel-roadmap.md#base-api-boundary-and-stopping-rule) for the
+milestone's stopping rule.
+
 ## Verification
 
 The SDK includes [remote text services](app-files.md): binding-aware reads, create-only writes and revision-checked saves. Field Notes uses these to open and edit a remote note while retaining the reviewed source identity. The installed-app desktop probe exercises these operations and rejects old documents after reconnect.

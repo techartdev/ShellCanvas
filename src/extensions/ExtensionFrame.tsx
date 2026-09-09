@@ -112,9 +112,13 @@ export function ExtensionFrame({
     const fileClipboard = transferSource
       ? new AppFileClipboard(
           transferSource,
-          () =>
+          (kind) =>
             environment.snapshot().connection === "connected" &&
-            environment.snapshot().capabilities.includes("files.download"),
+            environment
+              .snapshot()
+              .capabilities.includes(
+                kind === "cut" ? "files.move" : "files.download",
+              ),
           (busy) => {
             clipboardBusy = busy;
             publishDocument();

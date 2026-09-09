@@ -232,9 +232,24 @@ const services = {
   },
   systemFileClipboard: true,
   inspectSystemFiles: async () => ({ ...fileClipboardState }),
-  cutToSystem: async (id: number, path: string, revision: string) => {
-    if (!path.endsWith("/welcome.md") || revision !== "fixture-preview")
+  cutToSystem: async (
+    id: number,
+    path: string,
+    revision: string,
+    _preparation?: unknown,
+    exportContents = false,
+  ) => {
+    const publicCut =
+      path === "fixture:public-cut" && revision === "public-cut-1";
+    if (
+      !publicCut &&
+      (!path.endsWith("/welcome.md") || revision !== "fixture-preview")
+    )
       throw new Error("Invalid synthetic Cut source");
+    if (publicCut && exportContents)
+      throw new Error(
+        "Public Cut must not export contents using Move permission",
+      );
     remoteClipboardOwner = id;
     cutPath = path;
     cutPublications++;
@@ -1376,6 +1391,26 @@ async function run() {
     () => !bundledFiles.querySelector(".file-cut-bar"),
     "confirmed move clears bundled Cut indicator",
   );
+  const beforePublicCut = cutPublications;
+  checks.sdkCutPublicationGrantDenied =
+    (await ask(second, "file-cut-denied")).fileClipboard?.denied === true &&
+    cutPublications === beforePublicCut;
+  checks.sdkCutPublication =
+    (await ask(first, "file-cut")).fileClipboard?.published === true &&
+    cutPublications === beforePublicCut + 1 &&
+    cutPath === "fixture:public-cut" &&
+    fileClipboardState.intent === "move" &&
+    sharedClipboardMoves === 1;
+  bundledFiles.dispatchEvent(
+    new Event("paste", { bubbles: true, cancelable: true }),
+  );
+  await until(() => {
+    const error = bundledFiles.querySelector('[role="alert"]')?.textContent;
+    if (error) throw new Error(`Bundled clipboard move failed: ${error}`);
+    return sharedClipboardMoves === 2 && transferTickets.size === 0;
+  }, "installed app Cut pasted in bundled Files");
+  checks.sdkCutToBundledMove =
+    fileClipboardState.kind === "empty" && cutReservation === undefined;
   const secondEnvironment = await ask(second, "environment");
   const deniedFiles = (await ask(second, "files-denied")).files;
   checks.sdkFileGrantDenied = deniedFiles?.rejected === true;

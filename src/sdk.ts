@@ -250,6 +250,7 @@ export interface HostServices {
     path: string,
     revision: string,
     preparation?: ClipboardPreparation,
+    exportContents?: boolean,
   ): Promise<number>;
   systemFileClipboard?: boolean;
   copyToSystem(
@@ -373,6 +374,7 @@ export interface SessionServices {
     path: string,
     revision: string,
     preparation?: ClipboardPreparation,
+    exportContents?: boolean,
   ): Promise<number>;
   systemFileClipboard?: boolean;
   copyToSystem(

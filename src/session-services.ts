@@ -233,9 +233,15 @@ export function bindSession(
       const adopted = await adopt(result ?? [], expected, "files.upload");
       return result === null ? null : adopted;
     },
-    cutToSystem: async (path, revision, preparation) => {
+    cutToSystem: async (
+      path,
+      revision,
+      preparation,
+      exportContents = false,
+    ) => {
       const expected = generation;
       const owner = check("files.move");
+      if (exportContents) check("files.download");
       if (preparation && clipboardPreparations.has(preparation.id))
         throw new Error("Clipboard preparation is already active");
       if (preparation) clipboardPreparations.set(preparation.id, owner);
@@ -245,8 +251,10 @@ export function bindSession(
           path,
           revision,
           preparation,
+          exportContents,
         );
         check("files.move", expected);
+        if (exportContents) check("files.download", expected);
         return result;
       } finally {
         if (preparation) clipboardPreparations.delete(preparation.id);

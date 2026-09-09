@@ -7,11 +7,15 @@ export interface AppFileClipboardSource {
   services: Partial<
     Pick<
       SessionServices,
-      "copyToSystem" | "cancelClipboardPreparation" | "systemFileClipboard"
+      | "copyToSystem"
+      | "cutToSystem"
+      | "cancelClipboardPreparation"
+      | "systemFileClipboard"
     >
   >;
 }
 type Selection = {
+  kind: "copy" | "cut";
   id: string;
   source: AppFileClipboardSource;
   entries: { path: string; revision: string }[];
@@ -46,7 +50,7 @@ export class AppFileClipboard {
   private publishing?: Publication;
   constructor(
     private source: () => AppFileClipboardSource | undefined,
-    private available: () => boolean,
+    private available: (kind: Selection["kind"]) => boolean,
     private busyChanged: (busy: boolean) => void = () => {},
   ) {}
   private same(selection: Selection) {
@@ -57,12 +61,14 @@ export class AppFileClipboard {
       current.services === selection.source.services
     );
   }
-  private supported() {
+  private supported(kind: Selection["kind"]) {
     const source = this.source();
     return (
-      this.available() &&
+      this.available(kind) &&
       source?.services.systemFileClipboard === true &&
-      typeof source.services.copyToSystem === "function" &&
+      typeof source.services[
+        kind === "cut" ? "cutToSystem" : "copyToSystem"
+      ] === "function" &&
       typeof source.services.cancelClipboardPreparation === "function"
     );
   }
@@ -96,21 +102,87 @@ export class AppFileClipboard {
     if (this.publishing) this.cancel(this.publishing);
   }
   refresh() {
-    if (this.staged && (!this.same(this.staged) || !this.supported()))
+    if (
+      this.staged &&
+      (!this.same(this.staged) || !this.supported(this.staged.kind))
+    )
       this.staged = undefined;
-    if (this.publishing && (!this.same(this.publishing) || !this.supported()))
+    if (
+      this.publishing &&
+      (!this.same(this.publishing) || !this.supported(this.publishing.kind))
+    )
       this.cancel(this.publishing);
   }
+  private async publish(
+    selection: Selection,
+    signal: AbortSignal,
+  ): Promise<null> {
+    const publication: Publication = {
+      ...selection,
+      nativeId: crypto.randomUUID(),
+      canceled: false,
+      canceling: false,
+      retryCancel: false,
+    };
+    this.publishing = publication;
+    this.busyChanged(true);
+    const abort = () => this.cancel(publication);
+    signal.addEventListener("abort", abort, { once: true });
+    try {
+      const preparation = {
+        id: publication.nativeId,
+        onProgress: () => {
+          if (publication.canceled) this.cancel(publication);
+        },
+      };
+      if (publication.kind === "cut") {
+        const entry = publication.entries[0];
+        await publication.source.services.cutToSystem!(
+          entry.path,
+          entry.revision,
+          preparation,
+          false,
+        );
+      } else {
+        await publication.source.services.copyToSystem!(
+          publication.entries,
+          preparation,
+        );
+      }
+      if (publication.canceled || !this.same(publication))
+        throw new RpcError(
+          "aborted",
+          "Clipboard publication ended after cancellation or a connection change. It may have completed; do not retry automatically.",
+        );
+      return null;
+    } catch (error) {
+      if (error instanceof RpcError) throw error;
+      throw new RpcError(
+        "failed",
+        String(error instanceof Error ? error.message : error).slice(0, 4096),
+      );
+    } finally {
+      signal.removeEventListener("abort", abort);
+      this.publishing = undefined;
+      this.busyChanged(false);
+    }
+  }
   methods(): ReadonlyMap<string, RpcMethod> {
-    const method = (invoke: RpcMethod["invoke"]): RpcMethod => ({
-      grants: ["system.clipboard.files.write", "files.download"],
-      available: () => this.supported(),
+    const method = (
+      invoke: RpcMethod["invoke"],
+      kind: Selection["kind"] = "copy",
+    ): RpcMethod => ({
+      grants: [
+        "system.clipboard.files.write",
+        kind === "cut" ? "files.move" : "files.download",
+      ],
+      available: () => this.supported(kind),
       invoke: (value, signal) => {
         if (this.closed)
           throw new RpcError("closed", "Clipboard owner closed.");
         if (signal.aborted)
           throw new RpcError("aborted", "Clipboard operation canceled.");
-        if (!this.supported())
+        if (!this.supported(kind))
           throw new RpcError(
             "unavailable",
             "Native file clipboard export is unavailable.",
@@ -119,6 +191,42 @@ export class AppFileClipboard {
       },
     });
     return new Map([
+      [
+        "system.clipboard.files.cut",
+        method(async (value, signal) => {
+          const p = args(value, ["id", "binding", "path", "revision"]);
+          const source = this.source()!;
+          if (p.binding !== source.binding)
+            throw new RpcError(
+              "closed",
+              "Cut an entry from the accepted workspace binding.",
+            );
+          if (
+            typeof p.path !== "string" ||
+            !p.path ||
+            typeof p.revision !== "string" ||
+            !p.revision
+          )
+            throw new RpcError(
+              "invalid",
+              "A cut entry needs an opaque path and current revision.",
+            );
+          if (this.staged || this.publishing)
+            throw new RpcError(
+              "busy",
+              "Finish or cancel the previous clipboard publication first.",
+            );
+          return this.publish(
+            {
+              kind: "cut",
+              id: p.id,
+              source,
+              entries: [{ path: p.path, revision: p.revision }],
+            },
+            signal,
+          );
+        }, "cut"),
+      ],
       [
         "system.clipboard.files.start",
         method((value) => {
@@ -134,7 +242,7 @@ export class AppFileClipboard {
               "busy",
               "Finish or cancel the previous file copy first.",
             );
-          this.staged = { id: p.id, source, entries: [] };
+          this.staged = { kind: "copy", id: p.id, source, entries: [] };
           return null;
         }),
       ],
@@ -191,48 +299,8 @@ export class AppFileClipboard {
             );
           if (!staged.entries.length)
             throw new RpcError("invalid", "Select files or folders first.");
-          const publication: Publication = {
-            ...staged,
-            nativeId: crypto.randomUUID(),
-            canceled: false,
-            canceling: false,
-            retryCancel: false,
-          };
           this.staged = undefined;
-          this.publishing = publication;
-          this.busyChanged(true);
-          const abort = () => this.cancel(publication);
-          signal.addEventListener("abort", abort, { once: true });
-          try {
-            await publication.source.services.copyToSystem!(
-              publication.entries,
-              {
-                id: publication.nativeId,
-                onProgress: () => {
-                  if (publication.canceled) this.cancel(publication);
-                },
-              },
-            );
-            if (publication.canceled || !this.same(publication))
-              throw new RpcError(
-                "aborted",
-                "Clipboard publication ended after cancellation or a connection change. It may have completed; do not retry automatically.",
-              );
-            return null;
-          } catch (error) {
-            if (error instanceof RpcError) throw error;
-            throw new RpcError(
-              "failed",
-              String(error instanceof Error ? error.message : error).slice(
-                0,
-                4096,
-              ),
-            );
-          } finally {
-            signal.removeEventListener("abort", abort);
-            this.publishing = undefined;
-            this.busyChanged(false);
-          }
+          return this.publish(staged, signal);
         }),
       ],
       [

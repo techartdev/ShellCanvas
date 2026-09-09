@@ -29,6 +29,39 @@ let authors build independent packages from a clean checkout.
   Examples use synthetic services without credentials. Cancellation cannot undo
   a completed mutation.
 
+## Base API boundary and stopping rule
+
+This is a desktop extension foundation, not a general-purpose operating system.
+The base API families are now fixed: window/lifecycle, shared dialogs, app-owned
+storage, clipboard, capability discovery, files/transfers, byte console, remote
+settings and namespaced custom service calls. Complete and simplify those
+contracts; do not add new API families while closing BASE-11.
+
+An app uses only the services it needs. A local utility needs no remote-file or
+console implementation. An adapter implements initialization and dispatch for
+its advertised services, using the SDK for framing and request lifetime. A
+console-only device supplies no filesystem, clipboard or settings service.
+Read-only files do not require mutation or transfer support. Custom device
+operations use the existing namespaced call contract rather than new kernel APIs.
+The core owns package review, routing, grants, source identity, shared windows
+and host-side cleanup. Authors own their app behavior or actual device operations,
+including the consistency and cancellation rules of the operations they expose.
+
+The stopping test is an independently built app and an independently built
+adapter installed without rebuilding the desktop, useful partial capabilities,
+mixed-source composition, predictable errors and replacement/close behavior,
+and matching SDKs, schemas, starters, documentation and AI skills. Verify these
+on the supported Windows desktop. Keep unsupported native platforms gated and
+document their missing evidence; do not equate portable contracts with a tested
+Mac/Linux release. Fix correctness issues in the delivered contracts, but do not
+make completion depend on every possible protocol, clipboard format or platform.
+
+The remaining checklist below distinguishes current-contract validation from
+later expansion. Multi-item Cut, custom clipboard formats, cross-process
+clipboard exchange and native Mac/Linux rollout are follow-up milestones, not
+reasons to keep expanding this API. Responsive desktop checks remain in scope;
+physical tablet/mobile product polish does not.
+
 ## Implemented capabilities and evidence
 
 Implemented means the stated behavior and platform, not completion of the goal.
@@ -50,19 +83,20 @@ Implemented means the stated behavior and platform, not completion of the goal.
 
 ## Remaining implementation and integration gates
 
-- [ ] **Public clipboard semantics:** Cut/move intent with authoritative outcomes,
-      custom formats, cross-process exchange and interruptible native preparation.
+- [ ] **Current clipboard contract:** single-item Cut/move intent with authoritative
+      outcomes, publication permissions and honest cancellation behavior.
       Preserve source identity, grants and cancellation ownership. A bundled Cut
       now pastes through the public API as a move with a native exclusive reservation,
       provider identity checks and authoritative outcome handling. Native and SDK tests
-      cover cancellation, failed/abandoned dispatch and tracked relocation. The 88-check
-      Windows desktop fixture covers bundled Cut into installed apps, move-grant denial
-      and cleanup failure/retry with retained close guards. Finish public Cut publication
-      and multiple-item cuts. Verify
+      cover cancellation, failed/abandoned dispatch and tracked relocation. The 91-check
+      Windows desktop fixture covers Cut in both directions between bundled Files
+      and installed apps, publication/move-grant denial
+      and cleanup failure/retry with retained close guards. Public `clipboard.cutFile`
+      publishes one move reference with separate Move/Download authority. Verify
       live OS image/file interoperability separately from injected fixtures.
       Upload/Download chooser selections now use one catalog-backed batch without a
       fixed root-count limit; active jobs and streams remain bounded separately.
-- [ ] **Non-Windows adapter lifetime:** ordinary descendants on close,
+- [ ] **Follow-up: non-Windows adapter lifetime:** ordinary descendants on close,
       canceled/rejected startup, crash/protocol failure, dropped ownership and
       supervisor termination. Preserve unrelated processes and retain assets until
       cleanup is confirmed. Current non-Windows cleanup covers only the direct child.
@@ -98,12 +132,12 @@ Implemented means the stated behavior and platform, not completion of the goal.
       through host-key review, initialization cancellation and committed replacement
       with a cleanup warning. Exercise files-only, console-only, custom-API-only and
       partially disconnected workspaces. Preserve unrelated consoles and drafts.
-- [ ] **Native platform evidence:** build/run macOS and Linux, then verify actual
+- [ ] **Follow-up: native platform evidence:** build/run macOS and Linux, then verify actual
       app-frame isolation, broker, catalog leases, custom protocols and cleanup before
       enabling installed UI there. A shell build does not establish runtime isolation.
 - [ ] **Interaction/accessibility:** dialogs, keyboard/focus, guards and partial
       capabilities across desktop/tablet layouts. Compact Windows fixtures cover
-      800×900 and 1360×900; physical tablet/mobile behavior remains a separate gate.
+      800×900 and 1360×900; physical tablet/mobile behavior is follow-up product work.
 - [ ] **Documentation and API review:** align SDK declarations, method/grant
       discovery, schemas, examples, skills and guides. Remove superseded pending-work
       claims while preserving historical evidence. Review errors, cancellation and
@@ -138,7 +172,7 @@ upstream WebKit/objc2 debug check. A scoped compatibility build opened the nativ
 window but hit a JavaScript syntax error before rendering the desktop.
 This does not enable installed UI packages or establish general Mac support.
 
-Before completion, map every objective and unchecked gate to current source,
+Before completion, map every in-scope objective and validation gate to current source,
 commands/tests and rendered/runtime evidence. Check independent installation
 without core rebuilds, preserved work during updates/switches, denied/foreign/stale
 operations, partial capabilities and cleanup. Missing or indirect evidence leaves
@@ -153,3 +187,9 @@ and protocol-specific tests. WispCrew/AI assistant integration, a marketplace,
 optimized/signed distribution, mobile releases and hosted web service remain
 product backlog items. The core must permit these paths without forcing them
 into this milestone. See [the backlog](../BACKLOG.md) and [providers](providers.md).
+
+Clipboard follow-ups include multi-item Cut, custom formats, cross-process
+selection exchange and more interruptible native preparation. Existing APIs must
+still retain cleanup ownership and report uncertain outcomes correctly. Native
+Mac/Linux runtime validation and descendant cleanup are prerequisites for enabling
+extensions on those platforms, not for declaring the Windows base API usable.

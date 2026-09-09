@@ -114,10 +114,16 @@ export function scopeAppServices(
     cutToSystem: guard(
       "files.move",
       async (...args: Parameters<SessionServices["cutToSystem"]>) => {
+        if (args[3]) check("files.download");
         const id = args[2]?.id;
         if (id) preparations.add(id);
         try {
-          return await base.cutToSystem(...args);
+          return await base.cutToSystem(
+            args[0],
+            args[1],
+            args[2],
+            args[3] ?? false,
+          );
         } finally {
           if (id) preparations.delete(id);
         }

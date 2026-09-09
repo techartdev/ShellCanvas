@@ -30,6 +30,7 @@ export interface AppTransferSource {
         | "pasteSystemFiles"
         | "systemFileClipboard"
         | "copyToSystem"
+        | "cutToSystem"
         | "cancelClipboardPreparation"
         | "inspectSystemFiles"
         | "pasteCopiedFiles"

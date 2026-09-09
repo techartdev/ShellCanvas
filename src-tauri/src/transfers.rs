@@ -945,13 +945,21 @@ pub async fn cut_system_file(
     path: String,
     revision: String,
     operation: Option<String>,
+    export_contents: Option<bool>,
     on_event: Channel<Progress>,
     state: State<'_, DesktopState>,
 ) -> Result<u32, String> {
     #[cfg(not(windows))]
     {
         let _ = (
-            session_id, binding, path, revision, operation, on_event, state,
+            session_id,
+            binding,
+            path,
+            revision,
+            operation,
+            export_contents,
+            on_event,
+            state,
         );
         Err("File clipboard integration is currently available on Windows".into())
     }
@@ -976,22 +984,24 @@ pub async fn cut_system_file(
             location.name,
         )
         .map_err(error)?;
-        if let Ok(service) = provider(&state, session_id, binding.as_ref()).await {
-            let entry = service
-                .transfer_entry(&path, &revision)
-                .await
-                .map_err(error)?;
-            if matches!(entry.kind.as_str(), "file" | "directory") {
-                return prepare_clipboard(
-                    &state,
-                    session_id,
-                    binding,
-                    vec![DownloadSource { path, revision }],
-                    operation.unwrap_or_else(|| uuid::Uuid::new_v4().to_string()),
-                    on_event,
-                    Some(cut),
-                )
-                .await;
+        if export_contents.unwrap_or(false) {
+            if let Ok(service) = provider(&state, session_id, binding.as_ref()).await {
+                let entry = service
+                    .transfer_entry(&path, &revision)
+                    .await
+                    .map_err(error)?;
+                if matches!(entry.kind.as_str(), "file" | "directory") {
+                    return prepare_clipboard(
+                        &state,
+                        session_id,
+                        binding,
+                        vec![DownloadSource { path, revision }],
+                        operation.unwrap_or_else(|| uuid::Uuid::new_v4().to_string()),
+                        on_event,
+                        Some(cut),
+                    )
+                    .await;
+                }
             }
         }
         let sequence = crate::windows_file_input::sequence();

@@ -19,6 +19,13 @@ const entries = [{ binding: "first", path: "opaque:file", revision: "r1" }];
 function setup(grants = ["system.clipboard.files.write", "files.download"]) {
   const services = {
     systemFileClipboard: true,
+    cutToSystem: vi.fn(
+      async (
+        _path: string,
+        _revision: string,
+        _preparation?: ClipboardPreparation,
+      ) => 43,
+    ),
     copyToSystem: vi.fn(
       async (
         _files: { path: string; revision: string }[],
@@ -29,9 +36,10 @@ function setup(grants = ["system.clipboard.files.write", "files.download"]) {
   };
   let source: AppFileClipboardSource = { binding: "first", services };
   const busy = vi.fn();
+  const unavailable = new Set<"copy" | "cut">();
   const owner = new AppFileClipboard(
     () => source,
-    () => true,
+    (kind) => !unavailable.has(kind),
     busy,
   );
   const inputs: ((raw: unknown) => void)[] = [() => {}, () => {}];
@@ -54,6 +62,7 @@ function setup(grants = ["system.clipboard.files.write", "files.download"]) {
     owner,
     peer,
     api: appClipboardClient(peer),
+    unavailable,
     replace() {
       source = { binding: "second", services: { ...services } };
       owner.refresh();
@@ -83,6 +92,137 @@ it("chunks large selections, snapshots revisions and exports once without exposi
     expect(t.busy.mock.calls.map(([value]) => value)).toEqual([true, false]);
   } finally {
     t.close();
+  }
+});
+it("publishes Cut with move and clipboard-write grants without requiring download support", async () => {
+  const t = setup(["system.clipboard.files.write", "files.move"]);
+  try {
+    t.unavailable.add("copy");
+    Object.defineProperty(t.services, "copyToSystem", { value: undefined });
+    const entry = { ...entries[0] };
+    const publication = t.api.cutFile(entry);
+    entry.path = "changed-after-call";
+    entry.revision = "changed-after-call";
+    await publication;
+    expect(t.services.cutToSystem).toHaveBeenCalledWith(
+      entries[0].path,
+      "r1",
+      expect.objectContaining({
+        id: expect.any(String),
+        onProgress: expect.any(Function),
+      }),
+      false,
+    );
+    expect(t.busy.mock.calls.map(([value]) => value)).toEqual([true, false]);
+  } finally {
+    t.close();
+  }
+});
+it("refuses Cut publication with missing grants, stale binding or invalid revisions", async () => {
+  for (const grants of [
+    [],
+    ["files.move"],
+    ["system.clipboard.files.write"],
+    ["system.clipboard.files.write", "files.download"],
+  ]) {
+    const t = setup(grants);
+    try {
+      await expect(t.api.cutFile(entries[0])).rejects.toMatchObject({
+        code: "denied",
+      });
+      expect(t.services.cutToSystem).not.toHaveBeenCalled();
+    } finally {
+      t.close();
+    }
+  }
+  const t = setup(["system.clipboard.files.write", "files.move"]);
+  try {
+    await expect(
+      t.api.cutFile({ ...entries[0], binding: "foreign" }),
+    ).rejects.toMatchObject({ code: "closed" });
+    await expect(
+      t.api.cutFile({ ...entries[0], revision: "" }),
+    ).rejects.toMatchObject({ code: "invalid" });
+    expect(t.services.cutToSystem).not.toHaveBeenCalled();
+  } finally {
+    t.close();
+  }
+});
+it("shares the copy publication slot and keeps canceled Cut busy until the native outcome arrives", async () => {
+  const t = setup([
+    "system.clipboard.files.write",
+    "files.move",
+    "files.download",
+  ]);
+  const pending = deferred<number>();
+  try {
+    await t.peer.call("system.clipboard.files.start", {
+      id: "staged-copy",
+      binding: "first",
+    });
+    await expect(t.api.cutFile(entries[0])).rejects.toMatchObject({
+      code: "busy",
+    });
+    await t.peer.call("system.clipboard.files.release", { id: "staged-copy" });
+    t.services.cutToSystem.mockReturnValueOnce(pending.promise);
+    const abort = new AbortController();
+    const cut = t.api.cutFile(entries[0], abort.signal);
+    const rejected = expect(cut).rejects.toMatchObject({ code: "aborted" });
+    await vi.waitFor(() =>
+      expect(t.services.cutToSystem).toHaveBeenCalledOnce(),
+    );
+    abort.abort();
+    await rejected;
+    await vi.waitFor(() =>
+      expect(t.services.cancelClipboardPreparation).toHaveBeenCalled(),
+    );
+    expect(t.busy).toHaveBeenLastCalledWith(true);
+    await expect(t.api.copyFiles(entries)).rejects.toMatchObject({
+      code: "busy",
+    });
+    const preparation = t.services.cutToSystem.mock.calls[0][2]!;
+    expect(
+      t.services.cancelClipboardPreparation.mock.calls.every(
+        ([id]) => id === preparation.id,
+      ),
+    ).toBe(true);
+    pending.resolve(43);
+    await vi.waitFor(() => expect(t.busy).toHaveBeenLastCalledWith(false));
+    expect(t.services.cutToSystem).toHaveBeenCalledOnce();
+  } finally {
+    pending.resolve(43);
+    t.close();
+  }
+});
+it("retires Cut publication after source replacement, capability loss or app close without retargeting", async () => {
+  for (const reason of ["replace", "capability", "close"]) {
+    const t = setup(["system.clipboard.files.write", "files.move"]);
+    const pending = deferred<number>();
+    t.services.cutToSystem.mockReturnValueOnce(pending.promise);
+    try {
+      const cut = t.api.cutFile(entries[0]);
+      const rejected = expect(cut).rejects.toMatchObject({ code: "aborted" });
+      await vi.waitFor(() =>
+        expect(t.services.cutToSystem).toHaveBeenCalledOnce(),
+      );
+      if (reason === "replace") t.replace();
+      else if (reason === "close") t.owner.close();
+      else {
+        t.unavailable.add("cut");
+        t.owner.refresh();
+      }
+      await vi.waitFor(() =>
+        expect(t.services.cancelClipboardPreparation).toHaveBeenCalled(),
+      );
+      expect(t.busy).toHaveBeenLastCalledWith(true);
+      pending.resolve(43);
+      await rejected;
+      expect(t.services.cutToSystem).toHaveBeenCalledOnce();
+      expect(t.busy).toHaveBeenLastCalledWith(false);
+    } finally {
+      pending.resolve(43);
+      t.close();
+    }
   }
 });
 it("requires separate export and file-download permissions before accessing the backend", async () => {

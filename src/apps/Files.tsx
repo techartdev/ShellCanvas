@@ -537,13 +537,15 @@ export function Files({
         entry.path,
         entry.revision,
         beginClipboardPreparation(),
+        !!session?.info.capabilities.includes("files.download"),
       );
       if (epoch === copyEpoch.current && currentServices.current === services) {
         cutClipboard.syncSystem(sequence);
         setSystemCopyNotice(
-          ["file", "directory"].includes(entry.kind)
+          ["file", "directory"].includes(entry.kind) &&
+            session?.info.capabilities.includes("files.download")
             ? "Pasting in Explorer copies the item and keeps its remote source"
-            : "Folder moves are available within this workspace",
+            : "Ready to move within this workspace",
         );
       }
     } catch (error) {
@@ -590,6 +592,7 @@ export function Files({
       canRemotePasteInto(parent) ||
       (!!services.systemFileClipboard &&
         (canUpload ||
+          canMove ||
           (connected && !!session?.info.capabilities.includes("files.copy"))) &&
         !!parent &&
         !loading &&
@@ -597,6 +600,15 @@ export function Files({
         !transferBusy &&
         !cutState.working)
     );
+  }
+  async function pasteMove(parent: string, sequence?: number) {
+    // Hand busy ownership from clipboard inspection to the move itself. Keeping
+    // `picking` charged here makes our own location watcher refuse relocation.
+    setPicking(false);
+    transferState.current = transfers.some(pendingTransfer);
+    return sequence === undefined
+      ? cutClipboard.paste(parent)
+      : cutClipboard.pasteSystem(parent, sequence);
   }
   async function pasteInto(parent: string) {
     if (!canPasteInto(parent)) return;
@@ -625,7 +637,7 @@ export function Files({
                 );
               // Run directly: a queued transfer would mark this view busy and
               // prevent the shared relocation guard from following its paths.
-              await cutClipboard.pasteSystem(parent, sequence);
+              await pasteMove(parent, sequence);
               return;
             }
             if (
@@ -660,7 +672,7 @@ export function Files({
         );
       if (cutState.copies?.length)
         queue.enqueue(await cutClipboard.prepareCopies(parent, services));
-      else await cutClipboard.paste(parent);
+      else await pasteMove(parent);
     } catch (error) {
       if (
         currentServices.current === services &&

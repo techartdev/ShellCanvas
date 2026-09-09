@@ -7,12 +7,14 @@ import {
   type ClipboardImage,
 } from "./clipboard-image.js";
 export interface AppClipboardAPI {
+  /** Publish one revision-checked remote Cut. Does not move it until Paste runs. */
+  cutFile(entry: RemoteEntryLocation, signal?: AbortSignal): Promise<void>;
   /** Publish remote files/folders to the system clipboard for deferred native paste. */
   copyFiles(
     entries: RemoteEntryLocation[],
     signal?: AbortSignal,
   ): Promise<void>;
-  /** Prepare local uploads or same-workspace remote copies. Run and close the returned owned transfer handles. */
+  /** Prepare local uploads or same-workspace remote copies/moves. Run and close the returned owned transfer handles. */
   pasteFiles(
     destination: RemoteFileLocation,
     signal?: AbortSignal,
@@ -29,6 +31,34 @@ export function appClipboardClient(
   const release = (id: string) =>
     peer.call("system.clipboard.release", { id }).catch(() => {});
   return Object.freeze({
+    async cutFile(entry, signal) {
+      if (
+        !entry ||
+        typeof entry.binding !== "string" ||
+        !entry.binding ||
+        typeof entry.path !== "string" ||
+        !entry.path ||
+        typeof entry.revision !== "string" ||
+        !entry.revision
+      )
+        throw new RpcError(
+          "invalid",
+          "Cut a current file entry from an accepted workspace binding.",
+        );
+      const { binding, path, revision } = entry;
+      const id = crypto.randomUUID();
+      try {
+        await peer.call(
+          "system.clipboard.files.cut",
+          { id, binding, path, revision },
+          signal,
+        );
+      } finally {
+        await peer
+          .call("system.clipboard.files.release", { id })
+          .catch(() => {});
+      }
+    },
     async copyFiles(entries, signal) {
       const snapshot = entries.map(({ binding, path, revision }) => ({
         binding,

@@ -49,6 +49,22 @@ window.addEventListener("message", async (event) => {
   let windowError: string | undefined;
   let imageClipboard: Record<string, boolean> | undefined;
   let fileClipboard: Record<string, boolean> | undefined;
+  if (["file-cut", "file-cut-denied"].includes(event.data.action)) {
+    const client = (await connection)!;
+    const binding = (await client.environment.get()).binding!;
+    try {
+      await client.clipboard.cutFile({
+        binding,
+        path: "fixture:public-cut",
+        revision: "public-cut-1",
+      });
+      fileClipboard = { published: true };
+    } catch (error) {
+      fileClipboard = {
+        denied: (error as { code?: string }).code === "denied",
+      };
+    }
+  }
   if (
     ["file-move-blocked", "file-move-denied", "file-shared-move"].includes(
       event.data.action,
