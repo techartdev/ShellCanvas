@@ -10,7 +10,7 @@ pub(super) struct Tree {
 }
 pub(super) enum Target {
     Remote(String),
-    Local(PathBuf),
+    LocalFolder(PathBuf),
 }
 
 pub(super) async fn remote(
@@ -243,7 +243,7 @@ pub(super) async fn execute_tree(
     let catalog = scan(
         tree,
         service.clone(),
-        matches!(target, Target::Local(_)),
+        !matches!(target, Target::Remote(_)),
         cancel,
         progress,
     )
@@ -266,6 +266,62 @@ pub(super) async fn execute_selection(
     execute_catalog(
         catalog,
         Target::Remote(parent),
+        service,
+        cancel,
+        progress,
+        destination,
+    )
+    .await
+}
+
+fn check_local_folder(folder: &Path) -> Result<()> {
+    if !local_metadata(folder)?.is_dir() || folder.canonicalize()? != folder {
+        bail!("Local destination folder changed");
+    }
+    Ok(())
+}
+
+/// Check every selected root before creating any output. The catalog's portable
+/// name index rejects case aliases without retaining a second selection in memory.
+pub(super) fn check_download_selection(catalog: &Catalog, folder: &Path) -> Result<()> {
+    if catalog.len() == 0 {
+        bail!("Select files or folders to download");
+    }
+    check_local_folder(folder)?;
+    let mut after = 0;
+    while let Some(root) = catalog.root_after(after)? {
+        after = root.id;
+        download_name(&root.entry.name).map_err(anyhow::Error::msg)?;
+        let path = folder.join(&root.entry.name);
+        match path.symlink_metadata() {
+            Ok(_) => bail!(
+                "{} already exists. Choose a different folder; nothing was replaced.",
+                path.display()
+            ),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => (),
+            Err(error) => return Err(error.into()),
+        }
+    }
+    Ok(())
+}
+
+pub(super) async fn execute_download_selection(
+    catalog: Arc<Catalog>,
+    folder: PathBuf,
+    service: Arc<dyn FileTransferService>,
+    cancel: &watch::Receiver<bool>,
+    progress: &mut (dyn FnMut(Progress) + Send),
+) -> Result<String> {
+    checkpoint(cancel)?;
+    check_download_selection(&catalog, &folder)?;
+    let destination = (catalog.len() > 1).then(|| folder.to_string_lossy().into_owned());
+    let catalog = scan_catalog(catalog, service.clone(), cancel, progress).await?;
+    // Directory discovery may take time; recheck every root before writing.
+    checkpoint(cancel)?;
+    check_download_selection(&catalog, &folder)?;
+    execute_catalog(
+        catalog,
+        Target::LocalFolder(folder),
         service,
         cancel,
         progress,
@@ -300,20 +356,15 @@ async fn execute_catalog(
             let parent = if node.parent == 0 {
                 match &target {
                     Target::Remote(parent) => parent.clone(),
-                    Target::Local(_) => String::new(),
+                    Target::LocalFolder(folder) => folder.to_string_lossy().into_owned(),
                 }
             } else {
                 catalog.output(node.parent)?
             };
             let destination = match &target {
-                Target::Local(destination) if node.parent == 0 => Some(destination.clone()),
-                Target::Local(_) => {
+                Target::LocalFolder(_) => {
                     let parent_path = Path::new(&parent);
-                    if !local_metadata(parent_path)?.is_dir()
-                        || parent_path.canonicalize()? != parent_path
-                    {
-                        bail!("Local destination folder changed");
-                    }
+                    check_local_folder(parent_path)?;
                     Some(parent_path.join(&node.entry.name))
                 }
                 Target::Remote(_) => None,

@@ -81,7 +81,6 @@ impl Catalog {
     pub fn size(&self) -> u64 {
         self.size.load(Ordering::Relaxed)
     }
-    #[cfg(windows)]
     pub fn root_after(&self, after: u64) -> Result<Option<Node>> {
         let text: Option<String> = self
             .db

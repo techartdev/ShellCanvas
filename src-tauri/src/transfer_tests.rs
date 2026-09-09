@@ -114,6 +114,8 @@ pub(super) struct Memory {
     aborts: AtomicUsize,
     commits: AtomicUsize,
     fail_verify: bool,
+    readers: AtomicUsize,
+    max_readers: AtomicUsize,
 }
 impl Memory {
     pub(super) fn new(fail_verify: bool) -> Arc<Self> {
@@ -123,12 +125,19 @@ impl Memory {
             aborts: AtomicUsize::new(0),
             commits: AtomicUsize::new(0),
             fail_verify,
+            readers: AtomicUsize::new(0),
+            max_readers: AtomicUsize::new(0),
         })
     }
 }
 struct Read {
     memory: Arc<Memory>,
     offset: usize,
+}
+impl Drop for Read {
+    fn drop(&mut self) {
+        self.memory.readers.fetch_sub(1, Ordering::SeqCst);
+    }
 }
 #[async_trait]
 impl TransferReader for Read {
@@ -185,6 +194,8 @@ impl TransferWriter for Write {
 #[async_trait]
 impl FileTransferService for Memory {
     async fn download(self: Arc<Self>, _: &str, _: &str) -> Result<Box<dyn TransferReader>> {
+        let active = self.readers.fetch_add(1, Ordering::SeqCst) + 1;
+        self.max_readers.fetch_max(active, Ordering::SeqCst);
         Ok(Box::new(Read {
             memory: self,
             offset: 0,
@@ -192,6 +203,113 @@ impl FileTransferService for Memory {
     }
     async fn upload(self: Arc<Self>, _: &str, _: &str, _: u64) -> Result<Box<dyn TransferWriter>> {
         Ok(Box::new(Write { memory: self }))
+    }
+}
+fn download_roots(count: u64) -> Arc<catalog::Catalog> {
+    let roots = Arc::new(catalog::Catalog::new(true).unwrap());
+    let size = Memory::new(false).data.len() as u64;
+    for index in 0..count {
+        roots
+            .add(
+                None,
+                vec![(
+                    shellcanvas_core::FileEntry {
+                        path: format!("opaque@{index}"),
+                        name: format!("item-{index}.bin"),
+                        kind: "file".into(),
+                        size,
+                        modified: None,
+                        revision: "v1".into(),
+                    },
+                    None,
+                )],
+            )
+            .unwrap();
+    }
+    roots
+}
+
+#[tokio::test]
+async fn chooser_download_selection_uses_one_queue_slot_and_one_stream_for_many_roots() {
+    let temp = tempfile::tempdir().unwrap();
+    let folder = temp.path().canonicalize().unwrap();
+    let roots = download_roots(65);
+    let scratch = roots.scratch_path().to_path_buf();
+    let job = selected_downloads(roots, folder.clone()).unwrap();
+    assert_eq!((&*job.1, job.3), ("65 selected items", "download"));
+    let memory = Memory::new(false);
+    let mut registry = TransferRegistry::default();
+    let tickets = registry.add(1, memory.clone(), vec![job]).unwrap();
+    assert_eq!(tickets.len(), 1);
+    let claimed = registry.claim(1, tickets[0].id).unwrap();
+    let mut last = (0, 0);
+    let result = execute(
+        claimed.job,
+        claimed.service,
+        &claimed.cancel,
+        &mut |event| {
+            last = (event.bytes, event.total);
+        },
+    )
+    .await
+    .unwrap();
+    assert_eq!(result, folder.to_string_lossy());
+    for index in 0..65 {
+        assert_eq!(
+            std::fs::read(folder.join(format!("item-{index}.bin"))).unwrap(),
+            memory.data
+        );
+    }
+    assert_eq!(
+        last,
+        (65 * memory.data.len() as u64, 65 * memory.data.len() as u64)
+    );
+    assert_eq!(memory.max_readers.load(Ordering::SeqCst), 1);
+    assert_eq!(memory.readers.load(Ordering::SeqCst), 0);
+    assert!(!scratch.exists());
+}
+
+#[tokio::test]
+async fn chooser_download_preflights_all_roots_and_preserves_completed_items_on_cancel() {
+    for cancel_during_run in [false, true] {
+        let temp = tempfile::tempdir().unwrap();
+        let folder = temp.path().canonicalize().unwrap();
+        let job = selected_downloads(download_roots(65), folder.clone())
+            .unwrap()
+            .0;
+        if !cancel_during_run {
+            // A conflict created while the job waited must prevent every output.
+            std::fs::write(folder.join("item-64.bin"), b"keep existing").unwrap();
+        }
+        let memory = Memory::new(false);
+        let (stop, cancel) = watch::channel(false);
+        let result = execute(job, memory.clone(), &cancel, &mut |event| {
+            if cancel_during_run && event.phase == "running" && event.items == Some(1) {
+                stop.send_replace(true);
+            }
+        })
+        .await
+        .unwrap_err()
+        .to_string();
+        if cancel_during_run {
+            assert!(result.contains("completed items remain"), "{result}");
+            assert_eq!(
+                std::fs::read(folder.join("item-0.bin")).unwrap(),
+                memory.data
+            );
+            assert!(!folder.join("item-1.bin").exists());
+            assert!(!folder.join("item-64.bin").exists());
+        } else {
+            assert!(result.contains("already exists"), "{result}");
+            assert!(!folder.join("item-0.bin").exists());
+            assert_eq!(
+                std::fs::read(folder.join("item-64.bin")).unwrap(),
+                b"keep existing"
+            );
+            assert_eq!(memory.max_readers.load(Ordering::SeqCst), 0);
+        }
+        assert_eq!(memory.readers.load(Ordering::SeqCst), 0);
+        assert_eq!(std::fs::read_dir(&folder).unwrap().count(), 1);
     }
 }
 fn download_job(destination: &Path) -> Job {
@@ -241,6 +359,33 @@ async fn clipboard_selection_streams_many_roots_through_one_job() {
     assert_eq!(*memory.writes.lock().unwrap(), expected);
     assert_eq!(memory.commits.load(Ordering::SeqCst), 128);
     assert_eq!(last, (expected.len() as u64, expected.len() as u64));
+}
+
+#[tokio::test]
+async fn chooser_uploads_use_the_catalog_batch_and_cancel_without_opening_sources() {
+    assert!(selected_uploads(vec![], "target".into())
+        .unwrap()
+        .is_empty());
+    let temp = tempfile::tempdir().unwrap();
+    let paths = (0..65)
+        .map(|index| {
+            let path = temp.path().join(format!("item-{index}.bin"));
+            std::fs::write(&path, [index as u8; 3]).unwrap();
+            path
+        })
+        .collect();
+    let mut jobs = selected_uploads(paths, "target@folder".into()).unwrap();
+    assert_eq!(jobs.len(), 1);
+    assert_eq!(jobs[0].1, "65 selected items");
+    let memory = Memory::new(false);
+    let (_, cancel) = watch::channel(true);
+    assert!(
+        execute(jobs.pop().unwrap().0, memory.clone(), &cancel, &mut |_| {})
+            .await
+            .is_err()
+    );
+    assert_eq!(memory.commits.load(Ordering::SeqCst), 0);
+    assert!(memory.writes.lock().unwrap().is_empty());
 }
 
 #[tokio::test]
@@ -403,7 +548,9 @@ async fn remote_copy_cancellation_and_source_change_abort_both_handles_without_p
     }
 }
 fn upload_job(path: &Path) -> Job {
-    let (file, size, modified) = source(path).unwrap();
+    let file = std::fs::File::open(path).unwrap();
+    let metadata = file.metadata().unwrap();
+    let (size, modified) = (metadata.len(), metadata.modified().ok());
     Job::Upload {
         file,
         size,
@@ -547,14 +694,18 @@ fn batch_download_names_never_escape_or_alias_the_chosen_folder() {
         assert!(super::download_name(name).is_err(), "{name}");
     }
     let directory = tempfile::tempdir().unwrap();
-    let names = vec!["Notes 🌍.txt".into(), "second.bin".into()];
-    let paths = super::download_destinations(directory.path(), &names).unwrap();
-    assert_eq!(paths[0], directory.path().join(&names[0]));
-    assert!(
-        super::download_destinations(directory.path(), &["A.txt".into(), "a.txt".into()]).is_err()
-    );
-    std::fs::write(&paths[1], b"keep").unwrap();
-    assert!(super::download_destinations(directory.path(), &names).is_err());
-    assert_eq!(std::fs::read(&paths[1]).unwrap(), b"keep");
-    assert!(!paths[0].exists());
+    let folder = directory.path().canonicalize().unwrap();
+    let roots = download_roots(2);
+    assert!(selected_downloads(roots.clone(), folder.clone()).is_ok());
+    let collision = shellcanvas_core::FileEntry {
+        path: "different-object".into(),
+        name: "ITEM-0.BIN".into(),
+        ..roots.get(1).unwrap().entry
+    };
+    assert!(roots.add(None, vec![(collision, None)]).is_err());
+    let occupied = folder.join("item-1.bin");
+    std::fs::write(&occupied, b"keep").unwrap();
+    assert!(selected_downloads(roots, folder.clone()).is_err());
+    assert_eq!(std::fs::read(occupied).unwrap(), b"keep");
+    assert!(!folder.join("item-0.bin").exists());
 }

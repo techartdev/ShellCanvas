@@ -4,7 +4,7 @@ The [system clipboard integration](system-clipboard.md) adds multi-file remote C
 
 Real unprivileged SFTP checks now cover denied uploads/private downloads and successful transfer recovery on the same services. See [permission validation](permission-validation.md). Physical-network interruption and broader Windows GUI error-path checks remain separate.
 
-Files now supports native **Upload files** and **Download selected file** actions in its toolbar and context menus. Upload chooses up to 16 regular local files and captures the current remote folder. Download chooses a new local filename for one selected regular remote file. Canceling either picker creates no transfer. Existing destinations are refused; the first version never replaces them, even if the system save dialog offered replacement.
+Files supports native **Upload files** and **Download selected file** actions in its toolbar and context menus. Multiple selections use one disk-backed catalog and one queued batch, without a fixed selected-root limit. Local upload handles open only when each file runs. Single-file Download chooses a new local filename; multiple-file/folder Download chooses one destination folder. Canceling a picker creates no transfer. Existing destinations are refused, even if the system save dialog offered replacement.
 
 Each Files window has a sequential queue with progress, cancellation, clearable results and a collapsible panel. Active work stays above finished history. Navigation and other windows remain usable, and completed uploads refresh Files windows in the same session. Closing the owning window, disconnecting its workspace or quitting the app is guarded while a picker or transfer is active. Cancel first and wait for its result. A failed cancellation stays tracked and can be retried; it does not release the close guard or silently start an unwanted queued upload.
 
@@ -28,7 +28,7 @@ cargo run -p shellcanvas-core --example copy_probe -- HOST USER KEY_PATH
 
 `FileTransferService`, `TransferReader` and `TransferWriter` live in `crates/service-contracts`, without SSH or desktop dependencies. Locations remain provider-owned strings. A reader declares its size, streams bounded chunks and verifies the source at finish. A writer receives a parent/name and declared size, accepts bounded chunks, and publishes without overwriting at finish. Both have explicit abort cleanup. The initial implementation is SFTP; this does not add another production protocol.
 
-Native Rust owns local file dialogs and retained upload handles. Frontend apps receive session-owned transfer tickets, never a general local-path read/write API. Tickets can start once; another host cannot run or cancel them. The registry allows 32 queued/running tickets, and its semaphore allows four active streams across all windows. Streams use 32 KiB chunks; file bytes do not pass through JavaScript or load entirely into memory. The frontend queue keeps at most 50 previous finished entries when adding more work.
+Native Rust owns local file dialogs, catalog metadata and active upload handles. Frontend apps receive session-owned transfer tickets, never a general local-path read/write API. Tickets can start once; another host cannot run or cancel them. The registry allows 32 queued/running tickets (one per selection batch), and its semaphore allows four active transfers across all windows. Each batch opens one file at a time. Streams use 32 KiB chunks; file bytes do not pass through JavaScript or load entirely into memory. The frontend queue keeps at most 50 previous finished entries when adding more work.
 
 ## Publication, changes and cancellation
 
@@ -42,6 +42,8 @@ Directories, recursive transfers, resume, automatic retry and overwrite confirma
 
 ## Verification
 
+- Selection-batch regression checks cover 65 downloaded roots through one queue slot and one active reader, mixed file/folder roots, case-conflict refusal, conflicts created after preparation, cancellation preserving completed roots, and disposable catalog cleanup. The shared upload engine also streams 128 roots through one job. The `transfers.html?batch=65` browser fixture exercises the real Files UI with synthetic services: Select All enables toolbar/context-menu Download and produces one completed 65-item batch. This does not replace an actual OS chooser/live-host batch walkthrough.
+- The same StrictMode fixture exposed and verified a startup ordering fix: Files clears stale source UI during layout, then starts its initial listing after parent workspace bindings have committed. A successful listing no longer retains a spurious disconnected-session error from the development lifecycle replay.
 - Native engine tests cover binary streaming, local no-clobber publication, canceled/failed download cleanup, canceled upload cleanup, late cancellation after commit, ticket ownership, start-once and session closure.
 - Queue/binding tests cover sequential work, queued and active cancellation, cancellation failure/retry, late completion, stale picker cleanup, unowned tickets and React StrictMode lifecycle.
 - `/tests/fixtures/transfers.html` uses synthetic services with the real Files UI. Browser checks covered upload refresh, duplicate-name failure, queued/active cancellation, downloading, busy guards and panel collapse at short window heights.

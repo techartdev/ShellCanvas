@@ -8,6 +8,7 @@ import "../../src/styles.css";
 let next = 0,
   failNext = false;
 let record: (text: string) => void = () => {};
+const batch = new URLSearchParams(location.search).get("batch") === "65";
 const pending = new Map<
   number,
   { ticket: TransferTicket; parent: string; canceled: boolean; fail: boolean }
@@ -31,18 +32,41 @@ const backend: HostServices = {
     const dir = await previewServices.list(id, path);
     return {
       ...dir,
-      entries: [
-        ...dir.entries.map((e) => ({ ...e, revision: "1" })),
-        ...(uploaded.get(dir.path) ?? []),
-      ],
+      entries: batch
+        ? Array.from({ length: 65 }, (_, i) => ({
+            name: `item-${String(i).padStart(2, "0")}.bin`,
+            path: `${dir.path}/item-${i}.bin`,
+            kind: "file" as const,
+            size: 1024,
+            modified: null,
+            revision: "1",
+          }))
+        : [
+            ...dir.entries.map((e) => ({ ...e, revision: "1" })),
+            ...(uploaded.get(dir.path) ?? []),
+          ],
     };
   },
-  chooseUploads: async (_, parent) => [
-    prepare("small.bin", 131072, "upload", parent),
-    prepare("large.bin", 16 * 1024 * 1024, "upload", parent),
-  ],
+  chooseUploads: async (_, parent) =>
+    batch
+      ? [prepare("65 selected items", 65 * 1024, "upload", parent)]
+      : [
+          prepare("small.bin", 131072, "upload", parent),
+          prepare("large.bin", 16 * 1024 * 1024, "upload", parent),
+        ],
   chooseDownload: async (_, path) =>
     prepare(path.split("/").pop()!, 512 * 1024, "download", ""),
+  chooseDownloads: async (_, entries) => {
+    record(`download selection: ${entries.length} roots`);
+    return [
+      prepare(
+        `${entries.length} selected items`,
+        entries.length * 1024,
+        "download",
+        "",
+      ),
+    ];
+  },
   cancelTransfer: async (_, id) => {
     const job = pending.get(id);
     if (job) job.canceled = true;

@@ -165,6 +165,10 @@ pub struct Outcome {
     pub path: Option<String>,
 }
 enum Job {
+    DownloadSelection {
+        catalog: Arc<catalog::Catalog>,
+        folder: PathBuf,
+    },
     Selection {
         catalog: Arc<catalog::Catalog>,
         parent: String,
@@ -308,17 +312,6 @@ async fn provider(
     })
     .await
 }
-fn source(path: &Path) -> Result<(std::fs::File, u64, Option<SystemTime>)> {
-    if !std::fs::metadata(path)?.is_file() {
-        bail!("Select a regular local file.");
-    }
-    let file = std::fs::File::open(path)?;
-    let metadata = file.metadata()?;
-    if !metadata.is_file() {
-        bail!("Select a regular local file.");
-    }
-    Ok((file, metadata.len(), metadata.modified().ok()))
-}
 #[tauri::command]
 pub async fn choose_upload_files(
     app: tauri::AppHandle,
@@ -339,7 +332,7 @@ pub async fn choose_upload_files(
             else {
                 return Ok(Vec::new());
             };
-            return clipboard_uploads(vec![selected.into_path().map_err(error)?], parent);
+            return selected_uploads(vec![selected.into_path().map_err(error)?], parent);
         }
         let paths = app
             .dialog()
@@ -347,33 +340,11 @@ pub async fn choose_upload_files(
             .set_title("Upload files to this folder")
             .blocking_pick_files()
             .unwrap_or_default();
-        if paths.len() > 16 {
-            return Err("Choose up to 16 files at a time.".into());
-        }
-        paths
+        let paths = paths
             .into_iter()
-            .map(|selected| {
-                let path = selected.into_path().map_err(error)?;
-                let name = path
-                    .file_name()
-                    .and_then(|n| n.to_str())
-                    .ok_or("The filename is not valid Unicode")?
-                    .to_string();
-                let (file, size, modified) = source(&path).map_err(error)?;
-                Ok((
-                    Job::Upload {
-                        file,
-                        parent: parent.clone(),
-                        name: name.clone(),
-                        size,
-                        modified,
-                    },
-                    name,
-                    size,
-                    "upload",
-                ))
-            })
-            .collect()
+            .map(|selected| selected.into_path().map_err(error))
+            .collect::<Result<Vec<_>, _>>()?;
+        selected_uploads(paths, parent)
     })
     .await
     .map_err(error)??;
@@ -484,17 +455,6 @@ fn download_name(name: &str) -> Result<(), String> {
     }
     Ok(())
 }
-fn download_destinations(folder: &Path, names: &[String]) -> Result<Vec<PathBuf>, String> {
-    let mut unique = std::collections::HashSet::new();
-    names.iter().map(|name| {
-        download_name(name)?;
-        // Conservative on every client: never let case aliases overwrite each other.
-        if !unique.insert(name.to_lowercase()) { return Err("Selected filenames conflict on this computer. Download them individually with different names.".into()); }
-        let path = folder.join(name);
-        if path.symlink_metadata().is_ok() { return Err(format!("{} already exists. Choose a different folder; nothing was replaced.", path.display())); }
-        Ok(path)
-    }).collect()
-}
 #[tauri::command]
 pub async fn choose_download_files(
     app: tauri::AppHandle,
@@ -504,21 +464,20 @@ pub async fn choose_download_files(
     state: State<'_, DesktopState>,
 ) -> Result<Vec<Ticket>, String> {
     if files.is_empty()
-        || files.len() > 16
         || files
             .iter()
             .any(|file| file.path.is_empty() || file.revision.is_empty())
     {
-        return Err("Choose between 1 and 16 versioned files at a time.".into());
+        return Err("Choose versioned files or folders to download.".into());
     }
     let service = provider(&state, session_id, binding.as_ref()).await?;
-    let mut names = Vec::new();
-    let mut trees = Vec::new();
+    let catalog = Arc::new(catalog::Catalog::new(true).map_err(error)?);
     for file in &files {
         let tree = remote_tree(&service, file).await?;
-        download_name(&tree.root.entry.name)?;
-        names.push(tree.root.entry.name.clone());
-        trees.push(tree);
+        catalog
+            .add(None, vec![(tree.root.entry, tree.root.local)])
+            .map_err(error)?;
+        tokio::task::yield_now().await;
     }
     let destination = tauri::async_runtime::spawn_blocking(move || {
         app.dialog()
@@ -531,37 +490,45 @@ pub async fn choose_download_files(
     let Some(destination) = destination else {
         return Ok(Vec::new());
     };
-    let folder = destination.into_path().map_err(error)?;
-    let destinations = download_destinations(&folder, &names)?;
-    let jobs = trees
-        .into_iter()
-        .zip(names)
-        .zip(destinations)
-        .map(|((tree, name), destination)| {
-            let size = tree.root.entry.size;
-            let job = if tree.root.entry.kind == "directory" {
-                Job::Tree {
-                    tree,
-                    target: tree::Target::Local(destination),
-                }
-            } else {
-                let entry = &tree.root.entry;
-                Job::Download {
-                    destination,
-                    path: entry.path.clone(),
-                    revision: entry.revision.clone(),
-                }
-            };
-            (job, name, size, "download")
-        })
-        .collect();
+    let folder = destination
+        .into_path()
+        .map_err(error)?
+        .canonicalize()
+        .map_err(error)?;
+    let job = tauri::async_runtime::spawn_blocking(move || selected_downloads(catalog, folder))
+        .await
+        .map_err(error)??;
     let registry = state.registry.lock().await;
     registry
         .sessions
         .get(&session_id)
         .ok_or("The host disconnected during preparation")?
         .check_source(&ServiceRole::Files, binding.as_ref())?;
-    state.transfers.lock().await.add(session_id, service, jobs)
+    state
+        .transfers
+        .lock()
+        .await
+        .add(session_id, service, vec![job])
+}
+
+fn selected_downloads(
+    catalog: Arc<catalog::Catalog>,
+    folder: PathBuf,
+) -> Result<(Job, String, u64, &'static str), String> {
+    tree::check_download_selection(&catalog, &folder).map_err(error)?;
+    let count = catalog.len();
+    let name = if count == 1 {
+        catalog.get(1).map_err(error)?.entry.name
+    } else {
+        format!("{count} selected items")
+    };
+    let size = catalog.size();
+    Ok((
+        Job::DownloadSelection { catalog, folder },
+        name,
+        size,
+        "download",
+    ))
 }
 
 async fn remote_tree(
@@ -736,6 +703,7 @@ pub async fn system_clipboard_sequence() -> Result<u32, String> {
 
 // Capture root metadata in one disk catalog. Contents open only when their turn runs.
 // No local path is supplied by JS or exposed in the returned ticket.
+#[cfg(any(windows, test))]
 fn clipboard_uploads(
     paths: Vec<PathBuf>,
     parent: String,
@@ -743,11 +711,29 @@ fn clipboard_uploads(
     if paths.is_empty() {
         return Err("Copy files or folders first.".into());
     }
+    local_uploads(paths, parent, "clipboard")
+}
+
+fn selected_uploads(
+    paths: Vec<PathBuf>,
+    parent: String,
+) -> Result<Vec<(Job, String, u64, &'static str)>, String> {
+    if paths.is_empty() {
+        return Ok(Vec::new());
+    }
+    local_uploads(paths, parent, "selected")
+}
+
+fn local_uploads(
+    paths: Vec<PathBuf>,
+    parent: String,
+    label: &str,
+) -> Result<Vec<(Job, String, u64, &'static str)>, String> {
     let roots = Arc::new(catalog::Catalog::new(false).map_err(error)?);
     let count = paths.len();
     for path in paths {
         if !path.is_absolute() {
-            return Err("Clipboard paths must be absolute".into());
+            return Err("Selected local paths must be absolute".into());
         }
         let tree = tree::local(path).map_err(error)?;
         roots
@@ -758,7 +744,7 @@ fn clipboard_uploads(
     let name = if count == 1 {
         roots.get(1).map_err(error)?.entry.name
     } else {
-        format!("{count} clipboard items")
+        format!("{count} {label} items")
     };
     Ok(vec![(
         Job::Selection {
@@ -976,6 +962,9 @@ async fn execute(
 ) -> Result<String> {
     checkpoint(cancel)?;
     match job {
+        Job::DownloadSelection { catalog, folder } => {
+            tree::execute_download_selection(catalog, folder, service, cancel, progress).await
+        }
         Job::Selection { catalog, parent } => {
             tree::execute_selection(catalog, parent, service, cancel, progress).await
         }

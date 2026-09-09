@@ -31,7 +31,7 @@ Preparing does not start copying bytes. Upload/download preparation invokes a na
 | `downloadMany(entries, signal?)`                    | `files.download` | Jobs sharing one chosen local destination   |
 | `copy(entry, destination, signal?)`                 | `files.copy`     | One remote copy job                         |
 
-Folder upload additionally requires the device's `files.folders` capability. Capability support does not grant additional permissions. Discover the preparation method's `granted` and `available` state before enabling it. The current native multiple-selection flow accepts up to 16 roots; this is distinct from the number or depth of descendants inside a folder. There is no fixed tree-entry/depth cap in the folder transfer engine.
+Folder upload additionally requires the device's `files.folders` capability. Capability support does not grant additional permissions. Discover the preparation method's `granted` and `available` state before enabling it. Native multiple-selection uploads and downloads use one disk-backed catalog and one batch job, without a fixed root-count or tree-entry/depth cap. The returned array describes jobs, not individual selected files; do not zip it with the input entries. Files open sequentially within the batch, and progress aggregates their bytes. Root names and existing download destinations are checked before writing. A later failure or cancellation preserves completed items and reports the incomplete batch.
 
 ## Progress and cancellation
 

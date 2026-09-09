@@ -55,9 +55,8 @@ Implemented means the stated behavior and platform, not completion of the goal.
       Preserve source identity, grants and cancellation ownership. A bundled Cut
   pasted through the public API currently copies and retains the source. Verify
   live OS image/file interoperability separately from injected fixtures.
-  Extend catalog-backed selection to the remaining Upload/Download chooser paths,
-  which still limit selection to 16 roots; retain bounded active jobs/streams
-  without using a total selection count as the resource strategy.
+  Upload/Download chooser selections now use one catalog-backed batch without a
+  fixed root-count limit; active jobs and streams remain bounded separately.
 - [ ] **Non-Windows adapter lifetime:** ordinary descendants on close,
       canceled/rejected startup, crash/protocol failure, dropped ownership and
       supervisor termination. Preserve unrelated processes and retain assets until
@@ -109,9 +108,11 @@ desktop build. Current Windows integration records cover 80 installed-app checks
 checks. Their individual scopes and revisions matter; synthetic clipboard and
 provider fixtures are not live-device evidence.
 
-Mac validation is in progress on a 2012 Intel MacBook Air with Catalina 10.15.8.
-The exact `ddbb580` repository was transferred, dependencies installed and frontend
-built using isolated Node 20.20.2. Native compilation/launch is not yet proven.
+[Mac validation](macos-validation.md) was performed on a 2012 Intel MacBook Air
+with Catalina 10.15.8. The exact `ddbb580` repository passed frontend and native
+compilation using isolated Node 20.20.2, but the first launch aborted in an
+upstream WebKit/objc2 debug check. A scoped compatibility build opened the native
+window but hit a JavaScript syntax error before rendering the desktop.
 This does not enable installed UI packages or establish general Mac support.
 
 Before completion, map every objective and unchecked gate to current source,

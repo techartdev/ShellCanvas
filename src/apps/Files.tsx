@@ -243,10 +243,11 @@ export function Files({
     if (!canDownload || !selectedEntries.length) return;
     if (selectedEntries.length === 1) return download(selectedEntries[0]);
     if (
-      selectedEntries.length > 16 ||
       selectedEntries.some((entry) => !transferable(entry) || !entry.revision)
     ) {
-      setError("Select up to 16 files or folders to download together.");
+      setError(
+        "Select supported files or folders with a current revision to download together.",
+      );
       return;
     }
     setPicking(true);
@@ -319,6 +320,7 @@ export function Files({
   } | null>(null);
   const [history, setHistory] = useState<string[]>([]);
   const request = useRef(0);
+  const initialLocation = useRef<string | undefined>(undefined);
   const previewRequest = useRef(0);
   const previewPending = useRef(false);
   const root = useRef<HTMLDivElement>(null);
@@ -755,16 +757,19 @@ export function Files({
       setBusy(false);
       relocatingRef.current = false;
     }
+    initialLocation.current = changed
+      ? undefined
+      : directory.path || launch?.path;
     if (!connected) setLoading(false);
-    else
-      void navigate(
-        changed ? undefined : directory.path || launch?.path,
-        false,
-      );
     return () => {
       ++request.current;
       ++previewRequest.current;
     };
+  }, [session?.id, sourceKey, connected]);
+  // Parent layout effects commit/reactivate the accepted workspace bindings.
+  // Reset stale UI above before paint, but start I/O only after that commit.
+  useEffect(() => {
+    if (connected) void navigate(initialLocation.current, false);
   }, [session?.id, sourceKey, connected]);
   async function open(entry: FileEntry) {
     if (!connected || relocatingRef.current) return;
@@ -881,7 +886,6 @@ export function Files({
           label: "Download files…",
           disabled:
             !canDownload ||
-            selectedEntries.length > 16 ||
             selectedEntries.some(
               (entry) => !transferable(entry) || !entry.revision,
             ),
@@ -1389,7 +1393,6 @@ export function Files({
             disabled={
               !canDownload ||
               !selectedEntries.length ||
-              selectedEntries.length > 16 ||
               selectedEntries.some(
                 (entry) => !transferable(entry) || !entry.revision,
               )

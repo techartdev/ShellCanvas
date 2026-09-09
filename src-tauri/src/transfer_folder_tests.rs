@@ -105,6 +105,16 @@ fn provider(bad_child: Option<FileEntry>) -> Arc<dyn FileTransferService> {
         bad_child,
     })
 }
+fn download_plan(plan: tree::Tree, folder: &Path) -> Job {
+    let catalog = Arc::new(catalog::Catalog::new(true).unwrap());
+    catalog
+        .add(None, vec![(plan.root.entry, plan.root.local)])
+        .unwrap();
+    Job::DownloadSelection {
+        catalog,
+        folder: folder.canonicalize().unwrap(),
+    }
+}
 #[tokio::test]
 async fn selection_catalog_keeps_distinct_roots_and_nested_descriptor_paths() {
     let service = provider(None);
@@ -215,10 +225,7 @@ async fn folder_download_preserves_empty_directories_refuses_merging_and_reports
         let (stop, cancel) = watch::channel(false);
         let mut last = 0;
         let result = execute(
-            Job::Tree {
-                tree: plan,
-                target: tree::Target::Local(root.clone()),
-            },
+            download_plan(plan, temp.path()),
             service.clone(),
             &cancel,
             &mut |event| {
@@ -247,10 +254,7 @@ async fn folder_download_preserves_empty_directories_refuses_merging_and_reports
                 .await
                 .unwrap();
             assert!(execute(
-                Job::Tree {
-                    tree: plan,
-                    target: tree::Target::Local(root.clone())
-                },
+                download_plan(plan, temp.path()),
                 service,
                 &cancel,
                 &mut |_| {}
@@ -260,6 +264,44 @@ async fn folder_download_preserves_empty_directories_refuses_merging_and_reports
         }
     }
 }
+#[tokio::test]
+async fn download_selection_keeps_files_and_multiple_folder_roots_separate() {
+    let service = provider(None);
+    let memory = super::tests::Memory::new(false);
+    let temp = tempfile::tempdir().unwrap();
+    let folder = temp.path().canonicalize().unwrap();
+    let catalog = Arc::new(catalog::Catalog::new(true).unwrap());
+    for root in [
+        entry(
+            "single@opaque",
+            "single.bin",
+            false,
+            memory.data.len() as u64,
+        ),
+        entry("root@opaque", "Root", true, 0),
+        entry("second-root@opaque", "Other empty folder", true, 0),
+    ] {
+        catalog.add(None, vec![(root, None)]).unwrap();
+    }
+    let job = selected_downloads(catalog, folder.clone()).unwrap().0;
+    let (_, cancel) = watch::channel(false);
+    assert_eq!(
+        execute(job, service, &cancel, &mut |_| {}).await.unwrap(),
+        folder.to_string_lossy()
+    );
+    assert_eq!(
+        std::fs::read(folder.join("single.bin")).unwrap(),
+        memory.data
+    );
+    assert_eq!(
+        std::fs::read(folder.join("Root/binary.bin")).unwrap(),
+        memory.data
+    );
+    assert!(folder.join("Root/Empty").is_dir());
+    assert!(folder.join("Other empty folder").is_dir());
+    assert_eq!(std::fs::read_dir(folder).unwrap().count(), 3);
+}
+
 #[tokio::test]
 async fn folder_copy_refuses_a_descendant_before_creating_anything() {
     let service = provider(None);
@@ -333,7 +375,6 @@ async fn live_folder_roundtrip() -> Result<()> {
         .map(|paths| paths[0].clone())
         .unwrap_or(input);
     let plan = tree::local(input.clone())?;
-    let name = plan.root.entry.name.clone();
     let (_stop, scanning) = watch::channel(false);
     let metadata = tree::scan(
         tree::local(input.clone())?,
@@ -386,13 +427,13 @@ async fn live_folder_roundtrip() -> Result<()> {
         let metadata = scanned(transfer.clone(), selected.clone(), true).await?;
         anyhow::ensure!(metadata.len() as usize == expected.len() && metadata.size() == total, "Manifest mismatch");
         let out = local.path().join("download"); std::fs::create_dir(&out)?;
-        execute(Job::Tree { tree: plan, target: tree::Target::Local(out.join(&name)) }, transfer.clone(), &cancel, &mut |_| {}).await?;
+        execute(download_plan(plan, &out), transfer.clone(), &cancel, &mut |_| {}).await?;
         verify(&out)?;
         let destination = service.make_directory(&remote_root, "Copy destination").await?;
         let copied = execute(Job::Tree { tree: tree::remote(&transfer, selected).await?, target: tree::Target::Remote(destination.clone()) }, transfer.clone(), &cancel, &mut |_| {}).await?;
         let selected = fs.list(Some(&destination)).await?.entries.into_iter().find(|e| e.path == copied).unwrap();
         let out2 = local.path().join("copy"); std::fs::create_dir(&out2)?;
-        execute(Job::Tree { tree: tree::remote(&transfer, selected).await?, target: tree::Target::Local(out2.join(&name)) }, transfer.clone(), &cancel, &mut |_| {}).await?;
+        execute(download_plan(tree::remote(&transfer, selected).await?, &out2), transfer.clone(), &cancel, &mut |_| {}).await?;
         verify(&out2)?;
         println!("Local folder upload, remote folder copy, downloads, Unicode names, zero-byte file and empty folders: exact byte verification passed");
         Ok(())
