@@ -32,3 +32,10 @@ export type {
 } from "./environment-api.js";
 export type { AppClipboardAPI } from "./clipboard-client.js";
 export type { AppConsoleAPI, RemoteConsole } from "./console-client.js";
+export type {
+  AppTransfersAPI,
+  RemoteTransfer,
+  TransferProgress,
+  TransferResult,
+  TransferSnapshot,
+} from "./transfer-client.js";

@@ -22,6 +22,7 @@ import type { CustomAccess } from "../custom-services";
 import { RpcError } from "./rpc";
 import type { AppFileSourceGetter } from "./file-bridge";
 import type { AppConsoleSourceGetter } from "./console-bridge";
+import type { AppTransferSourceGetter } from "./transfer-bridge";
 import { appCapabilities } from "./permissions";
 import {
   clipboard as systemClipboard,
@@ -140,6 +141,15 @@ function RuntimeDocument({
     [],
   );
   const [environment] = useState(() => new RuntimeEnvironment(state));
+  const transferSource = useMemo<AppTransferSourceGetter>(
+    () => () => {
+      const current = fileTarget.current;
+      return current.binding
+        ? { binding: current.binding, services: current.services }
+        : undefined;
+    },
+    [],
+  );
   const consoleSource = useMemo<AppConsoleSourceGetter>(
     () => () => {
       const current = fileTarget.current;
@@ -195,6 +205,7 @@ function RuntimeDocument({
           custom={custom}
           fileSource={fileSource}
           consoleSource={consoleSource}
+          transferSource={transferSource}
         />
       </div>
     </div>

@@ -14,6 +14,11 @@ let capturedDocument:
 let capturedListing:
   AsyncIterator<import("@shellcanvas/app-sdk").RemoteDirectoryPage> | undefined;
 let watching = false;
+let transfer: import("@shellcanvas/app-sdk").RemoteTransfer | undefined;
+let transferRunning:
+  Promise<import("@shellcanvas/app-sdk").TransferResult> | undefined;
+let lateChooserAbort: AbortController | undefined;
+let lateChooser: Promise<boolean> | undefined;
 let capturedEntry:
   import("@shellcanvas/app-sdk").RemoteEntryLocation | undefined;
 window.addEventListener("message", async (event) => {
@@ -31,6 +36,107 @@ window.addEventListener("message", async (event) => {
     document.querySelector<HTMLButtonElement>(`#${event.data.action}`)!.click();
   let storage: unknown;
   let files: Record<string, boolean> | undefined;
+  let transfers: Record<string, boolean> | undefined;
+  if (event.data.action.startsWith("transfer-")) {
+    try {
+      const client = (await connection)!;
+      const binding = (await client.environment.get()).binding!;
+      const entry = {
+        binding,
+        path: "fixture:transfer",
+        revision: "transfer-1",
+      };
+      const destination = { binding, path: "fixture:destination" };
+      switch (event.data.action) {
+        case "transfer-late-prepare":
+          lateChooserAbort = new AbortController();
+          lateChooser = client.transfers
+            .upload(
+              { binding, path: "fixture:late-chooser" },
+              {},
+              lateChooserAbort.signal,
+            )
+            .then(
+              () => false,
+              (error) => error.code === "aborted",
+            );
+          transfers = { started: true };
+          break;
+        case "transfer-late-cancel":
+          lateChooserAbort!.abort();
+          transfers = { aborted: await lateChooser! };
+          break;
+        case "transfer-prepare":
+          transfer = await client.transfers.copy(entry, destination);
+          await client.window.setDocumentState({ dirty: false, busy: false });
+          transfers = {
+            prepared: (await transfer.status()).state === "queued",
+            nativeIdHidden: !("id" in transfer),
+          };
+          break;
+        case "transfer-run":
+          transferRunning = transfer!.run();
+          transfers = { started: true };
+          break;
+        case "transfer-cancel":
+          await transfer!.cancel();
+          await client.window.setDocumentState({ dirty: false, busy: false });
+          transfers = {
+            waiting: (await transfer!.status()).state === "canceling",
+          };
+          break;
+        case "transfer-finish": {
+          const result = await transferRunning!;
+          transfers = {
+            completed: result.status === "completed",
+            destination:
+              result.destination?.binding === binding &&
+              result.destination.path === "fixture:copied",
+          };
+          await transfer!.close();
+          break;
+        }
+        case "transfer-roundtrip": {
+          const uploaded = await client.transfers.upload(destination, {
+            folder: true,
+          });
+          const downloaded = await client.transfers.download(entry);
+          const batch = await client.transfers.downloadMany([
+            entry,
+            { ...entry, path: "fixture:second" },
+          ]);
+          let complete = true,
+            privatePaths = true;
+          for (const job of [...uploaded, downloaded!, ...batch]) {
+            const result = await job.run();
+            complete &&= result.status === "completed";
+            if (job.direction === "download")
+              privatePaths &&=
+                !JSON.stringify(result).includes("private-local-path") &&
+                !result.destination;
+            await job.close();
+          }
+          transfers = {
+            complete,
+            privatePaths,
+            folder: uploaded.length === 1,
+            batch: batch.length === 2,
+          };
+          break;
+        }
+        case "transfer-denied":
+          await client.transfers.copy(entry, destination);
+          transfers = { denied: false };
+          break;
+      }
+    } catch (error) {
+      transfers = {
+        denied:
+          event.data.action === "transfer-denied" &&
+          (error as { code: string }).code === "denied",
+      };
+    }
+  }
   if (event.data.action === "files") {
     const client = (await connection)!;
     const binding = (await client.environment.get()).binding!;
@@ -256,6 +362,7 @@ window.addEventListener("message", async (event) => {
         !document.querySelector<HTMLButtonElement>("#open-note")!.disabled,
       storage,
       files,
+      transfers,
       clipboard,
       environment,
       services,

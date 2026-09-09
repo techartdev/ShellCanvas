@@ -18,7 +18,13 @@ import type {
   ServiceMethodInfo,
 } from "../../src/extensions/environment-api";
 import { previewServices, previewSession } from "../../src/preview";
-import type { Session, FileEntry } from "../../src/sdk";
+import type {
+  Session,
+  FileEntry,
+  TransferTicket,
+  TransferOutcome,
+  TransferProgress,
+} from "../../src/sdk";
 import source from "../../.local/native-extension-probe/desktop-client.js?raw";
 import style from "../../examples/dialog-app/style.css?raw";
 import "../../src/styles.css";
@@ -48,6 +54,10 @@ const fixtureSession: Session = {
       "files.create",
       "files.manage",
       "files.move",
+      "files.copy",
+      "files.upload",
+      "files.download",
+      "files.folders",
     ],
   },
 };
@@ -55,6 +65,23 @@ let fileWrites = 0;
 let remoteText = "Original note";
 let remoteRevision = 1;
 let fileActions = 0;
+let transferSerial = 0;
+let transferRuns = 0;
+let transferCancellations = 0;
+let heldTransfer: ((outcome: TransferOutcome) => void) | undefined;
+let heldChooser: ((tickets: TransferTicket[]) => void) | undefined;
+let failTransferCleanup = false;
+const transferTickets = new Map<number, TransferTicket>();
+function transferTicket(direction: TransferTicket["direction"]) {
+  const ticket = {
+    id: ++transferSerial,
+    name: "fixture.dat",
+    size: 100,
+    direction,
+  };
+  transferTickets.set(ticket.id, ticket);
+  return ticket;
+}
 const actionEntries = new Map<string, FileEntry & { parent: string }>([
   [
     "fixture:entry",
@@ -100,6 +127,80 @@ const relocateAction = (
 };
 const services = {
   ...previewServices,
+  prepareCopy: async (
+    _id: number,
+    path: string,
+    revision: string,
+    parent: string,
+  ) => {
+    if (
+      path !== "fixture:transfer" ||
+      revision !== "transfer-1" ||
+      parent !== "fixture:destination"
+    )
+      throw new Error("Incorrect transfer source or destination");
+    return transferTicket("copy");
+  },
+  chooseUploads: async (_id: number, parent: string, folder?: boolean) => {
+    if (parent === "fixture:late-chooser")
+      return new Promise<TransferTicket[]>((resolve) => {
+        heldChooser = resolve;
+      });
+    if (parent !== "fixture:destination" || folder !== true)
+      throw new Error("Expected folder chooser");
+    return [transferTicket("upload")];
+  },
+  chooseDownload: async (_id: number, path: string, revision: string) => {
+    if (path !== "fixture:transfer" || revision !== "transfer-1")
+      throw new Error("Incorrect download entry");
+    return transferTicket("download");
+  },
+  chooseDownloads: async (
+    _id: number,
+    entries: { path: string; revision: string }[],
+  ) => {
+    if (
+      entries.length !== 2 ||
+      entries.some((entry) => entry.revision !== "transfer-1")
+    )
+      throw new Error("Incorrect download batch");
+    return entries.map(() => transferTicket("download"));
+  },
+  runTransfer: async (
+    _session: number,
+    id: number,
+    onProgress: (event: TransferProgress) => void,
+  ): Promise<TransferOutcome> => {
+    const ticket = transferTickets.get(id);
+    if (!ticket) throw new Error("Transfer ticket not owned");
+    transferRuns++;
+    onProgress({ bytes: 60, total: 100, phase: "running" });
+    try {
+      return ticket.direction === "copy"
+        ? await new Promise<TransferOutcome>((resolve) => {
+            heldTransfer = resolve;
+          })
+        : {
+            status: "completed",
+            bytes: 100,
+            total: 100,
+            path:
+              ticket.direction === "download"
+                ? "C:\\fixture\\private-local-path"
+                : "fixture:uploaded",
+          };
+    } finally {
+      transferTickets.delete(id);
+    }
+  },
+  cancelTransfer: async (_session: number, id: number) => {
+    if (!transferTickets.has(id)) throw new Error("Unknown cancellation");
+    if (failTransferCleanup)
+      throw new Error("Fixture cleanup temporarily unavailable");
+    transferCancellations++;
+    // Acknowledging a running cancellation does not undo completed publication.
+    transferTickets.delete(id);
+  },
   makeDirectory: async (_id: number, parent: string, name: string) => {
     if (actionEntries.has("fixture:folder"))
       throw new Error("Destination already exists");
@@ -250,6 +351,7 @@ function ask(frame: HTMLIFrameElement, action = "snapshot") {
     openNoteEnabled: boolean;
     storage?: Record<string, unknown>;
     files?: Record<string, boolean>;
+    transfers?: Record<string, boolean>;
     environment?: AppEnvironment;
     services?: readonly ServiceMethodInfo[];
     environmentEvents?: AppEnvironment[];
@@ -316,7 +418,15 @@ async function install(version: string) {
             "files.read",
             "files.edit",
             "files.create",
-            ...(version === "1.0.0" ? ["files.manage", "files.move"] : []),
+            ...(version === "1.0.0"
+              ? [
+                  "files.manage",
+                  "files.move",
+                  "files.copy",
+                  "files.upload",
+                  "files.download",
+                ]
+              : []),
             "system.storage",
             "system.clipboard.read",
             "system.clipboard.write",
@@ -458,6 +568,83 @@ async function run() {
     (state) => state.environmentEvents?.at(-1)?.visible === true,
   );
   checks.visibilityEvents = true;
+  const preparedTransfer = (await ask(first, "transfer-prepare")).transfers;
+  checks.sdkTransferPreparation =
+    !!preparedTransfer &&
+    Object.values(preparedTransfer).every(Boolean) &&
+    transferRuns === 0;
+  const closeTransferWindow = () =>
+    first
+      .closest(".app-window")!
+      .querySelector<HTMLButtonElement>('button[aria-label^="Close "]')!;
+  await until(
+    () => closeTransferWindow().disabled,
+    "prepared transfer close guard",
+  );
+  checks.sdkTransferBusyGuard =
+    closeTransferWindow().disabled &&
+    !first.closest(".app-window")!.querySelector(".unsaved-dot");
+  if (isTauri()) {
+    await getCurrentWindow().close();
+    await until(
+      () =>
+        document.querySelector<HTMLButtonElement>(
+          'dialog[aria-label="A file operation is still running"] .danger-button',
+        )?.disabled,
+      "transfer quit guard",
+    );
+    checks.sdkTransferQuitGuard = true;
+    (
+      await until(() => button("Keep working"), "keep transfer running")
+    ).click();
+  }
+  await ask(first, "transfer-run");
+  await until(() => heldTransfer, "transfer backend started");
+  const canceledTransfer = (await ask(first, "transfer-cancel")).transfers;
+  checks.sdkTransferCancelWait =
+    canceledTransfer?.waiting === true &&
+    transferCancellations === 1 &&
+    closeTransferWindow().disabled;
+  heldTransfer!({
+    status: "completed",
+    bytes: 100,
+    total: 100,
+    path: "fixture:copied",
+  });
+  const finishedTransfer = (await ask(first, "transfer-finish")).transfers;
+  await until(() => !closeTransferWindow().disabled, "transfer guard released");
+  checks.sdkTransferLateCompletion =
+    !!finishedTransfer &&
+    Object.values(finishedTransfer).every(Boolean) &&
+    transferRuns === 1;
+  const transferRoundtrip = (await ask(first, "transfer-roundtrip")).transfers;
+  checks.sdkTransferChoosers =
+    !!transferRoundtrip &&
+    Object.values(transferRoundtrip).every(Boolean) &&
+    transferRuns === 5 &&
+    transferTickets.size === 0;
+  await ask(first, "transfer-late-prepare");
+  await until(() => heldChooser, "late chooser opened");
+  const lateCanceled = (await ask(first, "transfer-late-cancel")).transfers;
+  failTransferCleanup = true;
+  heldChooser!([transferTicket("upload")]);
+  const retryCleanup = await until(
+    () => button("Retry transfer cleanup"),
+    "orphan transfer cleanup recovery",
+  );
+  checks.sdkTransferCleanupFailure =
+    lateCanceled?.aborted === true &&
+    closeTransferWindow().disabled &&
+    transferRuns === 5;
+  failTransferCleanup = false;
+  retryCleanup.click();
+  await until(
+    () => !closeTransferWindow().disabled && !button("Retry transfer cleanup"),
+    "orphan cleanup released",
+  );
+  checks.sdkTransferCleanupRetry =
+    transferTickets.size === 0 && transferRuns === 5;
+  await report("sdk-transfers");
   if (persistence === "read") {
     await ask(first, "restore");
     checks.storageSurvivesPageClose =
@@ -595,6 +782,9 @@ async function run() {
     "second runtime window",
   );
   await frameState(second, (state) => state.ready);
+  checks.sdkTransferGrantDenied =
+    (await ask(second, "transfer-denied")).transfers?.denied === true &&
+    transferRuns === 5;
   const secondEnvironment = await ask(second, "environment");
   const deniedFiles = (await ask(second, "files-denied")).files;
   checks.sdkFileGrantDenied = deniedFiles?.rejected === true;

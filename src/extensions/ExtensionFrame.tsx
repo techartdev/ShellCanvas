@@ -7,6 +7,7 @@ import { systemMethods } from "./system-bridge";
 import { fileMethods, type AppFileSourceGetter } from "./file-bridge";
 import { AppDirectories } from "./directory-bridge";
 import { AppConsoles, type AppConsoleSourceGetter } from "./console-bridge";
+import { AppTransfers, type AppTransferSourceGetter } from "./transfer-bridge";
 import type { AppLease } from "./catalog";
 import { documentStateMethod, type AppDocumentState } from "./window-api";
 import { isFrameHandshake, mountAppDocument } from "./frame-document";
@@ -40,6 +41,7 @@ export function ExtensionFrame({
   custom,
   fileSource,
   consoleSource,
+  transferSource,
 }: {
   app: AppPackage;
   system: SystemAPI;
@@ -52,9 +54,15 @@ export function ExtensionFrame({
   custom?: CustomAccess;
   fileSource?: AppFileSourceGetter;
   consoleSource?: AppConsoleSourceGetter;
+  transferSource?: AppTransferSourceGetter;
 }) {
   const ref = useRef<HTMLIFrameElement>(null);
   const [error, setError] = useState("");
+  const [transferFailure, setTransferFailure] = useState<{
+    message: string;
+    retry(): Promise<void>;
+  } | null>(null);
+  const [retryingTransfers, setRetryingTransfers] = useState(false);
   const documentState = useRef(onDocumentState);
   const [fallbackEnvironment] = useState(() => new RuntimeEnvironment());
   const environment = suppliedEnvironment ?? fallbackEnvironment;
@@ -75,6 +83,38 @@ export function ExtensionFrame({
     const directories = fileSource ? new AppDirectories(fileSource) : undefined;
     const consoles = consoleSource
       ? new AppConsoles(consoleSource, setError)
+      : undefined;
+    let appDocument: AppDocumentState = { dirty: false, busy: false };
+    let transferBusy = false;
+    const publishDocument = () =>
+      documentState.current?.({
+        ...appDocument,
+        busy: appDocument.busy || transferBusy,
+      });
+    const transfers: AppTransfers | undefined = transferSource
+      ? new AppTransfers(
+          transferSource,
+          (capability) => {
+            const state = environment.snapshot();
+            return (
+              state.connection === "connected" &&
+              state.capabilities.includes(capability)
+            );
+          },
+          (busy) => {
+            transferBusy = busy;
+            publishDocument();
+          },
+          (message) => {
+            if (!retired)
+              setTransferFailure({
+                message,
+                retry: async () => {
+                  await transfers!.retryCleanup();
+                },
+              });
+          },
+        )
       : undefined;
     const receive = (event: MessageEvent) => {
       if (
@@ -103,6 +143,9 @@ export function ExtensionFrame({
       if (consoles)
         for (const [name, method] of consoles.methods())
           methods.set(name, method);
+      if (transfers)
+        for (const [name, method] of transfers.methods())
+          methods.set(name, method);
       const customService = customMethods(
         custom,
         approved,
@@ -117,7 +160,10 @@ export function ExtensionFrame({
           methods.set(name, method);
       methods.set(
         "system.window.setDocumentState",
-        documentStateMethod((state) => documentState.current?.(state)),
+        documentStateMethod((state) => {
+          appDocument = state;
+          publishDocument();
+        }),
       );
       for (const [name, method] of methods) {
         const remote = appCapabilities(method.grants);
@@ -162,6 +208,7 @@ export function ExtensionFrame({
         },
       });
       const publishEnvironment = () => {
+        transfers?.refresh();
         directories?.refresh(environment.snapshot().connection === "connected");
         const state = environment.snapshot();
         consoles?.refresh(
@@ -182,6 +229,7 @@ export function ExtensionFrame({
         approved,
       );
       peer.onClose(() => {
+        transfers?.close();
         consoles?.close();
         directories?.close();
         clipboardOwner?.close();
@@ -196,8 +244,10 @@ export function ExtensionFrame({
     };
     window.addEventListener("message", receive);
     setError("");
+    setTransferFailure(null);
     const unmount = mountAppDocument(frame, app, token, setError);
     const retire = () => {
+      transfers?.close();
       consoles?.close();
       directories?.close();
       retired = true;
@@ -225,9 +275,46 @@ export function ExtensionFrame({
     custom,
     fileSource,
     consoleSource,
+    transferSource,
   ]);
   return (
-    <>
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        height: "100%",
+        minHeight: 0,
+      }}
+    >
+      {transferFailure && (
+        <div role="alert" className="runtime-connection-review">
+          <span>{transferFailure.message}</span>
+          <button
+            disabled={retryingTransfers}
+            onClick={async () => {
+              setRetryingTransfers(true);
+              try {
+                await transferFailure.retry();
+                setTransferFailure((current) =>
+                  current === transferFailure ? null : current,
+                );
+              } catch (error) {
+                setTransferFailure((current) =>
+                  current === transferFailure
+                    ? { ...current, message: String(error) }
+                    : current,
+                );
+              } finally {
+                setRetryingTransfers(false);
+              }
+            }}
+          >
+            {retryingTransfers
+              ? "Releasing transfers…"
+              : "Retry transfer cleanup"}
+          </button>
+        </div>
+      )}
       {error && (
         <p role="alert" style={{ padding: 20 }}>
           {error}
@@ -242,11 +329,11 @@ export function ExtensionFrame({
         style={{
           border: 0,
           width: "100%",
-          height: "100%",
-          minHeight: 280,
+          flex: 1,
+          minHeight: 0,
           display: error ? "none" : undefined,
         }}
       />
-    </>
+    </div>
   );
 }
