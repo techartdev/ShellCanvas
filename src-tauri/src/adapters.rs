@@ -237,6 +237,21 @@ async fn prepare_workspace(
                         active.bind_moves(resource, moves)?;
                         capabilities.push("files.move".into());
                     }
+                    if let Some(transfers) = process.transfers() {
+                        if process.downloads_supported() {
+                            capabilities.push("files.download".into());
+                        }
+                        if process.uploads_supported() {
+                            capabilities.push("files.upload".into());
+                        }
+                        if process.downloads_supported() && process.uploads_supported() {
+                            capabilities.push("files.copy".into());
+                        }
+                        if transfers.supports_folders() {
+                            capabilities.push("files.folders".into());
+                        }
+                        active.bind_transfers(resource, transfers)?;
+                    }
                 } else {
                     notices.push(
                         "File browsing is unavailable through the selected connection.".into(),

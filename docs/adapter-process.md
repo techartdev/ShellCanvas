@@ -80,7 +80,7 @@ The `files` service requires `files.list`, `files.locate`, and `files.preview`:
 
 `Directory` and `FileLocation` use the camelCase shapes in `shellcanvas-services`. Each page has directory metadata and up to 128 entries. `next: null` finishes the listing. Cursors are stateless/provider-owned continuation tokens: they must not allocate a retained server handle requiring a later release. The adapter must preserve listing identity or reject stale cursors; it must not silently switch locations between pages. Empty/unchanged next cursors and changed directory paths are rejected.
 
-Paths, parent locations, roots and cursor tokens remain opaque. The host does not split/join/normalize them or send them to a different service source. The compatibility bridge collects pages for the current browser's materialized `Directory` result, with a 30-second operation deadline. It is not a constant-memory directory UI. The separate existing recursive transfer engine remains incremental; its process-adapter transfer bridge is still required. There is no new total-entry count limit.
+Paths, parent locations, roots and cursor tokens remain opaque. The host does not split/join/normalize them or send them to a different service source. The compatibility bridge collects pages for the current browser's materialized `Directory` result, with a 30-second operation deadline. It is not a constant-memory directory UI. Recursive transfers use the separate incremental directory reader described below. There is no new total-entry count limit.
 
 ## Optional file methods v1
 
@@ -100,7 +100,41 @@ An adapter with the base `files` service can additionally advertise these method
 
 Creation must refuse existing destinations. Save, rename, move and remove must validate the supplied revision before changing the device. An adapter must implement the provider's conflict and publication semantics; the host does not manufacture atomicity or retry a write. `FileRelocation` contains `{path, locations: [{previous, location: FileLocation}]}`. Return provider-computed mappings for affected tracked locations; never ask the desktop to infer descendants by parsing paths. Empty locations and duplicate `previous` mappings are rejected.
 
-Calls have the standard 30-second deadline and frame bound. Invalid write responses and failures whose outcome is uncertain tell the caller that the change may have completed and needs inspection before retry. Cancellation cannot undo an already-dispatched change. These text methods do not replace the pending streaming transfer bridge.
+Calls have the standard 30-second deadline and frame bound. Invalid write responses and failures whose outcome is uncertain tell the caller that the change may have completed and needs inspection before retry. Cancellation cannot undo an already-dispatched change. Binary and folder transfers use the streaming methods below.
+
+## Streaming transfers v1
+
+Transfers use the selected `files` service and its opaque namespace. Download and upload are independent optional method groups; copy requires both. `files.transfer.abort` is required for either direction. Every open receives a host-generated UUID before dispatch, including opens that are later canceled.
+
+| Method                  | Parameters                      | Result                                              |
+| ----------------------- | ------------------------------- | --------------------------------------------------- |
+| `files.download.open`   | `{id, path, revision}`          | `{location: FileLocation, size: u64}`               |
+| `files.download.read`   | `{id, offset, maxBytes: 32768}` | Byte array; empty means EOF                         |
+| `files.download.finish` | `{id}`                          | `null` after source verification and close          |
+| `files.upload.open`     | `{id, parent, name, size: u64}` | `null` after opening unpublished temporary data     |
+| `files.upload.write`    | `{id, offset, bytes}`           | `null` after accepting this chunk                   |
+| `files.upload.finish`   | `{id}`                          | Published `FileLocation`                            |
+| `files.transfer.abort`  | `{id}`                          | `null` after resource release and temporary cleanup |
+
+Reads and writes are at most 32 KiB, with explicit byte offsets. Downloads must match the declared size. Finish validates that the source still has the reviewed revision; copy verifies the source before publishing the destination. Upload finish must publish without replacing an existing destination. Abort removes only unpublished data: it must never delete a file whose publication already completed, even if the host lost the finish reply. Adapter errors must distinguish uncertain mutations in their message. The host does not replay writes or finish calls.
+
+Abort must be idempotent and retire unknown or still-opening IDs. A late open may not recreate a retired resource. Adapters must handle requests concurrently so a blocked read/open does not block abort. The host retains an open permit until confirmed finish or cleanup, including cleanup after a dropped caller. There are 32 permits shared across transfer service handles for one adapter process. Failed abandoned cleanup keeps that slot charged until reconnect; this bounds leaked remote resources without capping total files, bytes or tree depth. An explicit cleanup failure is returned to the caller. Dropping the handle makes one further best-effort idempotent cleanup attempt.
+
+Once a read/write/finish starts, its handle is unusable for another stream operation until the reply is validated. Cancellation, malformed replies and uncertain results leave it abortable but prevent continuation at an unknown offset. Standard operations have a 30-second per-call deadline; abort has a three-second deadline. A successful publication is authoritative even when cancellation arrives afterward.
+
+### Folder transfers
+
+Advertise all of the following methods to enable the existing recursive-transfer contract:
+
+| Method                   | Parameters             | Result                                        |
+| ------------------------ | ---------------------- | --------------------------------------------- |
+| `files.transfer.entry`   | `{path, revision}`     | Revision-checked `FileEntry`                  |
+| `files.directory.open`   | `{id, path, revision}` | `null` after opening the checked directory    |
+| `files.directory.next`   | `{id, limit: 128}`     | Up to 128 `FileEntry` values; empty means EOF |
+| `files.directory.finish` | `{id}`                 | `null` after verification and close           |
+| `files.transfer.mkdir`   | `{parent, name}`       | Newly created `FileLocation`                  |
+
+Directories use the same abort contract and permit budget. A directory reader holds only one page at a time; the native tree engine stores traversal metadata in its disk catalog. There is no whole-tree response or new tree-entry/depth limit. The provider validates revisions, returns unique child identities and owns path handling. Folder creation must refuse merging with an existing destination. The existing engine rejects links, cycles, unsafe names and incompatible destination aliases. Providers may advertise `files.transfer.entry` without the rest of the folder methods to inspect regular files directly; otherwise regular-file inspection opens and aborts a download.
 
 ## Remote settings v1
 
@@ -138,4 +172,4 @@ cargo clippy -p shellcanvas-adapter-runtime --all-targets --locked -- -D warning
 
 The tests compile and launch `fixture-adapter` as a separate executable. They cover version/catalog rejection, oversized/malformed output, process exit, out-of-order/late replies, cancellation, concurrency capacity recovery, shared close results, independent processes, 20,000 paged file entries, opaque locations, binary consoles, simultaneous read/write, fixed-size consoles and abandoned-open cleanup. These are real local processes with fake device data, not in-process service mocks or tests of a live remote protocol. The fixture binary is test scaffolding, not an adapter to install in production.
 
-Reviewed packages and configuration UI connect these service objects to production workspace composition and independent source replacement. Separate-process tests cover text/settings revisions, read-only methods, file relocation mappings and malformed write replies without breaking unrelated services. Selected [custom services](custom-services.md) route to installed apps with explicit grants and connection ownership. Next steps include the transfer bridge, a standalone adapter SDK/schema/starter and cross-platform process evidence. The full [kernel roadmap](kernel-roadmap.md) remains active.
+Reviewed packages and configuration UI connect these service objects to production workspace composition and independent source replacement. Separate-process tests cover text/settings revisions, read-only methods, file relocation mappings and malformed write replies without breaking unrelated services. Eight transfer tests cover binary copies, 20,000-entry traversal, open/stream cancellation, cleanup capacity, directional support, stale sources, no-clobber publication and malformed replies. Selected [custom services](custom-services.md) route to installed apps with explicit grants and connection ownership. Next steps include a standalone adapter SDK/schema/starter and cross-platform process evidence. The full [kernel roadmap](kernel-roadmap.md) remains active.

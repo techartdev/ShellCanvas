@@ -29,7 +29,7 @@ pub trait TransferDirectory: Send {
     async fn finish(&mut self) -> Result<()>;
     async fn abort(&mut self) -> Result<()>;
 }
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct TransferFile {
     pub location: FileLocation,
     pub size: u64,

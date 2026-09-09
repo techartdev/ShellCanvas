@@ -82,6 +82,7 @@ impl Drop for WakeOnDrop {
 pub struct AdapterProcess {
     inner: Arc<Inner>,
     services: Arc<Vec<ServiceDescriptor>>,
+    pub(crate) transfer_slots: Arc<Semaphore>,
 }
 impl AdapterProcess {
     pub async fn launch(
@@ -174,6 +175,7 @@ impl AdapterProcess {
                 slots: Arc::new(Semaphore::new(MAX_CALLS)),
             }),
             services: Arc::new(vec![]),
+            transfer_slots: Arc::new(Semaphore::new(32)),
         };
         let initialized = process
             .request(

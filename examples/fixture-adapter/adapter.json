@@ -30,6 +30,18 @@
     },
     { "id": "token", "label": "Example private token", "kind": "password" },
     {
+      "id": "transfers",
+      "label": "Transfers (download, upload or both)",
+      "kind": "text",
+      "default": ""
+    },
+    {
+      "id": "folders",
+      "label": "Folder transfers",
+      "kind": "boolean",
+      "default": false
+    },
+    {
       "id": "extended",
       "label": "Text, file changes and settings",
       "kind": "boolean",

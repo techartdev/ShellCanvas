@@ -49,6 +49,20 @@ const sample = (): AdapterInfo => ({
   bytes: 1773568,
   configuration: [
     {
+      id: "transfers",
+      label: "Transfers (download, upload or both)",
+      kind: "text",
+      default: "",
+      required: false,
+    },
+    {
+      id: "folders",
+      label: "Folder transfers",
+      kind: "boolean",
+      default: false,
+      required: false,
+    },
+    {
       id: "standard",
       label: "Services (both, files or console)",
       kind: "text",
@@ -880,6 +894,12 @@ async function run() {
     );
     (await label("Text, file changes and settings", extendedSource)).click();
     (await label("Remote settings", extendedSource)).click();
+    input(
+      await label("Transfers (download, upload or both)", extendedSource),
+      "both",
+    );
+    input(await label("Sample file count", extendedSource), "3");
+    (await label("Folder transfers", extendedSource)).click();
     const before = sessions.length;
     await click("Open workspace", extendedForm);
     await until(
@@ -898,6 +918,10 @@ async function run() {
         "files.manage",
         "files.move",
         "host.settings",
+        "files.upload",
+        "files.download",
+        "files.copy",
+        "files.folders",
       ] as const
     ).every((capability) => extended.info.capabilities.includes(capability));
     const original = await bound.readText(extended.id, "opaque:note");
@@ -973,6 +997,40 @@ async function run() {
         () => true,
       );
     await stage("extended-adapter-services");
+    const copy = await bound.prepareCopy(
+      extended.id,
+      "blob",
+      "1",
+      "opaque:destination",
+    );
+    const progress: number[] = [];
+    const copied = await bound.runTransfer(extended.id, copy.id, (event) =>
+      progress.push(event.bytes),
+    );
+    checks.adapterTransferCopy =
+      copied.status === "completed" &&
+      copied.bytes === 100_003 &&
+      progress.length > 0;
+    const folderCopy = await bound.prepareCopy(
+      extended.id,
+      "tree",
+      "1",
+      "opaque:folder-target",
+    );
+    const folderCopied = await bound.runTransfer(
+      extended.id,
+      folderCopy.id,
+      () => {},
+    );
+    checks.adapterFolderCopy =
+      folderCopied.status === "completed" && folderCopied.bytes === 0;
+    checks.adapterTransferConflict = await bound
+      .prepareCopy(extended.id, "blob", "stale", "opaque:destination")
+      .then(
+        () => false,
+        () => true,
+      );
+    await stage("adapter-transfers");
   }
   await named("Open Apps");
   await click("Connection adapters");

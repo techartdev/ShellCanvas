@@ -8,6 +8,7 @@ use std::sync::{
     Arc, Mutex,
 };
 use tokio::{io::AsyncWriteExt, sync::mpsc};
+mod transfer_fixture;
 
 #[tokio::main]
 async fn main() {
@@ -53,10 +54,11 @@ async fn main() {
             let value = match method.as_str() {
                 "system.adapter.initialize" => {
                     let protocol = params["configuration"]["protocol"].as_u64().unwrap_or(1);
-                    let mut services = json!([{"id":"acme", "version":1, "methods":["acme.echo","acme.wait","acme.fail","acme.crash","acme.malformed","acme.oversize","acme.unknown","acme.cancelCount","acme.calls","acme.waitCount","acme.consoleCount","acme.openCount","acme.arguments"]}]);
+                    let mut services = json!([{"id":"acme", "version":1, "methods":["acme.echo","acme.wait","acme.fail","acme.crash","acme.malformed","acme.oversize","acme.unknown","acme.cancelCount","acme.calls","acme.waitCount","acme.consoleCount","acme.openCount","acme.arguments","acme.transferStats"]}]);
                     let config = params["configuration"].clone();
                     if config["standard"] == "files" || config["standard"] == "both" {
                         let mut methods = vec!["files.list", "files.locate", "files.preview"];
+                        methods.extend(transfer_fixture::methods(&config));
                         if config["extended"] == true {
                             methods.push("files.readText");
                             if config["readOnly"] != true {
@@ -161,6 +163,28 @@ async fn main() {
                     return;
                 }
                 _ => {
+                    let transfer_delay = {
+                        let device = state.lock().unwrap();
+                        if device.config["transferDelayMethod"] == method {
+                            device.config["transferDelayMs"].as_u64().unwrap_or(250)
+                        } else {
+                            0
+                        }
+                    };
+                    if transfer_delay > 0 {
+                        tokio::time::sleep(std::time::Duration::from_millis(transfer_delay)).await;
+                    }
+                    if method == "files.download.open"
+                        || method == "files.upload.open"
+                        || method == "files.directory.open"
+                    {
+                        let delay = {
+                            let mut device = state.lock().unwrap();
+                            device.transfers.opens += 1;
+                            device.config["transferOpenDelay"].as_u64().unwrap_or(0)
+                        };
+                        tokio::time::sleep(std::time::Duration::from_millis(delay)).await;
+                    }
                     if method == "console.open" {
                         let delay = {
                             let mut state = state.lock().unwrap();
@@ -205,6 +229,7 @@ struct Device {
     serial: usize,
     mode: Option<String>,
     setting_revision: usize,
+    transfers: transfer_fixture::Transfers,
 }
 struct Item {
     parent: String,
@@ -222,6 +247,14 @@ impl Item {
 }
 impl Device {
     fn call(&mut self, method: &str, params: &Value) -> Result<Value, String> {
+        if method.starts_with("files.download.")
+            || method.starts_with("files.upload.")
+            || method.starts_with("files.directory.")
+            || method.starts_with("files.transfer.")
+            || method == "acme.transferStats"
+        {
+            return self.transfers.call(method, params, &self.config);
+        }
         let id = params["id"].as_str().unwrap_or("");
         if self.config["badStandard"] == method {
             return Ok(json!({"invalid":"fixture"}));
