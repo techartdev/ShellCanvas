@@ -88,6 +88,10 @@ The probe checks authentication, Linux detection, home-directory SFTP listing, `
 
 Start with [the roadmap](ROADMAP.md), [development backlog](BACKLOG.md), and [kernel/API roadmap](docs/kernel-roadmap.md). Build independent apps with the [standalone app SDK and starter](docs/app-sdk.md). See [the architecture](docs/architecture.md), [bundled app guide](docs/apps.md), [runtime app guide](docs/runtime-apps.md), [remote support matrix](docs/providers.md), [WispCrew AI integration assessment](docs/ai-integration.md), and [contribution guide](CONTRIBUTING.md). The public SDK remains provisional and is distributed as a local tarball; it has not been published to npm. Commercial packaging is intentionally undecided.
 
+Device integrations can use the [standalone Rust adapter SDK and CLI](docs/adapter-sdk.md).
+The repository's [AI development skills](docs/ai-development-skills.md) guide
+app creation, protocol/device adapters and package lifecycle using these APIs.
+
 ## License
 
 [MPL-2.0](LICENSE). Distributed modifications to covered files remain under MPL. Separate extensions may use other licenses, including proprietary licenses, subject to their dependencies and the MPL's requirements. No contributor relicensing or copyright assignment is assumed.

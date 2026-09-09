@@ -95,6 +95,7 @@ streams. `wire` is public for implementations in other languages and contract
 harnesses; this does not turn untrusted input into trusted device operations.
 
 The generated custom-service workflow and independent package installation are
-covered by the repository verification. Standard-service starter variants and
-the AI development skills remain separate work. Actual device protocols and
+covered by the repository verification. Standard-service starter variants remain
+separate work. The repository distributes AI development skills for apps,
+adapters and packaging. Actual device protocols and
 non-Windows native verification are not established by the synthetic examples.

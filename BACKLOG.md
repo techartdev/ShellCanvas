@@ -12,6 +12,8 @@ Public console checkpoint: `client.console` supports byte reads/writes, optional
 
 ## Immediate delivery focus — everyday basics
 
+AI skills checkpoint (2026-09-09): [app, adapter and package skills](docs/ai-development-skills.md) are written and structurally validated. Their standalone generation/build/validation workflows pass; the generated app passed eight Windows checks and generated-adapter installation is covered by 68 adapter checks. The initial skills deliverable is complete. Standard-service starter variants and remaining BASE-11 API/lifecycle/platform gates are still open.
+
 Adapter tooling checkpoint (2026-09-09): public source/package schemas, shared native package validation, a custom-service generator and standalone build/pack/validate CLI are implemented. A generated project builds outside the repository and installs/connects in the Windows desktop; 68 adapter checks pass. Standard-service starter variants, AI development skills and remaining BASE-11 lifecycle/platform gates stay open. Earlier checkpoint paragraphs below are historical.
 
 Adapter SDK server checkpoint: the standalone Rust crate, shared wire contract, concurrent server and exported-source example are implemented. Contract and real-process tests cover cancellation, independent requests, framing and shutdown. Package schemas/generation/packaging, generated-package desktop installation, AI skills and the other BASE-11 gates remain required; see [adapter SDK status](docs/adapter-sdk.md).

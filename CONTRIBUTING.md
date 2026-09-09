@@ -15,9 +15,21 @@ Use `npm run dev` for visual work with synthetic data. Tests against a real SSH 
 
 ## Adding an app
 
-Implement a component against `AppContext` and register its manifest in `src/apps/registry.ts`. Declare local/host scope and required capabilities. Handle loading, errors, disconnects, keyboard navigation, and narrow screens. Keep remote commands out of UI components.
+For an installable community app, use the [public app SDK](docs/app-sdk.md).
+It generates a separate project and builds a runtime package; no desktop rebuild
+is needed. Declare permissions, use service discovery, handle capability loss and keep
+drafts during reconnect. Use the shared system dialogs and window state APIs.
 
-Follow [the app guide](docs/apps.md). Host details is a minimal working reference. No shell edits are needed for a new app's startup, focus, dock entry or standard window. This is a trusted bundled API; the public extension runtime remains pending.
+For a trusted bundled module, follow [the app guide](docs/apps.md). That source
+extension workflow is different from isolated runtime packages.
+
+## Adding an adapter or using AI development tools
+
+The [Rust adapter SDK and CLI](docs/adapter-sdk.md) generate, build and validate
+independent native adapters. Implement supported standard or custom services;
+do not add protocol-specific branches to desktop apps. See the
+[AI development skills](docs/ai-development-skills.md) for repository-distributed
+guidance on apps, adapters and package lifecycle.
 
 ## Adding a system provider
 
