@@ -82,6 +82,37 @@ The `files` service requires `files.list`, `files.locate`, and `files.preview`:
 
 Paths, parent locations, roots and cursor tokens remain opaque. The host does not split/join/normalize them or send them to a different service source. The compatibility bridge collects pages for the current browser's materialized `Directory` result, with a 30-second operation deadline. It is not a constant-memory directory UI. The separate existing recursive transfer engine remains incremental; its process-adapter transfer bridge is still required. There is no new total-entry count limit.
 
+## Optional file methods v1
+
+An adapter with the base `files` service can additionally advertise these methods. All parameters and results use the camelCase service-contract shapes; locations and revisions belong to the provider.
+
+| Method                | Parameters                                    | Result                     |
+| --------------------- | --------------------------------------------- | -------------------------- |
+| `files.readText`      | `{path}`                                      | `TextDocument`             |
+| `files.createText`    | `{parent, name, text}`                        | `TextDocument`             |
+| `files.saveText`      | `{path, text, revision}`                      | `TextDocument`             |
+| `files.makeDirectory` | `{parent, name}`                              | New folder location string |
+| `files.rename`        | `{path, name, revision, tracked: string[]}`   | `FileRelocation`           |
+| `files.move`          | `{path, parent, revision, tracked: string[]}` | `FileRelocation`           |
+| `files.remove`        | `{path, revision}`                            | `null` after removal       |
+
+`TextDocument` contains `path`, `parent`, `name`, `text`, `revision`, and `writable`. Its location and revision must be nonempty. `files.readText` enables text access independently of write support; create and save advertise separate desktop capabilities. Without `files.saveText`, returned documents are forced read-only. The existing mutation contract groups make-directory, rename, and remove: all three must be advertised to enable `files.manage`. Move is independent. These services share the selected Files source and its namespace.
+
+Creation must refuse existing destinations. Save, rename, move and remove must validate the supplied revision before changing the device. An adapter must implement the provider's conflict and publication semantics; the host does not manufacture atomicity or retry a write. `FileRelocation` contains `{path, locations: [{previous, location: FileLocation}]}`. Return provider-computed mappings for affected tracked locations; never ask the desktop to infer descendants by parsing paths. Empty locations and duplicate `previous` mappings are rejected.
+
+Calls have the standard 30-second deadline and frame bound. Invalid write responses and failures whose outcome is uncertain tell the caller that the change may have completed and needs inspection before retry. Cancellation cannot undo an already-dispatched change. These text methods do not replace the pending streaming transfer bridge.
+
+## Remote settings v1
+
+Advertise service ID `host`, version 1, with `host.settings.read` and optionally `host.settings.apply`. The workspace role is **Remote settings** (`host.settings`), which can be assigned independently of Files and Terminal.
+
+| Method                | Parameters              | Result                 |
+| --------------------- | ----------------------- | ---------------------- |
+| `host.settings.read`  | `null`                  | `HostSetting[]`        |
+| `host.settings.apply` | `{id, value, revision}` | Verified `HostSetting` |
+
+A field contains `id`, `label`, `description`, nullable `value` and `revision`, `editor` (`text` or `select`), `choices: string[]`, `writable`, and nullable `reason`. IDs must be nonempty and unique; supplied revisions must be nonempty. Without apply support or a revision, the host makes the field read-only. An apply must check the supplied revision, perform the provider operation, and return verified state with the requested ID, value and revision. Missing confirmation is an uncertain outcome. Provider-specific validation and authorization belong to the adapter.
+
 ## Console v1
 
 The `console` service requires `console.open`, `console.read`, `console.write`, and `console.close`. `console.resize` is optional:
@@ -107,4 +138,4 @@ cargo clippy -p shellcanvas-adapter-runtime --all-targets --locked -- -D warning
 
 The tests compile and launch `fixture-adapter` as a separate executable. They cover version/catalog rejection, oversized/malformed output, process exit, out-of-order/late replies, cancellation, concurrency capacity recovery, shared close results, independent processes, 20,000 paged file entries, opaque locations, binary consoles, simultaneous read/write, fixed-size consoles and abandoned-open cleanup. These are real local processes with fake device data, not in-process service mocks or tests of a live remote protocol. The fixture binary is test scaffolding, not an adapter to install in production.
 
-Reviewed packages and configuration UI connect these service objects to production workspace composition and independent source replacement. Selected [custom services](custom-services.md) route to installed apps with explicit grants and connection ownership. Next steps include text/mutation/transfer/settings bridges, a standalone adapter SDK/schema/starter and cross-platform process evidence. The full [kernel roadmap](kernel-roadmap.md) remains active.
+Reviewed packages and configuration UI connect these service objects to production workspace composition and independent source replacement. Separate-process tests cover text/settings revisions, read-only methods, file relocation mappings and malformed write replies without breaking unrelated services. Selected [custom services](custom-services.md) route to installed apps with explicit grants and connection ownership. Next steps include the transfer bridge, a standalone adapter SDK/schema/starter and cross-platform process evidence. The full [kernel roadmap](kernel-roadmap.md) remains active.

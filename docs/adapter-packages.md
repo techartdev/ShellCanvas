@@ -8,7 +8,7 @@ Adapters run with the user's OS permissions. They are different from isolated de
 
 Choose **Connect a host → Use connection adapters**. Select an installed, enabled adapter and complete its configuration fields. A connection may provide both Files and Terminal, or use **Add another connection** to assign those roles to separate adapter processes. Roles are explicit: an unavailable service is disabled rather than silently routed elsewhere.
 
-The current bridges provide read-only file browsing/previews and console byte streams, with optional resize. Unsupported desktop actions remain unavailable. A device that advertises only files can still open a workspace. Failure to initialize any selected source currently fails the initial composite connection; after connection, source availability is tracked independently.
+The bridges provide file browsing/previews and console byte streams, with optional resize. Optional file methods enable text reading/creation/saving, folder creation, rename, move and removal. **Remote settings** is a separate role with provider-defined fields and optional revision-checked changes. Unsupported desktop actions remain unavailable, including transfers until the process transfer bridge is implemented. A device that advertises only files can still open a workspace. Failure to initialize any selected source currently fails the initial composite connection; after connection, source availability is tracked independently.
 
 Adapter connection settings currently survive whole-workspace reconnect in memory. Password fields are excluded and must be entered again. Reconnect preserves the desktop windows and creates fresh native session/console handles. It can use the currently installed version of the same adapter, while preserving the original service assignments and non-secret configuration. Persistent adapter profiles and combining the built-in SSH connector with an installed adapter remain future work. The existing saved SSH profiles continue to use their own connection flow.
 
@@ -22,7 +22,7 @@ Files starts at the new provider's root. Editor retains its draft and undo histo
 
 ## Prepare a practice package
 
-The repository supplies a synthetic adapter with paged files and an echo console. It uses no remote host or real protocol credentials. From the repository root on Windows:
+The repository supplies a synthetic adapter with paged files and an echo console. Enable **Text, file changes and settings** in its connection configuration to expose the optional methods, and select the **Remote settings** role to bind its fields. It uses no remote host or real protocol credentials. From the repository root on Windows:
 
 ```powershell
 cargo build -p shellcanvas-adapter-runtime --bin fixture-adapter --locked
@@ -39,7 +39,7 @@ The installer rejects links, escaping paths, case aliases and reserved Windows n
 
 The catalog lives under Tauri's local application-data directory in `adapters/`. Atomic catalog writes and cross-process locks enforce revision-checked install/update/enable/remove decisions. Each package generation has its own directory. Acquisition verifies its declared assets again and holds an OS file lease through initialization, process execution and confirmed cleanup. Updating, disabling or removing a package does not replace a running connection's assets. Updates preserve disabled state. Collection removes only unreferenced, unleased generations; crash-abandoned review staging cleanup is still pending.
 
-See [the process contract](adapter-process.md) for framing, service methods, ownership, cancellation and failure semantics. [Custom advertised services](custom-services.md) are selected in each source's Additional services field and exposed to installed apps through reviewed `services.<id>` grants. Text editing, mutation, transfer and settings bridges, public adapter package schemas/SDK/starters, publisher authentication, process-tree containment and non-Windows runtime verification remain open.
+See [the process contract](adapter-process.md) for framing, service methods, ownership, cancellation and failure semantics. [Custom advertised services](custom-services.md) are selected in each source's Additional services field and exposed to installed apps through reviewed `services.<id>` grants. The transfer bridge, public adapter package schemas/SDK/starters, publisher authentication, process-tree containment and non-Windows runtime verification remain open.
 
 ## Native integration evidence
 
@@ -49,5 +49,7 @@ node scripts/run-extension-probe.mjs
 ```
 
 The probe builds two versions of the practice adapter and uses the actual desktop, native catalog, process host and service wrappers. The operating system's chooser is replaced by fixture packages. It checks explicit trust, install/update/disable/remove, running-generation leases, real file/console calls, mixed source identity, unavailable capabilities and reconnect. It also replaces only Files through the production UI, verifies changed file contents with the same live console handle, refuses old handles and invalid replacement identities, and checks cancellation before dispatch. Its installed SDK app checks custom-service discovery, permission denial, JSON calls, errors, cancellation reaching the process and explicit acceptance after reconnect/source replacement. Unit tests separately cover late cancellation after commit and stale status revisions. It uses separate probe application data and no real remote host or system clipboard. This is Windows integration evidence, not a test of FTP, serial, Telnet, another native platform or the operating system's chooser. Cancellation during native adapter initialization and cleanup failure presentation still need dedicated desktop walkthroughs.
+
+The extended-services checkpoint passes 51 checks. It additionally opens the configured adapter through the connection UI, verifies advertised capabilities, creates/saves text, rejects stale text revisions, creates a folder, renames/moves/removes a file, and applies settings with stale-revision refusal. These calls use the production native service wrappers and a separate synthetic adapter process.
 
 The runner writes `.local/native-extension-probe/result.json`. Restore the normal desktop afterward with `npm run verify -- --native`; the special probe executable is not a distributable desktop build.

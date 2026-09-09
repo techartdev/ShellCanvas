@@ -47,7 +47,7 @@ impl AdapterConnectionOptions {
             return Err("Connection source identities must be unique".into());
         }
         if self.bindings.iter().any(|(role, key)| {
-            (!["files", "console"].contains(&role.as_str())
+            (!["files", "console", "host.settings"].contains(&role.as_str())
                 && !shellcanvas_services::custom_service_id(role))
                 || !keys.contains(key)
         }) || self
@@ -220,6 +220,23 @@ async fn prepare_workspace(
                 if let Some(files) = files {
                     active.bind_files(resource, files.clone())?;
                     capabilities.push("files.read".into());
+                    if let Some(text) = process.text() {
+                        active.bind_text(resource, text)?;
+                        if process.supports("files", 1, &["files.createText"]) {
+                            capabilities.push("files.create".into());
+                        }
+                        if process.supports("files", 1, &["files.saveText"]) {
+                            capabilities.push("files.edit".into());
+                        }
+                    }
+                    if let Some(mutations) = process.mutations() {
+                        active.bind_mutations(resource, mutations)?;
+                        capabilities.push("files.manage".into());
+                    }
+                    if let Some(moves) = process.moves() {
+                        active.bind_moves(resource, moves)?;
+                        capabilities.push("files.move".into());
+                    }
                 } else {
                     notices.push(
                         "File browsing is unavailable through the selected connection.".into(),
@@ -234,6 +251,20 @@ async fn prepare_workspace(
                 } else {
                     notices
                         .push("A terminal is unavailable through the selected connection.".into());
+                }
+            }
+            "host.settings" => {
+                active.select_service(
+                    resource,
+                    crate::workspace_services::ServiceRole::HostSettings,
+                )?;
+                if let Some(settings) = process.settings() {
+                    active.bind_settings(resource, settings)?;
+                    capabilities.push("host.settings".into());
+                } else {
+                    notices.push(
+                        "Remote settings are unavailable through the selected connection.".into(),
+                    );
                 }
             }
             custom => {

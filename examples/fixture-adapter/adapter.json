@@ -28,6 +28,12 @@
       "kind": "boolean",
       "default": true
     },
-    { "id": "token", "label": "Example private token", "kind": "password" }
+    { "id": "token", "label": "Example private token", "kind": "password" },
+    {
+      "id": "extended",
+      "label": "Text, file changes and settings",
+      "kind": "boolean",
+      "default": false
+    }
   ]
 }

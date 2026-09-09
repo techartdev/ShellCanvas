@@ -5,5 +5,6 @@ pub mod catalog;
 mod custom;
 mod process;
 mod services;
+mod standard;
 pub mod wire;
 pub use process::{AdapterError, AdapterProcess, Launch};

@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: MPL-2.0
 use anyhow::Result;
 use async_trait::async_trait;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum SettingEditor {
     Text,
@@ -11,7 +11,7 @@ pub enum SettingEditor {
 }
 
 /// Presentation and validation choices belong to the device provider.
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct HostSetting {
     pub id: String,

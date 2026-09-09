@@ -12,6 +12,8 @@ Public console checkpoint: `client.console` supports byte reads/writes, optional
 
 ## Immediate delivery focus — everyday basics
 
+Standard adapter services checkpoint: native process adapters now expose optional text, file changes/moves and remote settings through production workspace bindings. Nine process service tests and 51 Windows adapter checks pass, including revision conflicts and real process calls from the desktop. The process transfer bridge and remaining BASE-11 deliverables are still pending; see [the process contract](docs/adapter-process.md).
+
 Public remote-settings checkpoint: separate read/write grants, provider-owned field metadata, revision-checked apply and mandatory in-flight write guards are implemented. Seven SDK/RPC tests, permission-mapping tests, standalone SDK packaging and 56 Windows installed-app checks pass. Remaining process-adapter service bridges, persistent mixed profiles, adapter SDK/starters and AI skills stay open. See [runtime app remote settings](docs/app-host-settings.md).
 
 Public transfer checkpoint: SDK job preparation, run/status/watch/cancel/close, mandatory desktop busy guards and host retry for failed cleanup of unseen tickets are implemented. Eight SDK/RPC tests, standalone SDK packaging and 49 Windows installed-app checks pass. This extends the existing native engine to external apps; it does not complete the remaining adapter/settings/developer-tooling goal. See [runtime app transfers](docs/app-transfers.md).

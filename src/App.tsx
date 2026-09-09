@@ -843,7 +843,9 @@ export default function App({
                                   ? "Terminal"
                                   : role === "files"
                                     ? "Files"
-                                    : role,
+                                    : role === "host.settings"
+                                      ? "Remote settings"
+                                      : role,
                               )
                               .join(" + ")}{" "}
                             connection

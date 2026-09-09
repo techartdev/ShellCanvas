@@ -112,13 +112,13 @@ pub struct FileLocation {
 }
 /// Confirmed relocation of tracked opaque locations. The provider alone maps
 /// descendants; consumers never infer ancestry by parsing a path.
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RelocatedLocation {
     pub previous: String,
     pub location: FileLocation,
 }
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FileRelocation {
     pub path: String,
@@ -144,7 +144,7 @@ pub struct Directory {
     pub roots: Vec<FilePlace>,
     pub entries: Vec<FileEntry>,
 }
-#[derive(Clone, Serialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TextDocument {
     pub path: String,

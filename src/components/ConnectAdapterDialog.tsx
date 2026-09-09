@@ -10,6 +10,11 @@ import {
   type Configuration,
 } from "../adapters";
 import "./ConnectAdapterDialog.css";
+const standardRoles: Record<string, string> = {
+  files: "Files",
+  console: "Terminal",
+  "host.settings": "Remote settings",
+};
 interface SourceForm {
   key: string;
   id: string;
@@ -245,13 +250,7 @@ export function ConnectAdapterDialog({
                     <h3>
                       {replacing
                         ? source.roles
-                            .map((role) =>
-                              role === "files"
-                                ? "Files"
-                                : role === "console"
-                                  ? "Terminal"
-                                  : role,
-                            )
+                            .map((role) => standardRoles[role] ?? role)
                             .join(" + ")
                         : `Connection ${index + 1}`}
                     </h3>
@@ -306,7 +305,7 @@ export function ConnectAdapterDialog({
                   </label>
                   {!replacing && (
                     <div className="adapter-roles">
-                      {(["files", "console"] as const).map((role) => (
+                      {Object.keys(standardRoles).map((role) => (
                         <label key={role}>
                           <input
                             type="checkbox"
@@ -322,7 +321,7 @@ export function ConnectAdapterDialog({
                               })
                             }
                           />
-                          {role === "files" ? "Files" : "Terminal"}
+                          {standardRoles[role]}
                         </label>
                       ))}
                     </div>
@@ -337,7 +336,7 @@ export function ConnectAdapterDialog({
                           source.customInput ??
                           source.roles
                             .filter(
-                              (role) => role !== "files" && role !== "console",
+                              (role) => !Object.hasOwn(standardRoles, role),
                             )
                             .join(", ")
                         }
@@ -345,9 +344,8 @@ export function ConnectAdapterDialog({
                           change(source.key, {
                             customInput: event.target.value,
                             roles: [
-                              ...source.roles.filter(
-                                (role) =>
-                                  role === "files" || role === "console",
+                              ...source.roles.filter((role) =>
+                                Object.hasOwn(standardRoles, role),
                               ),
                               ...event.target.value
                                 .split(",")

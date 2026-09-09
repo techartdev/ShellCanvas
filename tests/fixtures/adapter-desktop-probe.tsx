@@ -75,6 +75,13 @@ const sample = (): AdapterInfo => ({
       kind: "password",
       required: false,
     },
+    {
+      id: "extended",
+      label: "Text, file changes and settings",
+      kind: "boolean",
+      default: false,
+      required: false,
+    },
   ],
 });
 const fake: AdapterServices = {
@@ -862,6 +869,110 @@ async function run() {
       !limited.info.capabilities.includes("terminal") &&
       limited.services?.find((service) => service.capability === "terminal")
         ?.state === "unsupported";
+    await named("Open Apps");
+    await click("Connection adapters");
+    const extendedForm = await openConnections();
+    input(await label("Workspace name", extendedForm), "Extended device");
+    const extendedSource = await until(
+      () =>
+        extendedForm.querySelector<HTMLElement>('[aria-label="Connection 1"]'),
+      "extended source",
+    );
+    (await label("Text, file changes and settings", extendedSource)).click();
+    (await label("Remote settings", extendedSource)).click();
+    const before = sessions.length;
+    await click("Open workspace", extendedForm);
+    await until(
+      () =>
+        sessions.length === before + 1 &&
+        !document.querySelector(".adapter-connect"),
+      "extended workspace",
+    );
+    const extended = sessions.at(-1)!;
+    const bound = nativeServices.bindSources!(extended);
+    checks.extendedCapabilities = (
+      [
+        "files.read",
+        "files.create",
+        "files.edit",
+        "files.manage",
+        "files.move",
+        "host.settings",
+      ] as const
+    ).every((capability) => extended.info.capabilities.includes(capability));
+    const original = await bound.readText(extended.id, "opaque:note");
+    const saved = await bound.saveText(
+      extended.id,
+      original.path,
+      "Native adapter note 🌿",
+      original.revision,
+    );
+    checks.adapterTextRoundtrip =
+      saved.text === "Native adapter note 🌿" &&
+      saved.revision !== original.revision &&
+      (await bound.readText(extended.id, original.path)).text === saved.text;
+    checks.adapterTextConflict = await bound
+      .saveText(extended.id, original.path, "stale", original.revision)
+      .then(
+        () => false,
+        () => true,
+      );
+    const created = await bound.createText(
+      extended.id,
+      "opaque:actions",
+      "created.txt",
+      "New document",
+    );
+    const folder = await bound.makeDirectory(
+      extended.id,
+      "opaque:actions",
+      "Folder",
+    );
+    const entry = (
+      await bound.list(extended.id, "opaque:actions")
+    ).entries.find((entry) => entry.path === created.path)!;
+    const renamed = await bound.renameEntry(
+      extended.id,
+      entry.path,
+      "renamed.txt",
+      entry.revision!,
+      [],
+    );
+    const renamedEntry = (
+      await bound.list(extended.id, "opaque:actions")
+    ).entries.find((entry) => entry.path === renamed.path)!;
+    const moved = await bound.moveEntry(
+      extended.id,
+      renamedEntry.path,
+      folder,
+      renamedEntry.revision!,
+      [],
+    );
+    const movedEntry = (await bound.list(extended.id, folder)).entries.find(
+      (entry) => entry.path === moved.path,
+    )!;
+    await bound.removeEntry(extended.id, movedEntry.path, movedEntry.revision!);
+    checks.adapterFileActions =
+      (await bound.list(extended.id, folder)).entries.length === 0 &&
+      renamed.path !== entry.path &&
+      moved.path !== renamed.path;
+    const [setting] = await bound.readHostSettings(extended.id);
+    const applied = await bound.applyHostSetting(
+      extended.id,
+      setting.id,
+      "quiet",
+      setting.revision!,
+    );
+    checks.adapterSettingsRoundtrip =
+      applied.value === "quiet" &&
+      (await bound.readHostSettings(extended.id))[0].value === "quiet";
+    checks.adapterSettingsConflict = await bound
+      .applyHostSetting(extended.id, setting.id, "normal", setting.revision!)
+      .then(
+        () => false,
+        () => true,
+      );
+    await stage("extended-adapter-services");
   }
   await named("Open Apps");
   await click("Connection adapters");
