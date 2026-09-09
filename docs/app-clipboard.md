@@ -1,5 +1,53 @@
 # Clipboard API for runtime apps
 
+## Images
+
+`client.clipboard.readImage(signal?)` returns `{ width, height, rgba }`, where
+`rgba` is a `Uint8Array` with four bytes per pixel in top-to-bottom row order.
+`writeImage(image, signal?)` publishes that format. Dimensions must be positive
+integers and match the exact byte count. Native desktop access uses the installed
+clipboard plugin; browser preview reads/writes PNG through browser clipboard and
+canvas APIs, subject to browser support and permissions. Mobile image clipboard
+support is not claimed.
+
+Declare `system.clipboard.image.read` and/or `system.clipboard.image.write`.
+Text clipboard grants do **not** authorize images. Installation shows separate
+image permission labels, and service discovery reports absent backend methods as
+unavailable. These methods never interpret pixels as files, paths or commands.
+
+```ts
+const image = await client.clipboard.readImage();
+// Edit pixels in your app, then explicitly copy the resulting image.
+await client.clipboard.writeImage(image);
+```
+
+The app-to-desktop channel streams at most 32 KiB of RGBA bytes per request.
+Writes snapshot the caller's pixels before awaiting; reads hold a captured image
+even if the system clipboard changes. Incomplete or misordered images never reach
+the native publisher. No arbitrary total-image cap is introduced; images still
+need memory for their pixels and must fit the JS/native/OS image representation.
+This is not a disk-backed image or zero-copy API.
+
+Each window owns one image read and one staged image write, independently of its
+text streams. A canceled backend read or dispatched publication retains its slot
+until it settles. Closing releases staged buffers and rejects further calls.
+Native image resource handles are released after extraction/publication, including
+error paths. Cancellation cannot retract an image already sent to the OS, and an
+uncertain publication is never retried automatically. Writes replace clipboard
+content; no atomic multi-format publication or cross-app write ordering is promised.
+
+Synthetic protocol tests cover large images, exact bytes, permissions, ownership,
+ordering, cancellation and uncertain writes. Native wrapper tests verify resource
+cleanup on success/failure. The Windows installed-app fixture round-trips an image
+through the broker and native image resources with an injected clipboard, and
+checks denied reads after a permission change. It does not overwrite the user's
+OS clipboard or establish a Paint/Explorer image interoperability result.
+The complete fixture passes 71 checks at both 1360×900 and 800×900.
+
+File and custom-format clipboard APIs for installed apps remain separate work.
+
+## Text
+
 Runtime apps use `client.clipboard.readText(signal?)` and `client.clipboard.writeText(text, signal?)`. The normal desktop routes these through its existing native text clipboard service; the browser preview uses the browser clipboard API and its permission/focus requirements. The app frame itself remains denied direct clipboard access.
 
 Declare `system.clipboard.read` and/or `system.clipboard.write` in the app package. The installation review labels them **Read clipboard text, including content from other apps** and **Replace clipboard text**. They are separate permissions. Updates do not silently approve newly requested permissions. Discovery exposes both the registered methods and their granted state; permission denial is enforced before the backend is called.

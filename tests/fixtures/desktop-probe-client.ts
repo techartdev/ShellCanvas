@@ -44,6 +44,34 @@ window.addEventListener("message", async (event) => {
   let hostSettings: Record<string, boolean> | undefined;
   let windowState: import("@shellcanvas/app-sdk").AppWindowState | undefined;
   let windowError: string | undefined;
+  let imageClipboard: Record<string, boolean> | undefined;
+  if (event.data.action === "image-clipboard") {
+    const client = (await connection)!;
+    const expected = {
+      width: 256,
+      height: 129,
+      rgba: Uint8Array.from({ length: 256 * 129 * 4 }, (_, i) => i % 256),
+    };
+    await client.clipboard.writeImage(expected);
+    const read = await client.clipboard.readImage();
+    imageClipboard = {
+      metadata:
+        read.width === expected.width && read.height === expected.height,
+      pixels:
+        read.rgba.length === expected.rgba.length &&
+        read.rgba.every((byte, i) => byte === expected.rgba[i]),
+    };
+  }
+  if (event.data.action === "image-clipboard-denied") {
+    try {
+      await (await connection)!.clipboard.readImage();
+      imageClipboard = { denied: false };
+    } catch (error) {
+      imageClipboard = {
+        denied: (error as { code: string }).code === "denied",
+      };
+    }
+  }
   if (event.data.action.startsWith("window-")) {
     const client = (await connection)!;
     try {
@@ -484,6 +512,7 @@ window.addEventListener("message", async (event) => {
       hostSettings,
       windowState,
       windowError,
+      imageClipboard,
       clipboard,
       environment,
       services,

@@ -1,0 +1,20 @@
+{
+  "productName": "ShellCanvas Compact Desktop Probe",
+  "identifier": "dev.shellcanvas.extensionprobe",
+  "build": {
+    "beforeBuildCommand": "node scripts/build-extension-probe.mjs",
+    "frontendDist": "../.local/native-extension-probe/dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "ShellCanvas compact desktop runtime probe",
+        "url": "tests/fixtures/native-desktop-probe.html",
+        "width": 800,
+        "height": 900,
+        "visible": false
+      }
+    ]
+  }
+}

@@ -17,6 +17,15 @@ Objective: provide a small, coherent virtual-desktop API for bundled and communi
 
 ## Direction
 
+Image clipboard checkpoint (2026-09-09): the SDK now reads/writes RGBA images with
+separate image grants, window-owned chunk streams, captured pixels and complete
+publication. Six protocol tests and two native-wrapper cleanup tests pass; the
+independently built app passes 71 Windows desktop checks, including native image
+resources and denied image reads. This uses an injected clipboard, not the user's
+OS clipboard. File/custom-format APIs and live OS image interoperability remain.
+The window API's compact and inactive-workspace walkthroughs now pass at 800×900
+and 1360×900. Physical tablet/mobile validation remains a different gate.
+
 Window API checkpoint (2026-09-09): installed apps can read window state, focus,
 minimize, maximize, restore and request guarded close through the public SDK.
 Host-owned callbacks accept no target identity; transfers/settings retain their

@@ -4,6 +4,7 @@ import { createRoot } from "react-dom/client";
 import { isTauri } from "@tauri-apps/api/core";
 import { emit } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { Image } from "@tauri-apps/api/image";
 import App from "../../src/App";
 import { apps } from "../../src/apps/registry";
 import {
@@ -35,7 +36,31 @@ const catalog = new AppCatalog(
 const localData = indexedAppStorage("shellcanvas-desktop-probe-data");
 let clipboardText = "Fixture clipboard";
 let clipboardReads = 0;
+let clipboardImage: import("@shellcanvas/app-sdk").ClipboardImage = {
+  width: 1,
+  height: 1,
+  rgba: new Uint8Array([1, 2, 3, 255]),
+};
+let imageReads = 0;
 const runtime = new DesktopRuntime(catalog, apps, localData, {
+  readImage: async () => {
+    imageReads++;
+    if (!isTauri()) return clipboardImage;
+    // Exercise native image resources without reading or replacing the OS clipboard.
+    const resource = await Image.new(
+      clipboardImage.rgba,
+      clipboardImage.width,
+      clipboardImage.height,
+    );
+    try {
+      return { ...(await resource.size()), rgba: await resource.rgba() };
+    } finally {
+      await resource.close();
+    }
+  },
+  writeImage: async (image) => {
+    clipboardImage = image;
+  },
   readText: async () => {
     clipboardReads++;
     return clipboardText;
@@ -407,6 +432,7 @@ function ask(frame: HTMLIFrameElement, action = "snapshot") {
     services?: readonly ServiceMethodInfo[];
     environmentEvents?: AppEnvironment[];
     clipboard?: Record<string, boolean>;
+    imageClipboard?: Record<string, boolean>;
   }>((resolve, reject) => {
     const timer = setTimeout(() => {
       window.removeEventListener("message", receive);
@@ -483,6 +509,8 @@ async function install(version: string) {
             "system.storage",
             "system.clipboard.read",
             "system.clipboard.write",
+            "system.clipboard.image.read",
+            "system.clipboard.image.write",
           ],
           script: source,
           style,
@@ -514,6 +542,15 @@ async function install(version: string) {
     ]
       .find((item) =>
         item.closest("label")?.textContent?.includes("Read clipboard text"),
+      )!
+      .click();
+    [
+      ...document.querySelectorAll<HTMLInputElement>(
+        '.extension-review input[type="checkbox"]',
+      ),
+    ]
+      .find((item) =>
+        item.closest("label")?.textContent?.includes("Read clipboard images"),
       )!
       .click();
   }
@@ -651,13 +688,22 @@ async function run() {
   );
   checks.windowFocus =
     (await ask(first, "window-state")).windowState?.focused === true;
-  await ask(first, "window-maximize");
-  await until(
-    () => first.closest(".app-window")!.classList.contains("maximized"),
-    "SDK maximize",
-  );
-  checks.windowMaximize =
-    (await ask(first, "window-state")).windowState?.mode === "maximized";
+  const compact = window.innerWidth < 900;
+  checks.windowLayoutAvailability =
+    (await ask(first, "window-state")).windowState?.canMaximize === !compact;
+  if (compact) {
+    checks.windowCompactMaximizeRefused =
+      (await ask(first, "window-maximize")).windowError === "unavailable" &&
+      !first.closest(".app-window")!.classList.contains("maximized");
+  } else {
+    await ask(first, "window-maximize");
+    await until(
+      () => first.closest(".app-window")!.classList.contains("maximized"),
+      "SDK maximize",
+    );
+    checks.windowMaximize =
+      (await ask(first, "window-state")).windowState?.mode === "maximized";
+  }
   await ask(first, "window-restore");
   await until(
     () => !first.closest(".app-window")!.classList.contains("maximized"),
@@ -665,6 +711,50 @@ async function run() {
   );
   checks.windowRestore =
     (await ask(first, "window-state")).windowState?.mode === "normal";
+  const selectWorkspace = async (label: string) => {
+    document
+      .querySelector<HTMLButtonElement>(
+        'button[aria-label="Switch workspace"]',
+      )!
+      .click();
+    const choice = await until(
+      () =>
+        [
+          ...document.querySelectorAll<HTMLButtonElement>(".workspace-choice"),
+        ].find((item) => item.querySelector("strong")?.textContent === label),
+      `workspace ${label}`,
+    );
+    choice.click();
+    await until(
+      () => !document.querySelector(".workspace-switcher"),
+      "workspace selected",
+    );
+  };
+  await selectWorkspace("Local desktop");
+  await until(
+    () => first.closest<HTMLElement>(".workspace-windows")!.hidden,
+    "owning workspace inactive",
+  );
+  const hiddenState = (await ask(first, "window-state")).windowState;
+  checks.windowInactiveSnapshot =
+    hiddenState?.visible === false && hiddenState.focused === false;
+  const refused: boolean[] = [];
+  for (const action of ["focus", "minimize", "maximize", "restore", "close"])
+    refused.push(
+      (await ask(first, `window-${action}`)).windowError === "unavailable",
+    );
+  checks.windowInactiveActionsRefused =
+    refused.every(Boolean) &&
+    first.closest<HTMLElement>(".workspace-windows")!.hidden &&
+    !document.querySelector('dialog[aria-label="Discard unsaved changes?"]');
+  await selectWorkspace(fixtureSession.info.hostname);
+  await until(
+    () => !first.closest<HTMLElement>(".workspace-windows")!.hidden,
+    "owning workspace restored",
+  );
+  checks.windowInactiveRequestsPreserveInstance =
+    first.isConnected &&
+    (await ask(first, "window-state")).windowState?.visible === true;
   const preparedTransfer = (await ask(first, "transfer-prepare")).transfers;
   checks.sdkTransferPreparation =
     !!preparedTransfer &&
@@ -813,6 +903,11 @@ async function run() {
     actionEntries.size === 0;
   const clipboard = (await ask(first, "clipboard")).clipboard;
   checks.sdkClipboard = !!clipboard && Object.values(clipboard).every(Boolean);
+  const imageResult = (await ask(first, "image-clipboard")).imageClipboard;
+  checks.sdkImageClipboard =
+    !!imageResult && Object.values(imageResult).every(Boolean);
+  checks.sdkImageClipboardMetadata =
+    clipboardImage.width === 256 && clipboardImage.height === 129;
   const appStorage = (await ask(first, "storage")).storage;
   checks.sdkStorage =
     !!appStorage &&
@@ -945,6 +1040,14 @@ async function run() {
   checks.clipboardGrantDenied =
     (await ask(second, "clipboard-denied")).clipboard?.denied === true &&
     clipboardReads === beforeDeniedRead;
+  const beforeDeniedImage = imageReads;
+  checks.imageClipboardGrantDenied =
+    (await ask(second, "image-clipboard-denied")).imageClipboard?.denied ===
+      true &&
+    imageReads === beforeDeniedImage &&
+    secondEnvironment.services?.find(
+      (method) => method.name === "system.clipboard.image.readStart",
+    )?.granted === false;
   checks.discoveryGrantDenied =
     secondEnvironment.services?.find(
       (method) => method.name === "system.dialogs.openFile",
@@ -1031,6 +1134,7 @@ async function run() {
   const result = {
     success: Object.values(checks).every(Boolean),
     checks,
+    viewport: { width: innerWidth, height: innerHeight },
     userAgent: navigator.userAgent,
   };
   if (isTauri()) await emit("shellcanvas-native-extension-probe", result);

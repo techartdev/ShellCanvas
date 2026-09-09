@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 import type { ClipboardService } from "../clipboard";
 import { RpcError, type Json, type RpcMethod } from "./rpc";
+import { AppImageClipboard } from "./image-clipboard-api";
 export type { AppClipboardAPI } from "../../packages/app-sdk/src/clipboard-client";
 const chunkSize = 64 * 1024;
 function identity(value: unknown): asserts value is string {
@@ -28,8 +29,12 @@ export class AppClipboard {
     offset: number;
     chunks: string[];
   };
-  constructor(private backend: ClipboardService) {}
+  private images: AppImageClipboard;
+  constructor(private backend: ClipboardService) {
+    this.images = new AppImageClipboard(backend);
+  }
   close() {
+    this.images.close();
     this.closed = true;
     this.reader = undefined;
     this.writer = undefined;
@@ -51,6 +56,7 @@ export class AppClipboard {
     const read = "system.clipboard.read",
       write = "system.clipboard.write";
     return new Map([
+      ...this.images.methods(),
       [
         "system.clipboard.readStart",
         method(read, async (params, signal) => {

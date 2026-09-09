@@ -53,5 +53,14 @@ service permissions for remote operations.
 The window broker tests check foreign-target rejection, cancellation and missing
 host controls. The installed-app Windows fixture exercises SDK discovery,
 minimize/focus, maximize/restore, mandatory transfer busy guards, dirty-close
-review and clean-close retirement through the real desktop. Run the standalone
-SDK verifier first, then the desktop probe described in `runtime-apps.md`.
+review and clean-close retirement through the real desktop. At both 1360×900 and
+800×900, it switches to the Local desktop, verifies all five control requests are
+refused from the inactive workspace, then returns to the same running instance.
+The compact run verifies `canMaximize: false` and refusal of maximize.
+
+Run the standalone SDK verifier first. Set `SHELLCANVAS_SDK_PROBE=1`, build with
+`src-tauri/tauri.desktop-probe.conf.json` or
+`src-tauri/tauri.desktop-compact-probe.conf.json`, and run
+`node scripts/run-extension-probe.mjs`. Restore the ordinary executable afterward.
+The compact native fixture verifies layout-dependent behavior, not physical tablet
+touch, keyboard/IME or mobile packaging.

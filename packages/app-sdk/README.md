@@ -64,6 +64,18 @@ request, not completed closure or user consent to discard. Save before requestin
 close: the app and channel may disappear before a reply or continuation executes.
 Cancellation cannot undo an already accepted window action.
 
+Image clipboard methods are `clipboard.readImage(signal?)` and
+`clipboard.writeImage({width, height, rgba}, signal?)`. `rgba` is a `Uint8Array`
+with four bytes per pixel in top-to-bottom row order. They require separate
+`system.clipboard.image.read` / `system.clipboard.image.write` grants; text grants
+never authorize image access. Use service discovery for availability. The broker
+streams 32 KiB chunks and publishes only a complete image. Reads and writes capture
+their pixels, so subsequent caller/clipboard changes do not alter an in-progress
+snapshot. Dimensions must match the exact byte count. Images need memory for their
+pixels; there is no application-specific total-image cap. Cancellation cannot undo
+native publication; inspect uncertain outcomes before retrying. File/custom-format
+clipboard APIs and mobile image support are not provided by this API.
+
 `call(method, params?, signal?)` uses the explicit broker method map and permission checks. It is not a native-command escape hatch. Use `services.call` for custom adapter methods. Discover methods first; `granted` and `available` are separate. Custom entries include the advertised service version and an opaque `source` identity. Declare `services.acme.sensor` to request access to a selected `acme.sensor` service; all its advertised methods share that grant. The app never supplies a native session or source ID. Custom JSON result validation belongs to the app and adapter contract.
 
 ## Ownership, cancellation and errors

@@ -12,6 +12,14 @@ Public console checkpoint: `client.console` supports byte reads/writes, optional
 
 ## Immediate delivery focus — everyday basics
 
+Image clipboard checkpoint (2026-09-09): installed apps can read/write RGBA images
+through separate grants and chunked, window-owned transfers. Six protocol tests,
+two native-wrapper cleanup tests and 71 Windows installed-app checks pass. The
+fixture uses injected clipboard content and real native image resources; live OS
+clipboard interoperability remains unverified. Window compact/inactive-workspace
+checks also pass at 800×900 and 1360×900. File/custom-format app clipboard APIs,
+catalog coordination and remaining kernel roadmap gates stay open.
+
 Window API checkpoint (2026-09-09): the public SDK now exposes snapshots,
 focus/minimize/maximize/restore and guarded close requests. Window broker tests,
 independent SDK builds and 64 Windows installed-app checks pass. The host's busy

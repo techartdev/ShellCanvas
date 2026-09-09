@@ -35,6 +35,7 @@ export type {
   AppEventsAPI,
 } from "./environment-api.js";
 export type { AppClipboardAPI } from "./clipboard-client.js";
+export type { ClipboardImage } from "./clipboard-image.js";
 export type { AppConsoleAPI, RemoteConsole } from "./console-client.js";
 export type {
   HostSetting,

@@ -1,8 +1,14 @@
 // SPDX-License-Identifier: MPL-2.0
 import { RpcError, type RpcPeer } from "./rpc.js";
+import {
+  appImageClipboardClient,
+  type ClipboardImage,
+} from "./clipboard-image.js";
 export interface AppClipboardAPI {
   readText(signal?: AbortSignal): Promise<string>;
   writeText(text: string, signal?: AbortSignal): Promise<void>;
+  readImage(signal?: AbortSignal): Promise<ClipboardImage>;
+  writeImage(image: ClipboardImage, signal?: AbortSignal): Promise<void>;
 }
 const chunkSize = 64 * 1024;
 export function appClipboardClient(
@@ -11,6 +17,7 @@ export function appClipboardClient(
   const release = (id: string) =>
     peer.call("system.clipboard.release", { id }).catch(() => {});
   return Object.freeze({
+    ...appImageClipboardClient(peer),
     async readText(signal) {
       const id = crypto.randomUUID();
       const chunks: string[] = [];
