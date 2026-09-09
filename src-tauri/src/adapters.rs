@@ -375,7 +375,7 @@ pub async fn review_fixture_adapter(
     let app = window.app_handle();
     if app.config().identifier != "dev.shellcanvas.extensionprobe"
         || std::env::var("SHELLCANVAS_EXTENSION_PROBE").as_deref() != Ok("1")
-        || ![1, 2].contains(&version)
+        || ![1, 2, 3].contains(&version)
     {
         return Err("This command is available only to the adapter probe".into());
     }
@@ -384,11 +384,26 @@ pub async fn review_fixture_adapter(
     let jobs = state.inner().clone();
     tauri::async_runtime::spawn_blocking(move || {
         let canceled = jobs.begin(&request_id, &owner)?;
-        let path = std::env::current_dir()
-            .map_err(|error| error.to_string())?
-            .join(format!(
+        let root = std::env::current_dir().map_err(|error| error.to_string())?;
+        let path = if version == 3 {
+            let report: serde_json::Value = serde_json::from_slice(
+                &std::fs::read(root.join(".local/adapter-sdk-verification/latest.json"))
+                    .map_err(|error| error.to_string())?,
+            )
+            .map_err(|error| error.to_string())?;
+            if report["success"] != true {
+                return Err("Run the standalone adapter SDK verification first".into());
+            }
+            std::path::PathBuf::from(
+                report["package"]
+                    .as_str()
+                    .ok_or("Missing generated adapter package")?,
+            )
+        } else {
+            root.join(format!(
                 ".local/native-adapter-probe/packages/v{version}/adapter.json"
-            ));
+            ))
+        };
         let review = catalog
             .review(&path, &canceled)
             .map_err(|error| error.to_string())?;

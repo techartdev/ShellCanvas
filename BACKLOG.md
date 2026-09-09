@@ -12,6 +12,8 @@ Public console checkpoint: `client.console` supports byte reads/writes, optional
 
 ## Immediate delivery focus — everyday basics
 
+Adapter tooling checkpoint (2026-09-09): public source/package schemas, shared native package validation, a custom-service generator and standalone build/pack/validate CLI are implemented. A generated project builds outside the repository and installs/connects in the Windows desktop; 68 adapter checks pass. Standard-service starter variants, AI development skills and remaining BASE-11 lifecycle/platform gates stay open. Earlier checkpoint paragraphs below are historical.
+
 Adapter SDK server checkpoint: the standalone Rust crate, shared wire contract, concurrent server and exported-source example are implemented. Contract and real-process tests cover cancellation, independent requests, framing and shutdown. Package schemas/generation/packaging, generated-package desktop installation, AI skills and the other BASE-11 gates remain required; see [adapter SDK status](docs/adapter-sdk.md).
 
 Built-in SSH composition checkpoint (2026-09-09): SSH is selectable alongside installed adapters with shared preparation, host-key review and secret-free mixed profiles. A real loopback SSH console survives independent Files replacement; 64 Windows adapter checks pass. The full BASE-11 goal remains active; standalone adapter tooling, AI skills, lifecycle hardening and remaining integration/platform gates are still required.

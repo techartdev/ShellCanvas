@@ -39,14 +39,23 @@ The installer rejects links, escaping paths, case aliases and reserved Windows n
 
 The catalog lives under Tauri's local application-data directory in `adapters/`. Atomic catalog writes and cross-process locks enforce revision-checked install/update/enable/remove decisions. Each package generation has its own directory. Acquisition verifies its declared assets again and holds an OS file lease through initialization, process execution and confirmed cleanup. Updating, disabling or removing a package does not replace a running connection's assets. Updates preserve disabled state. Collection removes only unreferenced, unleased generations; crash-abandoned review staging cleanup is still pending.
 
-See [the process contract](adapter-process.md) for framing, service methods, ownership, cancellation and failure semantics. [Custom advertised services](custom-services.md) are selected in each source's Additional services field and exposed to installed apps through reviewed `services.<id>` grants. Public adapter package schemas/SDK/starters, publisher authentication, process-tree containment and non-Windows runtime verification remain open.
+See [the process contract](adapter-process.md) for framing, service methods, ownership, cancellation and failure semantics. [Custom advertised services](custom-services.md) are selected in each source's Additional services field and exposed to installed apps through reviewed `services.<id>` grants. The [standalone Rust SDK and CLI](adapter-sdk.md) now provide source/package schemas, a custom-service starter and build/pack/validate commands, using the same manifest validation as the desktop. Standard-service starter variants, publisher authentication, process-tree containment and non-Windows runtime verification remain open.
 
 ## Native integration evidence
 
 ```powershell
+npm run verify:adapter-sdk
 npm run tauri -- build --debug --no-bundle --config src-tauri/tauri.adapter-probe.conf.json
 node scripts/run-extension-probe.mjs
 ```
+
+The latest Windows run passes 68 checks. It includes a third package generated,
+built and packed outside the checkout using the exported SDK CLI. The desktop
+installs it through native-code review, opens a custom-service-only workspace,
+exchanges JSON through its actual process and retains the live connection after
+package removal. Files and Terminal remain unavailable because this starter
+does not implement them. The probe reads the successful SDK verification report
+to find this package; rerun that verification if the temporary source was removed.
 
 The probe builds two versions of the practice adapter and uses the actual desktop, native catalog, process host and service wrappers. The operating system's chooser is replaced by fixture packages. It checks explicit trust, install/update/disable/remove, running-generation leases, real file/console calls, mixed source identity, unavailable capabilities and reconnect. It also replaces only Files through the production UI, verifies changed file contents with the same live console handle, refuses old handles and invalid replacement identities, and checks cancellation before dispatch. Its installed SDK app checks custom-service discovery, permission denial, JSON calls, errors, cancellation reaching the process and explicit acceptance after reconnect/source replacement. Unit tests separately cover late cancellation after commit and stale status revisions. It uses separate probe application data and no real remote host or system clipboard. This is Windows integration evidence, not a test of FTP, serial, Telnet, another native platform or the operating system's chooser. Cancellation during native adapter initialization and cleanup failure presentation still need dedicated desktop walkthroughs.
 

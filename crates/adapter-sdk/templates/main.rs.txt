@@ -1,0 +1,21 @@
+// SPDX-License-Identifier: MPL-2.0
+use shellcanvas_adapter_sdk::{async_trait, run, Adapter, CallError, RequestContext, ServiceDescriptor, Value};
+const SERVICE: &str = __SERVICE_LITERAL__;
+struct Device;
+#[async_trait]
+impl Adapter for Device {
+    async fn initialize(&self, _: Value, _: RequestContext) -> Result<Vec<ServiceDescriptor>, CallError> {
+        // Connect your device here and advertise only supported operations.
+        Ok(vec![ServiceDescriptor {id: SERVICE.into(), version: 1,
+            methods: vec![format!("{SERVICE}.echo"), format!("{SERVICE}.wait")]}])
+    }
+    async fn call(&self, method: &str, params: Value, context: RequestContext) -> Result<Value, CallError> {
+        if method == format!("{SERVICE}.echo") { return Ok(params); }
+        if method == format!("{SERVICE}.wait") {
+            context.canceled().await;
+            return Err(CallError::new("aborted", "Waiting was canceled"));
+        }
+        Err(CallError::new("unavailable", "Unsupported device operation"))
+    }
+}
+fn main() -> std::io::Result<()> { run(Device) }

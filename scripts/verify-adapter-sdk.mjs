@@ -11,6 +11,7 @@ import {
 import { tmpdir } from "node:os";
 import { resolve, join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
+import { checkAdapterSchemas } from "./check-adapter-schemas.mjs";
 const repo = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const root = mkdtempSync(join(tmpdir(), "shellcanvas adapter sdk "));
 const reportDir = join(repo, ".local/adapter-sdk-verification");
@@ -53,6 +54,7 @@ try {
     throw new Error("Exported SDK has a path dependency");
   run(source, "cargo", [
     "build",
+    "--bins",
     "--example",
     "echo",
     "--locked",
@@ -75,6 +77,41 @@ try {
     { SHELLCANVAS_SDK_ADAPTER_EXE: executable },
   );
   report.checks.productionHostInterop = true;
+  const cli = join(
+    root,
+    `build/debug/shellcanvas-adapter${process.platform === "win32" ? ".exe" : ""}`,
+  );
+  const project = join(root, "generated device");
+  run(root, cli, [
+    "init",
+    project,
+    "--id",
+    "example.device",
+    "--name",
+    "SDK practice device",
+    "--sdk-source",
+    source,
+  ]);
+  const packaged = join(root, "generated package");
+  run(root, cli, ["build", project, packaged, "--debug"], {
+    CARGO_NET_OFFLINE: "true",
+  });
+  run(root, cli, ["validate", join(packaged, "adapter.json")]);
+  report.package = join(packaged, "adapter.json");
+  report.checks.generatedProjectPackaged = true;
+  checkAdapterSchemas(source, project, packaged);
+  report.checks.schemas = true;
+  const generatedExecutable = join(
+    packaged,
+    JSON.parse(readFileSync(report.package, "utf8")).entrypoint,
+  );
+  run(
+    repo,
+    "cargo",
+    ["test", "-p", "shellcanvas-adapter-runtime", "--test", "sdk", "--locked"],
+    { SHELLCANVAS_SDK_ADAPTER_EXE: generatedExecutable },
+  );
+  report.checks.generatedHostInterop = true;
   report.success = true;
 } catch (error) {
   report.error = String(error);

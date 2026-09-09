@@ -286,7 +286,7 @@ async function install() {
   );
   panel.querySelector<HTMLInputElement>('input[type="checkbox"]')!.click();
   await click(
-    version === 1 ? "Install trusted adapter" : "Update adapter",
+    version === 2 ? "Update adapter" : "Install trusted adapter",
     panel,
   );
   await until(
@@ -297,7 +297,7 @@ async function install() {
     () =>
       document
         .querySelector(".extension-card")
-        ?.textContent?.includes(`${version}.0.0`),
+        ?.textContent?.includes(version === 3 ? "0.1.0" : `${version}.0.0`),
     "installed version",
   );
 }
@@ -346,7 +346,7 @@ async function cleanup() {
   for (const session of sessions)
     await services.disconnect(session.id).catch(() => {});
   for (const item of await adapterServices.list())
-    if (item.id === packageId)
+    if ([packageId, "example.device"].includes(item.id))
       await adapterServices.remove(item.id, item.revision);
   await runtime.catalog.load();
   for (const item of runtime.catalog.snapshot())
@@ -1230,6 +1230,75 @@ async function run() {
     "connection after removal",
   );
   checks.removalKeepsConnections = true;
+  if (native) {
+    version = 3;
+    await install();
+    checks.generatedAdapterInstalled = (await adapterServices.list()).some(
+      (item) => item.id === "example.device" && item.version === "0.1.0",
+    );
+    const generatedForm = await openConnections();
+    input(await label("Workspace name", generatedForm), "Generated SDK device");
+    for (const role of ["Files", "Terminal"]) {
+      const field = await label(role, generatedForm);
+      if (field.checked) field.click();
+      await until(() => !field.checked, `unassigned ${role}`);
+    }
+    input(await label("Additional services", generatedForm), "example.device");
+    const previousCount = sessions.length;
+    await click("Open workspace", generatedForm);
+    await until(
+      () => sessions.length === previousCount + 1,
+      "generated workspace",
+    );
+    await until(
+      () => !document.querySelector(".adapter-connect"),
+      "generated desktop",
+    );
+    const generatedSession = sessions.at(-1)!;
+    const generatedServices = services.bindSources!(generatedSession);
+    const generatedMethods = await generatedServices.custom!.list(
+      generatedSession.id,
+    );
+    const echo = generatedMethods.find(
+      (method) => method.name === "example.device.echo",
+    )!;
+    checks.generatedCustomOnlyWorkspace =
+      generatedMethods.length === 2 &&
+      !generatedSession.info.capabilities.includes("files.read") &&
+      !generatedSession.info.capabilities.includes("terminal");
+    const payload = [0, 255, "generated λ"];
+    checks.generatedServiceEcho =
+      JSON.stringify(
+        await generatedServices.custom!.call(
+          generatedSession.id,
+          echo.binding,
+          echo.name,
+          payload,
+        ),
+      ) === JSON.stringify(payload);
+    await named("Open Apps");
+    await click("Connection adapters");
+    await click("Remove");
+    await click(
+      "Remove adapter",
+      await until(
+        () => document.querySelector('[aria-label="Remove adapter"]'),
+        "generated removal review",
+      ),
+    );
+    await until(
+      () => !document.querySelector(".extension-card"),
+      "generated package removed",
+    );
+    checks.generatedRemovalKeepsConnection =
+      (await generatedServices.custom!.call(
+        generatedSession.id,
+        echo.binding,
+        echo.name,
+        "retained",
+      )) === "retained";
+    await stage("generated-adapter");
+  }
   await cleanup();
   await stage("complete");
   const result = { success: Object.values(checks).every(Boolean), checks };

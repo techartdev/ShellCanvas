@@ -5,6 +5,53 @@ Build a native connection adapter by implementing `Adapter::initialize` and
 Tauri, SSH or repository path dependencies. Version 0.1.0 is provisional and is
 not published to crates.io. Use a supplied SDK source archive until publication.
 
+## Generate, build and validate an adapter
+
+Build the included CLI from this SDK directory:
+
+```sh
+cargo build --bin shellcanvas-adapter --locked
+```
+
+Use `target/debug/shellcanvas-adapter` (add `.exe` on Windows), or put that
+executable on PATH. It requires Rust/Cargo to build Rust adapters; it does not
+require Node, the desktop source tree or a device connection.
+
+```sh
+shellcanvas-adapter init ./my-device --id org.example.device --name "My device" --sdk-source /absolute/path/to/sdk-source
+shellcanvas-adapter build ./my-device ./my-device-package --debug
+shellcanvas-adapter validate ./my-device-package/adapter.json
+```
+
+Omit `--debug` for a release build. Parent directories must already exist; the
+project and package output must be new directories. Builds reuse `Cargo.lock`
+once created. The generated project's SDK dependency points to the supplied
+source directory until an official registry release is available. Edit its
+`Cargo.toml` when moving that SDK. The starter exposes a custom echo service
+under your chosen ID; it does not claim Files or Terminal support.
+
+Open ShellCanvas's Apps → Connection adapters → Install adapter and select the
+package's `adapter.json`. Review native-code trust. Add the installed source in
+the connection editor and select its service ID under Additional services. An
+app that requests `services.<service-id>` can consume its methods. Updates use a
+new manifest version and output directory; existing connections keep their old
+generation until explicit replacement or reconnect.
+
+`shellcanvas-adapter pack SOURCE_JSON EXECUTABLE NEW_OUTPUT [--version VERSION]`
+packages an already-built executable, including implementations in other
+languages. `platform: "current"` and `{exe}` in source paths expand to the
+tool's host platform. Assets are streamed into the new output and hashed; the
+manifest is written last. A failed pack can leave an incomplete output directory;
+retry into a fresh directory. `validate` checks metadata and every asset hash
+without executing anything. The desktop uses the same manifest validator and
+independently verifies the assets again before installation and connection.
+
+Editor schemas are in `schemas/adapter-source.schema.json` and
+`schemas/adapter-package.schema.json`, also printable with `schema source` or
+`schema package`. They describe structure; CLI validation additionally enforces
+byte lengths, reserved filenames, unique IDs/paths, semver and file hashes.
+Credentials must not appear in source files or packaged password defaults.
+
 The `examples/echo.rs` program implements a synthetic custom service and a
 cancelable wait with this SDK alone. Build it with `cargo build --example echo`.
 Its executable can be packaged as a native adapter; it does not contact a real
@@ -47,6 +94,7 @@ your implementation. Never put passwords in logs or public error messages.
 streams. `wire` is public for implementations in other languages and contract
 harnesses; this does not turn untrusted input into trusted device operations.
 
-Standalone generators, manifest schemas, packaging commands and desktop
-installation examples are still being developed. This crate is the shared
-protocol/server foundation, not the completed adapter developer kit.
+The generated custom-service workflow and independent package installation are
+covered by the repository verification. Standard-service starter variants and
+the AI development skills remain separate work. Actual device protocols and
+non-Windows native verification are not established by the synthetic examples.
