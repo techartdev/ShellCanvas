@@ -61,6 +61,59 @@ function fixture(queue = new DialogQueue()) {
   return { queue, scope, services, state };
 }
 describe("window-owned system dialogs", () => {
+  it("retains each Save As opener through replacement review without sharing focus between owners", async () => {
+    const queue = new DialogQueue();
+    const first = fixture(queue);
+    const second = fixture(queue);
+    const firstButton = {} as HTMLElement;
+    const secondButton = {} as HTMLElement;
+    const pickerButton = {} as HTMLElement;
+    const browser = { activeElement: firstButton };
+    vi.stubGlobal("document", browser);
+    try {
+      const firstSave = first.scope.api.files.saveTextAs({
+        text: "first draft",
+      });
+      const firstPicker = queue.snapshot()[0];
+      expect(firstPicker.returnFocus).toBe(firstButton);
+      browser.activeElement = secondButton;
+      const secondSave = second.scope.api.files.saveTextAs({
+        text: "second draft",
+      });
+      const secondPicker = queue.snapshot()[1];
+      expect(secondPicker.returnFocus).toBe(secondButton);
+      browser.activeElement = pickerButton;
+      firstPicker.resolve({ parent: "opaque:root", name: "draft.txt" });
+      secondPicker.resolve({ parent: "opaque:root", name: "draft.txt" });
+      await vi.waitFor(() => {
+        expect(queue.snapshot()).toHaveLength(2);
+        expect(
+          queue.snapshot().every((request) => request.kind === "message"),
+        ).toBe(true);
+      });
+      const firstReview = queue
+        .snapshot()
+        .find((request) => request.owner === first.scope)!;
+      const secondReview = queue
+        .snapshot()
+        .find((request) => request.owner === second.scope)!;
+      expect(firstReview.returnFocus).toBe(firstButton);
+      expect(secondReview.returnFocus).toBe(secondButton);
+      firstReview.resolve("cancel");
+      secondReview.resolve("replace");
+      await expect(firstSave).resolves.toBeNull();
+      await expect(secondSave).resolves.toMatchObject({
+        text: "second draft",
+        revision: "text-r2",
+      });
+      expect(first.services.saveText).not.toHaveBeenCalled();
+      expect(second.services.saveText).toHaveBeenCalledTimes(1);
+    } finally {
+      first.scope.dispose();
+      second.scope.dispose();
+      vi.unstubAllGlobals();
+    }
+  });
   it("a no-replacement Save As cannot read or overwrite an existing file even with broad window capabilities", async () => {
     const { queue, scope, services } = fixture();
     const saving = scope.api.files.saveTextAs({

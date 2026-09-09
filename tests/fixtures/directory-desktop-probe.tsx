@@ -186,6 +186,10 @@ function Desktop() {
           position: "absolute",
           bottom: 10,
           left: 20,
+          right: 20,
+          maxHeight: 38,
+          overflow: "auto",
+          overflowWrap: "anywhere",
           color: "#b7dbd1",
           font: "12px monospace",
         }}
@@ -454,7 +458,11 @@ async function run() {
 void run()
   .then(() => {
     const output = document.getElementById("probe-result")!;
-    output.textContent = JSON.stringify({ success: true, checks });
+    output.textContent = JSON.stringify({
+      success: true,
+      checks,
+      viewport: { width: window.innerWidth, height: window.innerHeight },
+    });
     output.dataset.success = "true";
   })
   .catch((error) => {

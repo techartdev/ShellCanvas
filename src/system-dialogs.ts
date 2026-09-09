@@ -16,6 +16,11 @@ type RequestContent =
   | { kind: "open"; options: OpenFileOptions }
   | { kind: "save"; options: SaveFileOptions };
 type Answer = string | readonly FileEntry[] | FileSaveSelection | null;
+function currentFocus(): HTMLElement | null {
+  return typeof document === "undefined"
+    ? null
+    : (document.activeElement as HTMLElement | null);
+}
 export type DialogRequest = RequestContent & {
   id: number;
   owner: SystemScope;
@@ -44,6 +49,7 @@ export class DialogQueue {
     owner: SystemScope,
     content: RequestContent,
     control?: DialogControl,
+    returnFocus = currentFocus(),
   ): Promise<Answer> {
     owner.check(control);
     if (this.requests.length >= 32)
@@ -67,10 +73,7 @@ export class DialogQueue {
         ...content,
         id,
         owner,
-        returnFocus:
-          typeof document === "undefined"
-            ? null
-            : (document.activeElement as HTMLElement | null),
+        returnFocus,
         resolve: finish,
         reject: finish,
       };
@@ -114,8 +117,12 @@ export class SystemScope {
     readonly focus: () => void,
     private queue = desktopDialogs,
   ) {
-    const dialogs: SystemAPI["dialogs"] = {
-      messageBox: async (options, control) => {
+    const dialogs = {
+      messageBox: async (
+        options: MessageBoxOptions,
+        control?: DialogControl,
+        returnFocus?: HTMLElement | null,
+      ) => {
         text(options.title, "Title");
         text(options.message, "Message", 16384);
         const buttons = (options.buttons ?? [{ id: "ok", label: "OK" }]).map(
@@ -149,11 +156,15 @@ export class SystemScope {
           this,
           { kind: "message", options: { ...options, buttons } },
           control,
+          returnFocus,
         );
         this.check(control);
         return result as string | null;
       },
-      openFile: async (options = {}, control) => {
+      openFile: async (
+        options: OpenFileOptions = {},
+        control?: DialogControl,
+      ) => {
         this.require("files.read");
         fileOptions(options);
         if (options.kind && !["file", "directory"].includes(options.kind))
@@ -182,7 +193,11 @@ export class SystemScope {
         this.check(control);
         return result as readonly FileEntry[] | null;
       },
-      saveFile: async (options = {}, control) => {
+      saveFile: async (
+        options: SaveFileOptions = {},
+        control?: DialogControl,
+        returnFocus?: HTMLElement | null,
+      ) => {
         this.require("files.read");
         fileOptions(options);
         if (options.name !== undefined) text(options.name, "File name", 1024);
@@ -190,12 +205,13 @@ export class SystemScope {
           this,
           { kind: "save", options: { ...options } },
           control,
+          returnFocus,
         );
         this.require("files.read");
         this.check(control);
         return result as FileSaveSelection | null;
       },
-    };
+    } satisfies SystemAPI["dialogs"];
     this.api = Object.freeze({
       apiVersion: 1,
       dialogs: Object.freeze(dialogs),
@@ -212,7 +228,14 @@ export class SystemScope {
           if (typeof contents !== "string")
             throw new SystemError("invalid", "Text contents are required.");
           this.require("files.create");
-          const selected = await dialogs.saveFile(selectionOptions, control);
+          // The replacement review is part of this same operation. Its opener
+          // is the original app control, not a control in the retired picker.
+          const returnFocus = currentFocus();
+          const selected = await dialogs.saveFile(
+            selectionOptions,
+            control,
+            returnFocus,
+          );
           if (!selected) return null;
           const target = await prepareSaveAs(
             services,
@@ -235,6 +258,7 @@ export class SystemScope {
                 cancelId: "cancel",
               },
               control,
+              returnFocus,
             );
             if (answer !== "replace") return null;
           }

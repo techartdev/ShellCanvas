@@ -119,8 +119,13 @@ actual Files, system picker and Copy/Move dialog with synthetic paged services.
 Its first verified run passed 12 checks: visible first-page delivery, navigation
 while the next page is pending, late-reply refusal, 50,000-entry discovery with
 bounded DOM rows, End/Home and scroll access to the final entry, original opaque
-picker results and owner cleanup. A subsequent refresh-selection check and compact
-800x900 rerun await browser-origin approval. This fixture uses no remote host or
+picker results and owner cleanup. The approved follow-up passes all 13 checks at
+1360×900 and 800×900, including selection retention across a refresh whose selected
+item arrives on a later page. Each final view renders 29 rows for 50,000 entries.
+The test result now records its viewport, and its output is contained so it does
+not introduce page overflow. Retained reports are
+`.local/ui-validation/directory-1360.json` and `directory-800.json`.
+This fixture uses no remote host or
 system clipboard; native adapter integration is recorded separately in
 [adapter packages](adapter-packages.md).
 

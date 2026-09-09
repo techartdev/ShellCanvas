@@ -4,6 +4,9 @@ Installed apps can read, create and revision-check text documents through `clien
 
 File browsing does not imply text-document access. Check that discovery reports `system.files.readText` as both `granted` and `available` before offering an editor action, and refresh on service/environment events. Operation metadata narrows `files.read` for limited providers; read-only text access does not require edit/create support. Existing drafts remain local when text access disappears. Calls still validate availability because it can change after discovery.
 
+The example below needs `system.dialogs`, `files.read` and `files.edit` in its
+app manifest. A read-only viewer can omit the save call and `files.edit` grant.
+
 ```ts
 import {
   connectToShellCanvas,

@@ -122,16 +122,18 @@ Implemented means the stated behavior and platform, not completion of the goal.
       verifier builds and packages all four outside the checkout, checks source and
       package schemas, and passes six standard-service tests against the production
       host. See [starter behavior and evidence](adapter-sdk.md#standard-service-starters).
-- [ ] **Incremental native browsing:** bundled Files, system file pickers and the
+- [x] **Incremental native browsing:** bundled Files, system file pickers and the
       Copy/Move destination dialog now use provider pages and cancellation without
       a total-tree/file cap. Transfers use incremental traversal and a disk-backed
       metadata catalog.
       [Native directory readers](native-directory-readers.md) now supply demand-driven
       adapter and SFTP pages with cancellation/cleanup and source replacement checks.
       Native IPC registration, app permission routing and public broker integration
-      preserve that demand and ownership. The browser fixture passed its first 12
-      progressive-discovery and 50,000-entry viewport checks. Finish the added
-      refresh-selection and compact-layout walkthrough before closing this gate.
+      preserve that demand and ownership. The browser fixture passes all 13
+      progressive-discovery and 50,000-entry checks at 1360×900 and 800×900,
+      including refresh-selection retention, keyboard/scroll access to the final
+      entry, shared pickers and cleanup. Each final view renders 29 rows; retained
+      viewport reports are linked from the native directory reader guide.
 - [x] **Composition workflow validation (Windows):** the 12-check
       [connection UI fixture](connection-ui-validation.md) verifies mixed-source
       enrollment through host-key review, initialization cancellation, stale callbacks,
@@ -149,6 +151,10 @@ Implemented means the stated behavior and platform, not completion of the goal.
 - [ ] **Interaction/accessibility:** dialogs, keyboard/focus, guards and partial
       capabilities across desktop/tablet layouts. Compact Windows fixtures cover
       800×900 and 1360×900; physical tablet/mobile behavior is follow-up product work.
+      The current browser walkthrough verifies compact Open/Save/folder pickers,
+      keyboard selection, safe replacement defaults and focus restoration. It found
+      and fixed lost opener focus across the compound Save As replacement review;
+      a two-owner regression checks cancellation and successful replacement.
 - [ ] **Documentation and API review:** align SDK declarations, method/grant
       discovery, schemas, examples, skills and guides. Remove superseded pending-work
       claims while preserving historical evidence. Review errors, cancellation and

@@ -54,7 +54,7 @@ try {
 | Text clipboard         | `clipboard.readText(signal?)`, `writeText(text, signal?)`                           | `system.clipboard.read` or `system.clipboard.write`                                         |
 | Custom device services | `services.call(method, params?, signal?)`                                           | `services.<service-id>` for the selected adapter service                                    |
 
-All methods are asynchronous except subscription disposal. `connectToShellCanvas(timeoutMs?)` must run inside a desktop-owned app frame. `dispose()` closes the instance channel; page teardown does this automatically. Named types, `Json`, `RpcCode` and `RpcError` are exported from the package root. Manifest parsers/types are available from `@shellcanvas/app-sdk/package`.
+Service calls are asynchronous. `events.subscribe` synchronously returns an unsubscribe function, and `dispose()` synchronously closes the instance channel; page teardown does this automatically. `connectToShellCanvas(timeoutMs?)` must run inside a desktop-owned app frame. Named types, `Json`, `RpcCode` and `RpcError` are exported from the package root. Manifest parsers/types are available from `@shellcanvas/app-sdk/package`.
 
 Window actions affect only the calling window in the active workspace. `getState()`
 returns visibility, focus, layout mode and `canMaximize`; maximize is unavailable
@@ -73,8 +73,9 @@ streams 32 KiB chunks and publishes only a complete image. Reads and writes capt
 their pixels, so subsequent caller/clipboard changes do not alter an in-progress
 snapshot. Dimensions must match the exact byte count. Images need memory for their
 pixels; there is no application-specific total-image cap. Cancellation cannot undo
-native publication; inspect uncertain outcomes before retrying. File/custom-format
-clipboard publication and mobile image support are not provided by this API.
+native publication; inspect uncertain outcomes before retrying. For file publication,
+use the file clipboard methods below. Custom formats and mobile image support
+remain outside this contract.
 
 `clipboard.pasteFiles({ binding, path }, signal?)` prepares native clipboard files
 and folders for upload, same-workspace remote copy, or a Cut move. It requires
