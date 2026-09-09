@@ -1,6 +1,13 @@
 # App system API
 
-Status: first implemented system-service slice, API version 1. Every app rendered by a desktop window receives `context.system`. Direct legacy component embeds may omit it. Runtime package loading and extension isolation are tracked separately in [the kernel roadmap](kernel-roadmap.md); this API does not yet make arbitrary JavaScript safe to install.
+API version 1. Bundled apps receive these shared services as `context.system`;
+installed apps obtain them from `client.system` after `connectToShellCanvas()`.
+Use the [standalone app guide](app-sdk.md) to create an installed app. The examples
+below describe the shared workflows; the `services.readText(path)` example uses
+the bundled, workspace-bound service handle. Installed apps use the separate
+[public file API](app-files.md), which also captures the accepted workspace binding.
+Package loading, grants and the app-frame boundary belong to the
+[runtime app layer](runtime-apps.md), not to dialog implementations.
 
 ## Dialogs
 
@@ -61,7 +68,12 @@ Set `allowReplace: false` to restrict this invocation to a new destination even 
 
 All calls accept an optional second argument `{ signal: AbortSignal }`. User cancellation resolves `null` (or a message-box cancel ID). Caller abort, hiding the owning window/workspace, disposal, or session replacement rejects outstanding dialogs. A closed handle cannot be used for new work. File capability access is checked before opening and before delivering a selection. The owning window gets focus; focus returns to the initiating control when the dialog closes.
 
-`SystemError.code` is one of `aborted`, `closed`, `unavailable`, `invalid`, or `busy`. Provider errors continue to carry their own messages; this first slice does not yet normalize all backend errors. The queue allows 32 pending dialogs to prevent accidental prompt flooding. This is unrelated to file or directory size.
+Bundled calls use `SystemError.code`: `aborted`, `closed`, `unavailable`, `invalid`,
+or `busy`. Installed apps receive SDK `RpcError` values; the broker preserves
+those system codes, additionally rejects unapproved calls as `denied`, and reports
+other service failures as `failed` with their message. See the
+[SDK error reference](../packages/app-sdk/README.md). The queue allows 32 pending
+dialogs to prevent accidental prompt flooding. This is unrelated to file or directory size.
 
 Cancellation prevents future steps, but cannot roll back a write already dispatched to a remote provider. Retain drafts and inspect the destination after a connection loss during writing; do not automatically retry writes. Window lifecycle, storage, clipboard and custom services are available through the [runtime app SDK](app-sdk.md), with broker-enforced grants. Their remaining integration and platform gates are tracked in the kernel roadmap.
 

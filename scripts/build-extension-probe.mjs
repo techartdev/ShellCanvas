@@ -79,6 +79,7 @@ await build({
         resolve("tests/fixtures/catalog-coordination-probe.html"),
         resolve("tests/fixtures/adapter-desktop-probe.html"),
         resolve("tests/fixtures/source-switch-probe.html"),
+        resolve("tests/fixtures/connection-ui-probe.html"),
         ...(process.env.SHELLCANVAS_SDK_PROBE === "1"
           ? [resolve("tests/fixtures/sdk-starter-probe.html")]
           : []),

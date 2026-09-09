@@ -21,9 +21,19 @@ Scopes are stable per manifest and workspace handle. Multiple instances of one a
 
 The shared file clipboard aliases only move-capable scopes to the owning workspace clipboard. It remains tied to that workspace's lifetime, so scoping does not break cross-window Cut/Paste or let a reader call move through the clipboard. No paths are translated by this layer.
 
-Clipboard imports require `files.upload`, exports require `files.download`, and Cut synchronization requires `files.move`. The receiving app adopts every pasted/downloaded/prepared-copy transfer ticket. Sequence checks require `files.read` and expose no clipboard contents. A caller cannot start or cancel another app's clipboard transfers; stale preparation is canceled if its workspace closes.
+Clipboard imports require `files.upload`, exports require `files.download`, and
+Cut synchronization requires `files.move`. `cutToSystem` defaults to publishing a
+move reference only. Passing `true` for its `exportContents` argument additionally requires
+`files.download`; a move declaration alone cannot authorize external file-content
+export. The receiving app adopts every pasted/downloaded/prepared-copy transfer
+ticket. Sequence checks require `files.read` and expose no clipboard contents. A
+caller cannot start or cancel another app's clipboard transfers; stale preparation
+is canceled if its workspace closes.
 
-This is a trusted bundled-module contract. Arbitrary third-party code is not isolated from the webview, native IPC or source imports. Do not enable external packages based on these checks alone. Native extension authorization, execution isolation and composite per-binding policy remain prerequisites for that work.
+This is a trusted bundled-module contract. Source modules are not isolated from
+the webview, native IPC or source imports. Installed third-party packages use the
+separate [runtime app boundary](runtime-apps.md), with their own grants, broker
+and source-binding enforcement. They must not import this internal service layer.
 
 ## Verification
 

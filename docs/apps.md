@@ -1,6 +1,11 @@
 # Build a bundled desktop app
 
-The current SDK is a trusted source-module API. There is no download/install mechanism, sandbox, stable published package or permission enforcement for third-party JavaScript. API version 1 marks this development contract, not a promise of long-term compatibility.
+This guide is for trusted apps compiled into the desktop. Community apps should
+start with the [standalone SDK](app-sdk.md) and [runtime app packages](runtime-apps.md),
+which install without rebuilding ShellCanvas and use the reviewed app boundary.
+Bundled source modules have broader privileges and do not gain isolation from
+their capability declarations. API version 1 marks the current development
+contract, not a promise of long-term compatibility.
 
 ## Start from Host details
 

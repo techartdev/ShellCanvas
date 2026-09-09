@@ -18,8 +18,18 @@ Connection-specific labels now use the reported terminal adapter. The desktop cl
 
 ## Verification
 
-All 70 frontend tests, 54 Rust tests, all-target Clippy and the standard Windows debug build passed. Focused tests cover source attribution, discovery-limited support, partial connection loss, stale reads after recovery, uncertain writes, transfer cleanup, late polls and independent console I/O.
+At the initial partial-availability checkpoint, 70 frontend tests, 54 Rust tests,
+all-target Clippy and the standard Windows debug build passed. Focused tests cover
+source attribution, discovery-limited support, partial connection loss, stale reads
+after recovery, uncertain writes, transfer cleanup, late polls and independent console I/O.
 
 The browser fixture at `tests/fixtures/service-status.html` uses the actual desktop components and status poll with fake FTP-like file and serial-like console services. The walkthrough verified cached Files with disabled actions after file loss, continued terminal input with one shell opening, source/status rows in Host details, restored read-only file access, disabled console controls after console loss, and successful navigation to Documents through the surviving file service. It implements no new network protocol and changes no remote host.
 
-This is an incremental BASE-09/10 delivery. Native service IDs/generations beyond connection identity, independent-leg reconnect, event-driven cancellation/status, API-only desktop walkthroughs and native mixed-service UI verification remain. Production connection setup still offers SSH only.
+Production setup now supports [composed workspaces](workspace-bindings.md) with
+built-in SSH and installed adapters, independent source replacement, explicit
+service identities and custom-API-only workspaces. The adapter desktop fixture
+covers generated custom-service-only installation and calls; the
+[connection UI fixture](connection-ui-validation.md) covers native polling after
+partial file loss while preserving the console. Status is polled; push-based
+health reporting is not required by the current adapter contract. See the
+[kernel roadmap](kernel-roadmap.md) for remaining validation and platform work.

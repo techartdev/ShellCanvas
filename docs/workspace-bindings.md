@@ -42,7 +42,7 @@ The production `replace_adapter_source` command prepares one source, acquires re
 
 ### Desktop source-switch probe
 
-`tests/fixtures/source-switch-probe.html` renders the real Files, Terminal, Editor and shared dialogs with two synthetic file sources and an independent echo console. The source changes without changing the logical workspace ID. It checks retained editor/terminal elements, console input, draft/undo retention, disabled old Save/Reload, and Save As through the new provider. The fixture rejects any old provider location sent to the replacement. It does not exercise a real protocol, the future replacement command, or the user's clipboard.
+`tests/fixtures/source-switch-probe.html` renders the real Files, Terminal, Editor and shared dialogs with two synthetic file sources and an independent echo console. The source changes without changing the logical workspace ID. It checks retained editor/terminal elements, console input, draft/undo retention, disabled old Save/Reload, and Save As through the new provider. The fixture rejects any old provider location sent to the replacement. It isolates UI rebinding; the native replacement command is covered by the adapter fixture. It does not exercise a real device protocol or the user's clipboard.
 
 ```powershell
 npm run tauri -- build --debug --no-bundle --config src-tauri/tauri.source-switch-probe.conf.json
@@ -53,8 +53,13 @@ The runner records `.local/native-extension-probe/result.json`. Restore the norm
 
 The ownership regression suite covers independent FTP-like files and serial-like console sources, failure of the file leg with continued console byte I/O, shared leases across workspaces, last-owner release, duplicate/foreign binding refusal, file-source isolation, delayed reads, uncertain writes, late console cleanup, transfer I/O refusal and abort after closure. Replacement cases additionally cover a surviving open console, abandoned/rejected/competing proposals, retired-generation reuse, capability loss/recovery, post-commit cleanup failure and preserved custom bindings. They use fake adapters through real neutral service interfaces; they do not implement FTP or serial protocols.
 
-All 53 Rust tests, all-target Clippy and the standard Windows debug build passed. The authorized evtinsait probe exercised the production owner with read-only SFTP, two independent terminals, resizing, surviving-console input, closed-workspace file refusal and teardown. It changed no remote files. The existing terminal layout was rechecked at 500px and 260px: unused row space matches the theme and stays above the footer; no further terminal source change was needed.
+At the workspace-owner checkpoint, 53 Rust tests, all-target Clippy and the standard Windows debug build passed. The authorized evtinsait probe exercised the production owner with read-only SFTP, two independent terminals, resizing, surviving-console input, closed-workspace file refusal and teardown. It changed no remote files. The existing terminal layout was rechecked at 500px and 260px: unused row space matches the theme and stays above the footer; no further terminal source change was needed.
 
 Production setup now also supports [installed native adapters](adapter-packages.md), with explicit file/console assignments and typed configuration. Those processes use this same workspace owner, and each selected source has its own connection identity. Whole-workspace reconnect preserves windows and acquires new handles. Native integration checks cover distinct file/console processes, unavailable capabilities and running connections surviving package updates/removal.
 
-[Service availability](service-availability.md) supplies native snapshots, polling and partial UI. Persistent composite profiles, mixing the built-in SSH connector with native packages, remaining standard adapter bridges and the additional failure/platform gates remain before BASE-09/10 are complete.
+[Service availability](service-availability.md) supplies native snapshots, polling
+and partial UI. [Persistent composite profiles](workspace-profiles.md), built-in
+SSH alongside native packages, and the standard adapter service bridges are now
+implemented. Current validation requirements and separate platform milestones
+are tracked in the [kernel roadmap](kernel-roadmap.md); the historical test counts
+above are not current completion totals.

@@ -71,7 +71,7 @@ Implemented means the stated behavior and platform, not completion of the goal.
 | System UI                | Window-owned message boxes, Open/Save pickers, revision-checked Save As, focus/cancellation and bundled Editor adoption                                    | [System API](system-api.md); generated app and desktop fixtures                                                                                          |
 | App lifecycle            | Environment/discovery/events; window snapshots and controls; guarded close; revision-checked app data/settings                                             | [Window API](app-window.md), [events](app-events.md), [storage](app-storage.md)                                                                          |
 | Remote app services      | Text documents, file actions and paged directory API; byte consoles; native transfer jobs; remote settings and namespaced custom calls                     | [Files](app-files.md), [console](app-console.md), [transfers](app-transfers.md), [settings](app-host-settings.md), [custom services](custom-services.md) |
-| Clipboard                | Text and RGBA images; Windows native file export/paste; remote Copy shared between installed apps and bundled Files within the original workspace/provider | [App clipboard](app-clipboard.md), [native clipboard](system-clipboard.md); injected clipboard fixtures and native transfer tests                        |
+| Clipboard                | Text and RGBA images; Windows native file export/paste; remote Copy and single-item Cut shared between installed apps and bundled Files within the original workspace/provider | [App clipboard](app-clipboard.md), [native clipboard](system-clipboard.md); injected clipboard fixtures and native transfer tests                        |
 | Runtime apps             | Persistent reviewed install/update/disable/remove, retained code/grants and dirty/busy guards; fresh launch checks and cross-process removal leases        | [Runtime apps](runtime-apps.md); Windows installed-app and two-process fixtures                                                                          |
 | App boundary             | Owner-bound resource loader, isolated document, guarded native IPC, enforced broker and foreign/stale handle refusal                                       | [Runtime apps](runtime-apps.md); Windows negative fixtures. Other platforms remain gated                                                                 |
 | Runtime adapters         | Reviewed packages, immutable asset generations, cross-process leases, typed configuration and concurrent versioned protocol                                | [Packages](adapter-packages.md), [process contract](adapter-process.md); process and Windows installation fixtures                                       |
@@ -128,10 +128,17 @@ Implemented means the stated behavior and platform, not completion of the goal.
       preserve that demand and ownership. The browser fixture passed its first 12
       progressive-discovery and 50,000-entry viewport checks. Finish the added
       refresh-selection and compact-layout walkthrough before closing this gate.
-- [ ] **Composition UI walkthroughs:** successful mixed SSH/adapter enrollment
-      through host-key review, initialization cancellation and committed replacement
-      with a cleanup warning. Exercise files-only, console-only, custom-API-only and
-      partially disconnected workspaces. Preserve unrelated consoles and drafts.
+- [x] **Composition workflow validation (Windows):** the 12-check
+      [connection UI fixture](connection-ui-validation.md) verifies mixed-source
+      enrollment through host-key review, initialization cancellation, stale callbacks,
+      late-session cleanup, committed replacement warnings and partial file failure
+      with the console preserved. It uses synthetic services through the production
+      UI; real SSH and native adapter processes are checked separately. The native
+      adapter fixture covers custom-API-only workspaces and independent sources.
+      The service-availability walkthrough covers surviving files/console access;
+      the retained 10-check source-switch result covers drafts, undo history,
+      console input and Save As against the replacement source. This is layered
+      contract/UI evidence, not a new live-device or non-Windows claim.
 - [ ] **Follow-up: native platform evidence:** build/run macOS and Linux, then verify actual
       app-frame isolation, broker, catalog leases, custom protocols and cleanup before
       enabling installed UI there. A shell build does not establish runtime isolation.

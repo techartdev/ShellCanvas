@@ -1,0 +1,20 @@
+{
+  "productName": "ShellCanvas Connection UI Probe",
+  "identifier": "dev.shellcanvas.extensionprobe",
+  "build": {
+    "beforeBuildCommand": "node scripts/build-extension-probe.mjs",
+    "frontendDist": "../.local/native-extension-probe/dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "ShellCanvas connection UI probe",
+        "url": "tests/fixtures/connection-ui-probe.html",
+        "width": 1360,
+        "height": 900,
+        "visible": false
+      }
+    ]
+  }
+}
