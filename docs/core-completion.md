@@ -2,6 +2,11 @@
 
 User-authorized overnight goal, started 2026-09-08. Work stopped at the user's request after the editor clipboard checkpoint below, pending discussion. This list does not replace the wider backlog or claim the base is complete.
 
+**Historical record:** later work completed the Windows BASE-11 milestone and the
+Mac startup/layout follow-up. Use the [post-goal handoff](post-goal-backlog.md) for
+current remaining work; unchecked or pending statements below describe their
+recorded checkpoint, not today's completion status.
+
 ## Priorities and acceptance
 
 1. **Files menus and clipboard:** contextual open/preview/navigation, explicit copy name/path/text, clipboard path navigation, keyboard access and clear error feedback. Browser fixtures use fake clipboard contents; OS clipboard checks remain separate.

@@ -5,6 +5,10 @@ checklist for BASE-11. [Historical checkpoints](kernel-history.md) retain the
 earlier implementation and test records. Their statements about pending work
 describe that point in time, not the current backlog.
 
+The consolidated [post-goal handoff](post-goal-backlog.md) is the entry point for
+remaining native validation, deferred features and product decisions. It includes
+the Mac compatibility follow-up without reopening the Windows base API milestone.
+
 ## Objective and design rules
 
 Provide a small, coherent virtual-desktop API for bundled and community apps,
