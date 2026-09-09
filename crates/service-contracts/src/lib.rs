@@ -11,6 +11,8 @@ pub use connection::*;
 pub use copy::*;
 pub mod device;
 pub use device::*;
+pub mod directory;
+pub use directory::*;
 pub mod terminal;
 pub use terminal::*;
 pub mod settings;
@@ -159,6 +161,14 @@ pub struct TextDocument {
 pub trait FileSystemProvider: Send + Sync {
     /// None selects the provider's default location, not an assumed dot or root.
     async fn list(&self, path: Option<&str>) -> Result<Directory>;
+    /// Incremental scan with explicit ownership; None selects the default location.
+    /// The default adapts older providers and still materializes their listing.
+    async fn open_directory(
+        self: Arc<Self>,
+        path: Option<&str>,
+    ) -> Result<Box<dyn DirectoryReader>> {
+        Ok(Box::new(SnapshotDirectory::new(self.list(path).await?)))
+    }
     async fn locate(&self, path: &str) -> Result<FileLocation>;
     async fn preview(&self, path: &str) -> Result<String>;
 }

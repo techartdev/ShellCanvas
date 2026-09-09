@@ -571,11 +571,44 @@ impl FileSystemProvider for Bound<dyn FileSystemProvider> {
     async fn list(&self, path: Option<&str>) -> Result<Directory> {
         self.binding.run(false, self.service.list(path)).await
     }
+    async fn open_directory(
+        self: Arc<Self>,
+        path: Option<&str>,
+    ) -> Result<Box<dyn DirectoryReader>> {
+        self.binding.check()?;
+        let mut reader = self.service.clone().open_directory(path).await?;
+        if let Err(error) = self.binding.check() {
+            let _ = reader.close().await;
+            return Err(error);
+        }
+        Ok(Box::new(BoundBrowserDirectory {
+            binding: self.binding.clone(),
+            reader,
+        }))
+    }
     async fn locate(&self, path: &str) -> Result<FileLocation> {
         self.binding.run(false, self.service.locate(path)).await
     }
     async fn preview(&self, path: &str) -> Result<String> {
         self.binding.run(false, self.service.preview(path)).await
+    }
+}
+struct BoundBrowserDirectory {
+    binding: Binding,
+    reader: Box<dyn DirectoryReader>,
+}
+#[async_trait]
+impl DirectoryReader for BoundBrowserDirectory {
+    async fn next(&mut self) -> Result<DirectoryPage> {
+        let result = self.binding.run(false, self.reader.next()).await;
+        if result.is_err() {
+            let _ = self.reader.close().await;
+        }
+        result
+    }
+    async fn close(&mut self) -> Result<()> {
+        // Cleanup belongs to the captured source, even after it is retired.
+        self.reader.close().await
     }
 }
 #[async_trait]

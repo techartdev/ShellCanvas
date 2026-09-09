@@ -5,6 +5,106 @@ use shellcanvas_services::{TerminalSize, TERMINAL_CHUNK};
 use std::{path::PathBuf, time::Duration};
 const DEADLINE: Duration = Duration::from_secs(4);
 #[tokio::test]
+async fn directory_readers_fetch_only_requested_pages_and_keep_independent_positions() {
+    let process = fixture(json!({"standard":"files","entries":50_000})).await;
+    let files = process.files().unwrap();
+    let before = process
+        .call("acme.calls", Value::Null, DEADLINE)
+        .await
+        .unwrap()
+        .as_u64()
+        .unwrap();
+    let mut first = files.clone().open_directory(None).await.unwrap();
+    let mut second = files.clone().open_directory(None).await.unwrap();
+    let page = first.next().await.unwrap();
+    assert!(!page.done);
+    assert_eq!(
+        page.directory.entries.len(),
+        shellcanvas_services::DIRECTORY_PAGE
+    );
+    let after = process
+        .call("acme.calls", Value::Null, DEADLINE)
+        .await
+        .unwrap()
+        .as_u64()
+        .unwrap();
+    assert_eq!(
+        after - before,
+        2,
+        "only one files.list request and this counter request"
+    );
+    assert_eq!(
+        first.next().await.unwrap().directory.entries[0].path,
+        "opaque#128"
+    );
+    assert_eq!(
+        second.next().await.unwrap().directory.entries[0].path,
+        "opaque#0"
+    );
+    first.close().await.unwrap();
+    assert!(first.next().await.is_err());
+    drop(first);
+    assert_eq!(
+        second.next().await.unwrap().directory.entries[0].path,
+        "opaque#128"
+    );
+    drop(second);
+    assert_eq!(
+        process
+            .call("acme.echo", json!("alive"), DEADLINE)
+            .await
+            .unwrap(),
+        "alive"
+    );
+    process.close().await.unwrap();
+}
+#[tokio::test]
+async fn canceled_directory_page_retires_cursor_and_cancels_only_its_request() {
+    let process = fixture(
+        json!({"standard":"files","transferDelayMethod":"files.list","transferDelayMs":250}),
+    )
+    .await;
+    let mut reader = process.files().unwrap().open_directory(None).await.unwrap();
+    assert!(
+        tokio::time::timeout(Duration::from_millis(50), reader.next())
+            .await
+            .is_err()
+    );
+    assert!(reader.next().await.is_err());
+    reader.close().await.unwrap();
+    wait_count(&process, "acme.cancelCount", 1).await;
+    assert_eq!(
+        process
+            .call("acme.echo", json!("independent"), DEADLINE)
+            .await
+            .unwrap(),
+        "independent"
+    );
+    let mut fresh = process.files().unwrap().open_directory(None).await.unwrap();
+    assert_eq!(
+        fresh.next().await.unwrap().directory.entries[0].path,
+        "opaque#0"
+    );
+    process.close().await.unwrap();
+    assert!(fresh.next().await.is_err());
+}
+#[tokio::test]
+async fn invalid_directory_continuation_cannot_be_reused_or_poison_other_services() {
+    let process = fixture(json!({"standard":"files","changedPage":true})).await;
+    let mut reader = process.files().unwrap().open_directory(None).await.unwrap();
+    assert!(!reader.next().await.unwrap().done);
+    assert!(reader.next().await.is_err());
+    assert!(reader.next().await.is_err());
+    assert_eq!(
+        process
+            .call("acme.echo", json!(true), DEADLINE)
+            .await
+            .unwrap(),
+        true
+    );
+    process.close().await.unwrap();
+}
+#[tokio::test]
 async fn extended_text_and_settings_keep_revisions_and_readback_over_the_process_contract() {
     let process = fixture(json!({"standard":"both","extended":true})).await;
     let text = process.text().unwrap();

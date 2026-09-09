@@ -196,52 +196,39 @@ async fn prepare_ssh(
     if settings.is_some() {
         info.capabilities.push("host.settings".into());
     }
-    let files: Option<Arc<dyn FileSystemProvider>> = match connection.sftp().await {
-        Ok(sftp) => {
-            info.home = tokio::time::timeout(OP_TIMEOUT, sftp.canonicalize("."))
-                .await
-                .ok()
-                .and_then(Result::ok);
-            info.capabilities.push("files.read".into());
-            Some(Arc::new(SftpFileSystem(sftp)))
-        }
-        Err(e) => {
-            info.notices.push(format!("File browsing unavailable: {e}"));
-            None
-        }
-    };
+    let mut files: Option<Arc<dyn FileSystemProvider>> = None;
     let mut mutations: Option<Arc<dyn FileMutationService>> = None;
     let mut moves: Option<Arc<dyn FileMoveService>> = None;
     let mut transfers: Option<Arc<dyn FileTransferService>> = None;
-    let text: Option<Arc<dyn TextFileService>> = if files.is_some() {
-        match connection.text_files().await {
-            Ok(service) => {
-                if service.can_save() {
-                    info.capabilities.push("files.edit".into());
-                }
-                let service = Arc::new(service);
-                mutations = Some(service.clone());
-                moves = Some(service.clone());
-                transfers = Some(service.clone());
-                info.capabilities.extend([
-                    "files.manage".into(),
-                    "files.move".into(),
-                    "files.create".into(),
-                    "files.upload".into(),
-                    "files.download".into(),
-                    "files.copy".into(),
-                    "files.folders".into(),
-                ]);
-                Some(service)
+    let text: Option<Arc<dyn TextFileService>> = match connection.text_files().await {
+        Ok(service) => {
+            if service.can_save() {
+                info.capabilities.push("files.edit".into());
             }
-            Err(_) => {
-                info.notices
-                    .push("Text files can be previewed, but remote saving is unavailable.".into());
-                None
-            }
+            let service = Arc::new(service);
+            let browser = Arc::new(SftpBrowser(service.clone()));
+            info.home = browser.canonicalize(".").await.ok();
+            files = Some(browser);
+            info.capabilities.push("files.read".into());
+            mutations = Some(service.clone());
+            moves = Some(service.clone());
+            transfers = Some(service.clone());
+            info.capabilities.extend([
+                "files.manage".into(),
+                "files.move".into(),
+                "files.create".into(),
+                "files.upload".into(),
+                "files.download".into(),
+                "files.copy".into(),
+                "files.folders".into(),
+            ]);
+            Some(service)
         }
-    } else {
-        None
+        Err(error) => {
+            info.notices
+                .push(format!("File access unavailable: {error}"));
+            None
+        }
     };
     let resource = ConnectionResource::new(
         ConnectionIdentity {

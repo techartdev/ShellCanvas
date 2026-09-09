@@ -83,6 +83,9 @@ Implemented means the stated behavior and platform, not completion of the goal.
       browser listing still materializes a directory. Use provider cursors and
       cancellation without a total-tree/file cap. Transfers already use incremental
       traversal and a disk-backed metadata catalog.
+      [Native directory readers](native-directory-readers.md) now supply demand-driven
+      adapter and SFTP pages with cancellation/cleanup and source replacement checks.
+      IPC registration, broker integration and bundled consumers remain to be migrated.
 - [ ] **Composition UI walkthroughs:** successful mixed SSH/adapter enrollment
       through host-key review, initialization cancellation and committed replacement
       with a cleanup warning. Exercise files-only, console-only, custom-API-only and

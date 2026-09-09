@@ -94,7 +94,7 @@ The `files` service requires `files.list`, `files.locate`, and `files.preview`:
 
 `Directory` and `FileLocation` use the camelCase shapes in `shellcanvas-services`. Each page has directory metadata and up to 128 entries. `next: null` finishes the listing. Cursors are stateless/provider-owned continuation tokens: they must not allocate a retained server handle requiring a later release. The adapter must preserve listing identity or reject stale cursors; it must not silently switch locations between pages. Empty/unchanged next cursors and changed directory paths are rejected.
 
-Paths, parent locations, roots and cursor tokens remain opaque. The host does not split/join/normalize them or send them to a different service source. The compatibility bridge collects pages for the current browser's materialized `Directory` result, with a 30-second operation deadline. It is not a constant-memory directory UI. Recursive transfers use the separate incremental directory reader described below. There is no new total-entry count limit.
+Paths, parent locations, roots and cursor tokens remain opaque. The host does not split/join/normalize them or send them to a different service source. The [native directory reader](native-directory-readers.md) fetches a page per `next()` and retires canceled/failed scans. Its compatibility `list()` bridge still collects pages for current desktop consumers, with a 30-second operation deadline. It is not a constant-memory directory UI. Recursive transfers use the separate incremental directory reader described below. There is no new total-entry count limit.
 
 ## Optional file methods v1
 

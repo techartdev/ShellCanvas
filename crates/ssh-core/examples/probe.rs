@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 // Read-only integration probe. Never prints credentials or remote file contents.
 use shellcanvas_core::*;
+use std::sync::Arc;
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let args: Vec<String> = std::env::args().collect();
@@ -17,7 +18,20 @@ async fn main() -> anyhow::Result<()> {
     let info = inspect_host(&connection).await;
     println!("SSH authentication and known-host verification: OK");
     println!("Provider: {}; system: {}", info.provider, info.system);
-    let sftp = SftpFileSystem(connection.sftp().await?);
+    let file_service = Arc::new(connection.text_files().await?);
+    let sftp = Arc::new(SftpBrowser(file_service.clone()));
+    let mut scan = sftp.clone().open_directory(None).await?;
+    let first = scan.next().await?;
+    anyhow::ensure!(
+        first.directory.entries.len() <= DIRECTORY_PAGE,
+        "Directory page exceeded its bound"
+    );
+    scan.close().await?;
+    anyhow::ensure!(
+        scan.next().await.is_err(),
+        "Closed directory reader was reusable"
+    );
+    println!("Incremental SFTP page and early close: OK");
     let home = sftp.list(None).await?;
     println!("SFTP home listing: OK ({} entries)", home.entries.len());
     anyhow::ensure!(
@@ -43,11 +57,7 @@ async fn main() -> anyhow::Result<()> {
         !location.name.is_empty() && location.parent.is_some(),
         "File location metadata is incomplete"
     );
-    let text = connection
-        .text_files()
-        .await?
-        .read_text("/etc/os-release")
-        .await?;
+    let text = file_service.read_text("/etc/os-release").await?;
     anyhow::ensure!(
         text.path == location.path && text.name == location.name && text.parent == location.parent,
         "Text and browsing services disagree on canonical location"

@@ -35,58 +35,101 @@ impl AdapterProcess {
 struct Files(AdapterProcess);
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
-struct DirectoryPage {
+struct WireDirectoryPage {
     directory: Directory,
     next: Option<String>,
+}
+struct FileDirectory {
+    adapter: Option<AdapterProcess>,
+    path: Option<String>,
+    cursor: Option<String>,
+    metadata: Option<serde_json::Value>,
+}
+impl FileDirectory {
+    fn new(adapter: AdapterProcess, path: Option<&str>) -> Self {
+        Self {
+            adapter: Some(adapter),
+            path: path.map(str::to_owned),
+            cursor: None,
+            metadata: None,
+        }
+    }
+}
+#[async_trait]
+impl DirectoryReader for FileDirectory {
+    async fn next(&mut self) -> Result<DirectoryPage> {
+        // Taking ownership before awaiting makes cancellation terminal for this
+        // cursor. A late response can never be retried as the same page.
+        let adapter = self.adapter.take().context("Directory reader is closed")?;
+        let page: WireDirectoryPage = serde_json::from_value(
+            adapter
+                .call(
+                    "files.list",
+                    json!({"path":self.path,"cursor":self.cursor,"limit":DIRECTORY_PAGE}),
+                    OPERATION,
+                )
+                .await?,
+        )
+        .context("Invalid directory page from adapter")?;
+        if page.directory.path.is_empty()
+            || page.directory.entries.len() > DIRECTORY_PAGE
+            || (page.next.is_some() && page.directory.entries.is_empty())
+        {
+            bail!("Invalid directory page from adapter");
+        }
+        if page
+            .next
+            .as_ref()
+            .is_some_and(|next| next.is_empty() || Some(next) == self.cursor.as_ref())
+        {
+            bail!("The directory cursor did not advance");
+        }
+        let mut metadata = serde_json::to_value(&page.directory)?;
+        metadata
+            .as_object_mut()
+            .expect("directory object")
+            .remove("entries");
+        if self
+            .metadata
+            .as_ref()
+            .is_some_and(|previous| previous != &metadata)
+        {
+            bail!("The adapter changed directory during listing");
+        }
+        self.metadata = Some(metadata);
+        self.cursor = page.next;
+        let done = self.cursor.is_none();
+        if !done {
+            self.adapter = Some(adapter);
+        }
+        Ok(DirectoryPage {
+            directory: page.directory,
+            done,
+        })
+    }
+    async fn close(&mut self) -> Result<()> {
+        self.adapter.take();
+        self.cursor = None;
+        self.metadata = None;
+        Ok(())
+    }
 }
 #[async_trait]
 impl FileSystemProvider for Files {
     async fn list(&self, path: Option<&str>) -> Result<Directory> {
-        // The current browser contract still returns a materialized directory. Wire pages have
-        // no total-entry ceiling; transfer traversal will use its own incremental reader bridge.
-        let operation = async {
-            let mut cursor: Option<String> = None;
-            let mut directory: Option<Directory> = None;
-            loop {
-                let page: DirectoryPage = serde_json::from_value(
-                    self.0
-                        .call(
-                            "files.list",
-                            json!({"path":path,"cursor":cursor,"limit":TRANSFER_DIRECTORY_PAGE}),
-                            OPERATION,
-                        )
-                        .await?,
-                )
-                .context("Invalid directory page from adapter")?;
-                if page.directory.path.is_empty()
-                    || page.directory.entries.len() > TRANSFER_DIRECTORY_PAGE
-                {
-                    bail!("Invalid directory page from adapter");
-                }
-                if page
-                    .next
-                    .as_ref()
-                    .is_some_and(|next| next.is_empty() || Some(next) == cursor.as_ref())
-                {
-                    bail!("The directory cursor did not advance");
-                }
-                if let Some(existing) = &mut directory {
-                    if existing.path != page.directory.path {
-                        bail!("The adapter changed directory during listing");
-                    }
-                    existing.entries.extend(page.directory.entries);
-                } else {
-                    directory = Some(page.directory);
-                }
-                cursor = page.next;
-                if cursor.is_none() {
-                    return Ok(directory.expect("first page"));
-                }
-            }
-        };
+        let operation = collect_directory(Box::new(FileDirectory::new(self.0.clone(), path)));
         tokio::time::timeout(OPERATION, operation)
             .await
             .context("Directory listing timed out")?
+    }
+    async fn open_directory(
+        self: Arc<Self>,
+        path: Option<&str>,
+    ) -> Result<Box<dyn DirectoryReader>> {
+        if !self.0.connected() {
+            bail!("The adapter connection is closed");
+        }
+        Ok(Box::new(FileDirectory::new(self.0.clone(), path)))
     }
     async fn locate(&self, path: &str) -> Result<FileLocation> {
         let location: FileLocation = serde_json::from_value(

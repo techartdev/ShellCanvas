@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 pub mod connection;
+pub mod directory;
+pub use directory::SftpBrowser;
 pub mod file_actions;
 pub mod host_keys;
 pub use host_keys::*;

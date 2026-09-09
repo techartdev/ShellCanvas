@@ -411,12 +411,23 @@ async fn status_identifies_each_service_source_and_preserves_partial_availabilit
 #[derive(Default)]
 struct Files {
     calls: AtomicUsize,
+    directory_closes: AtomicUsize,
     delay: AtomicBool,
     entered: Notify,
     release: Notify,
 }
 #[async_trait]
 impl FileSystemProvider for Files {
+    async fn open_directory(
+        self: Arc<Self>,
+        path: Option<&str>,
+    ) -> Result<Box<dyn DirectoryReader>> {
+        assert_eq!(path, Some("opaque@files"));
+        Ok(Box::new(TestBrowserReader {
+            files: self,
+            closed: false,
+        }))
+    }
     async fn list(&self, path: Option<&str>) -> Result<Directory> {
         self.calls.fetch_add(1, Ordering::SeqCst);
         assert_eq!(path, Some("opaque@files"));
@@ -443,6 +454,95 @@ impl FileSystemProvider for Files {
         }
         Ok("Late file contents".into())
     }
+}
+struct TestBrowserReader {
+    files: Arc<Files>,
+    closed: bool,
+}
+impl TestBrowserReader {
+    fn release(&mut self) {
+        if !self.closed {
+            self.closed = true;
+            self.files.directory_closes.fetch_add(1, Ordering::SeqCst);
+        }
+    }
+}
+impl Drop for TestBrowserReader {
+    fn drop(&mut self) {
+        self.release();
+    }
+}
+#[async_trait]
+impl DirectoryReader for TestBrowserReader {
+    async fn next(&mut self) -> Result<DirectoryPage> {
+        if self.closed {
+            bail!("Directory closed");
+        }
+        self.files.entered.notify_one();
+        if self.files.delay.load(Ordering::SeqCst) {
+            self.files.release.notified().await;
+        }
+        Ok(DirectoryPage {
+            directory: self.files.list(Some("opaque@files")).await?,
+            done: true,
+        })
+    }
+    async fn close(&mut self) -> Result<()> {
+        self.release();
+        Ok(())
+    }
+}
+
+#[tokio::test]
+async fn directory_pages_and_cleanup_stay_with_their_source_after_replacement() {
+    let (old, transport) = source(711, "fixture.directory");
+    let (fresh, _) = source(712, "fixture.replacement");
+    let files = Arc::new(Files::default());
+    let mut workspace = WorkspaceServices::new(vec![old.clone()]).unwrap();
+    workspace.bind_files(&old, files.clone()).unwrap();
+    let mut survivor = WorkspaceServices::new(vec![old.clone()]).unwrap();
+    survivor.bind_files(&old, files.clone()).unwrap();
+    let captured = workspace.files.clone().unwrap();
+    let mut reader = captured
+        .clone()
+        .open_directory(Some("opaque@files"))
+        .await
+        .unwrap();
+    let mut independent = survivor
+        .files
+        .clone()
+        .unwrap()
+        .open_directory(Some("opaque@files"))
+        .await
+        .unwrap();
+    files.delay.store(true, Ordering::SeqCst);
+    let pending = tokio::spawn(async move {
+        let result = reader.next().await;
+        (reader, result)
+    });
+    files.entered.notified().await;
+    let retired = workspace
+        .replace_source(old.identity(), file_workspace(&fresh))
+        .unwrap();
+    files.release.notify_one();
+    let (mut reader, result) = pending.await.unwrap();
+    assert!(
+        result.is_err(),
+        "late old-source page must not reach the replacement workspace"
+    );
+    assert_eq!(files.directory_closes.load(Ordering::SeqCst), 1);
+    reader.close().await.unwrap();
+    assert!(reader.next().await.is_err());
+    assert!(captured.open_directory(Some("opaque@files")).await.is_err());
+    files.delay.store(false, Ordering::SeqCst);
+    assert!(independent.next().await.unwrap().done);
+    independent.close().await.unwrap();
+    assert_eq!(files.directory_closes.load(Ordering::SeqCst), 2);
+    retired.close().await.unwrap();
+    assert_eq!(transport.closes.load(Ordering::SeqCst), 0);
+    workspace.disconnect().await.unwrap();
+    survivor.disconnect().await.unwrap();
+    assert_eq!(transport.closes.load(Ordering::SeqCst), 1);
 }
 #[derive(Default)]
 struct Console {
