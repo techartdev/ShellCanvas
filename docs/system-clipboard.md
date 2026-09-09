@@ -2,7 +2,17 @@
 
 Files uses **Copy** / Ctrl+C for selected files or folders. Paste in another folder in the same workspace queues a revision-checked selection job, retaining sources and refusing existing destinations. The clipboard is shared across Files windows. Copy name/path remain explicit text actions; preview, address, terminal and editor text clipboard behavior is unchanged.
 
-On Windows, Copy also publishes virtual files to Explorer. No file bytes are fetched at Copy: the native clipboard exposes descriptors and streams the bytes when Explorer pastes. Keep ShellCanvas and the connection open until completion. There are no staging files or JavaScript byte buffers. The provider checks the captured source revision and size, including final verification before returning the last bytes. Explorer owns its progress, destination collision prompts and partial-file handling.
+On Windows, Copy also publishes virtual files to Explorer. No file bytes are fetched at Copy: the native clipboard exposes descriptors and streams the bytes when Explorer pastes. Keep ShellCanvas and the connection open until completion. There are no local content staging files or JavaScript content buffers. The provider checks the captured source revision and size, including final verification before returning the last bytes. Explorer owns its progress, destination collision prompts and partial-file handling.
+
+Remote Copy selections are shared between bundled Files and installed apps using
+the [public clipboard API](app-clipboard.md), within this ShellCanvas process and
+the original workspace. Native selection ownership includes the original
+file-service instance; a replaced connection or another workspace is refused.
+Each paste gets a fresh catalog, so repeated or overlapping pastes cannot change
+one another's destination paths. Clipboard inspection returns only kind/version;
+the matching version is checked again when preparing the captured selection.
+Local lists use upload permission and remote selections use copy permission.
+No permission failure falls back to a different transfer kind.
 
 Copy local files in Explorer, then use **Paste here** / Ctrl+V on the Files surface to upload them. Rust reads the Windows file list only on explicit Paste, snapshots root metadata into one disk catalog and returns one session/app-owned selection ticket. All source files open on demand when their transfer runs; changed sources are refused against the recorded metadata. Folder contents are discovered by the queued job. The existing queue supplies progress, cancellation, source checks, temporary-file cleanup and no-overwrite publication. Links, junctions, special files and duplicate destination names are refused. The captured remote destination is not changed by later navigation.
 

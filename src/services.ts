@@ -19,6 +19,7 @@ type SourcePins = {
 };
 const commandRoles: Record<string, "files" | "console" | "settings"> = {
   paste_system_files: "files",
+  paste_copied_files: "files",
   cut_system_file: "files",
   copy_system_files: "files",
   choose_download_files: "files",
@@ -85,8 +86,15 @@ function createNativeServices(pins?: SourcePins): HostServices {
     cancelClipboardPreparation: (sessionId, operation) =>
       invoke("cancel_clipboard_preparation", { sessionId, operation }),
     systemClipboardSequence: () => invoke("system_clipboard_sequence"),
-    pasteSystemFiles: (sessionId, parent) =>
-      invoke("paste_system_files", { sessionId, parent }),
+    inspectSystemFiles: () => invoke("inspect_system_files"),
+    pasteCopiedFiles: (sessionId, parent, sequence) =>
+      invoke("paste_copied_files", { sessionId, parent, sequence }),
+    pasteSystemFiles: (sessionId, parent, sequence) =>
+      invoke("paste_system_files", {
+        sessionId,
+        parent,
+        ...(sequence === undefined ? {} : { sequence }),
+      }),
     cutToSystem: (sessionId, path, revision, preparation) => {
       const onEvent = new Channel<TransferProgress>();
       onEvent.onmessage = preparation?.onProgress ?? (() => {});

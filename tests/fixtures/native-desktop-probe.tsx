@@ -43,6 +43,13 @@ let clipboardImage: import("@shellcanvas/app-sdk").ClipboardImage = {
 };
 let imageReads = 0;
 let fileClipboardReads = 0;
+let fileClipboardState: import("../../src/sdk").ClipboardFileState = {
+  kind: "local",
+  sequence: 70,
+};
+let remoteClipboardOwner: number | undefined;
+let sharedClipboardPastes = 0;
+const sharedClipboardJobs = new Set<number>();
 let fileClipboardWrites = 0;
 let heldFileExport: (() => void) | undefined;
 let fileExportCancellation = 0;
@@ -219,6 +226,20 @@ const services = {
     return transferTicket("copy");
   },
   systemFileClipboard: true,
+  inspectSystemFiles: async () => ({ ...fileClipboardState }),
+  pasteCopiedFiles: async (id: number, parent: string, sequence: number) => {
+    if (
+      !parent ||
+      id !== remoteClipboardOwner ||
+      fileClipboardState.kind !== "remote" ||
+      sequence !== fileClipboardState.sequence
+    )
+      throw new Error("Clipboard selection or source changed");
+    sharedClipboardPastes++;
+    const ticket = transferTicket("copy");
+    sharedClipboardJobs.add(ticket.id);
+    return [ticket];
+  },
   copyToSystem: async (
     _id: number,
     files: { path: string; revision: string }[],
@@ -230,29 +251,43 @@ const services = {
       });
       return 41;
     }
+    const bundledSelection =
+      files.length === 1 &&
+      files[0].path.endsWith("/welcome.md") &&
+      files[0].revision === "fixture-preview";
     if (
-      files.length !== 300 ||
-      files.some(
-        (file, i) =>
-          file.path !== `fixture:export-${i}` || file.revision !== "export-1",
-      ) ||
-      !preparation?.id
+      !bundledSelection &&
+      (files.length !== 300 ||
+        files.some(
+          (file, i) =>
+            file.path !== `fixture:export-${i}` || file.revision !== "export-1",
+        ) ||
+        !preparation?.id)
     )
       throw new Error("Incorrect clipboard export selection");
     fileClipboardWrites++;
-    preparation.onProgress?.({
+    remoteClipboardOwner = _id;
+    fileClipboardState = {
+      kind: "remote",
+      sequence: fileClipboardState.sequence + 1,
+    };
+    preparation?.onProgress?.({
       bytes: 0,
       total: 0,
       items: 0,
       phase: "preparing",
     });
-    return 42;
+    return fileClipboardState.sequence;
   },
   cancelClipboardPreparation: async () => {
     fileExportCancellation++;
   },
-  pasteSystemFiles: async (_id: number, parent: string) => {
-    if (parent !== "fixture:clipboard-target")
+  pasteSystemFiles: async (_id: number, parent: string, sequence?: number) => {
+    if (
+      parent !== "fixture:clipboard-target" ||
+      (sequence !== undefined && sequence !== fileClipboardState.sequence) ||
+      fileClipboardState.kind !== "local"
+    )
       throw new Error("Unexpected clipboard destination");
     fileClipboardReads++;
     return [{ ...transferTicket("upload"), name: "128 clipboard items" }];
@@ -292,7 +327,7 @@ const services = {
     transferRuns++;
     onProgress({ bytes: 60, total: 100, phase: "running" });
     try {
-      return ticket.direction === "copy"
+      return ticket.direction === "copy" && !sharedClipboardJobs.has(id)
         ? await new Promise<TransferOutcome>((resolve) => {
             heldTransfer = resolve;
           })
@@ -300,8 +335,9 @@ const services = {
             status: "completed",
             bytes: 100,
             total: 100,
-            path:
-              ticket.direction === "download"
+            path: sharedClipboardJobs.has(id)
+              ? "fixture:shared-copied"
+              : ticket.direction === "download"
                 ? "C:\\fixture\\private-local-path"
                 : "fixture:uploaded",
           };
@@ -396,7 +432,13 @@ const services = {
               modified: null,
             })),
           }
-        : previewServices.list(id, path),
+        : previewServices.list(id, path).then((directory) => ({
+            ...directory,
+            entries: directory.entries.map((entry) => ({
+              ...entry,
+              revision: "fixture-preview",
+            })),
+          })),
   connect: async () => ({ ...fixtureSession, id: ++sessionSerial }),
   readText: async (_id: number, path: string) => ({
     path,
@@ -597,6 +639,19 @@ async function install(version: string) {
     ]
       .find((item) =>
         item.closest("label")?.textContent?.includes("Read clipboard images"),
+      )!
+      .click();
+    [
+      ...document.querySelectorAll<HTMLInputElement>(
+        '.extension-review input[type="checkbox"]',
+      ),
+    ]
+      .find((item) =>
+        item
+          .closest("label")
+          ?.textContent?.includes(
+            "Read files and folders copied on this device",
+          ),
       )!
       .click();
   }
@@ -1112,6 +1167,45 @@ async function run() {
   checks.sdkFileClipboardDenied =
     (await ask(second, "file-clipboard-denied")).fileClipboard?.denied ===
       true && fileClipboardReads === 1;
+  checks.sdkSharedFileClipboard =
+    (await ask(first, "file-shared-paste")).fileClipboard?.completed === true &&
+    sharedClipboardPastes === 1;
+  const bundledFiles = first
+    .closest(".workspace-windows")!
+    .querySelector<HTMLElement>(".files-app");
+  if (!bundledFiles)
+    throw new Error("Bundled Files window is missing from clipboard fixture");
+  bundledFiles.dispatchEvent(
+    new Event("paste", { bubbles: true, cancelable: true }),
+  );
+  await until(
+    () => sharedClipboardPastes === 2 && transferTickets.size === 0,
+    "installed app clipboard pasted in bundled Files",
+  );
+  checks.bundledSharedFileClipboard =
+    !bundledFiles.querySelector(".inline-error") && fileClipboardReads === 1;
+  const welcome = await until(
+    () =>
+      [...bundledFiles.querySelectorAll<HTMLElement>(".file-row")].find((row) =>
+        row.textContent?.includes("welcome.md"),
+      ),
+    "bundled clipboard source row",
+  );
+  welcome.click();
+  await until(
+    () => welcome.classList.contains("active"),
+    "bundled file selection",
+  );
+  bundledFiles.dispatchEvent(
+    new Event("copy", { bubbles: true, cancelable: true }),
+  );
+  await until(
+    () => fileClipboardWrites === 2,
+    "bundled Files clipboard publication",
+  );
+  checks.bundledToSdkFileClipboard =
+    (await ask(first, "file-shared-paste")).fileClipboard?.completed === true &&
+    sharedClipboardPastes === 3;
   const secondEnvironment = await ask(second, "environment");
   const deniedFiles = (await ask(second, "files-denied")).files;
   checks.sdkFileGrantDenied = deniedFiles?.rejected === true;

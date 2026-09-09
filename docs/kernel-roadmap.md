@@ -17,6 +17,18 @@ Objective: provide a small, coherent virtual-desktop API for bundled and communi
 
 ## Direction
 
+Shared file clipboard checkpoint (2026-09-09): installed apps and bundled Files
+can paste each other's remote Copy selections within the original workspace and
+file-service instance. Paste captures the clipboard version, uses copy permission
+for remote selections and upload permission for local files, and creates a fresh
+disk catalog per paste. Source replacement and changed clipboard contents reject
+the operation. All 80 Windows installed-app checks pass, including app-to-app,
+app-to-Files and Files-to-app paths; native tests verify original-provider ownership
+and independent repeated pastes. These tests use synthetic clipboard services.
+Public Cut/move, custom formats, cross-process clipboard exchange, interruptible
+native preparation and remaining lifecycle/platform gates are still open. Earlier
+checkpoint paragraphs below describe their scope at that time.
+
 File export checkpoint (2026-09-09): installed apps can publish remote references
 through `client.clipboard.copyFiles`, with separate file-export/download grants,
 ordered metadata chunks, original-binding checks and mandatory publication busy

@@ -77,12 +77,14 @@ native publication; inspect uncertain outcomes before retrying. File/custom-form
 clipboard publication and mobile image support are not provided by this API.
 
 `clipboard.pasteFiles({ binding, path }, signal?)` prepares native clipboard files
-and folders for upload. It requires both `system.clipboard.files.read` and
-`files.upload`. The returned array contains owned transfer handles; preparation
+and folders for upload or same-workspace remote copy. It requires
+`system.clipboard.files.read` and the corresponding `files.upload` or `files.copy`
+grant. The returned array contains owned transfer handles; preparation
 does not start them. Call `run`, inspect the result, and `close` each handle using
 the transfer API. Empty/non-file clipboard contents return an empty array.
-Windows Explorer file-list input is supported; other platforms and virtual-file
-inputs are unavailable. A locally cut selection uploads a copy and keeps its
+Windows Explorer file-list input and this process's own remote clipboard selections
+are supported; other platforms and foreign virtual-file inputs are unavailable.
+A locally cut selection uploads a copy and keeps its
 source. Native file paths are not returned in ticket fields. Large selections
 share one job; contents stream natively and folders use disk-backed discovery.
 Pending native preparation remains busy until it returns, even after cancellation.
@@ -95,9 +97,11 @@ connection open until external Paste finishes. Copy completion means publication
 not a completed destination transfer. Cancellation cannot retract a publication
 already dispatched to the OS; do not retry uncertain results automatically.
 Pending native preparation remains host-enforced busy work, independently of an
-app's reported document state. Shared remote selections between installed apps
-and bundled Files, public Cut, and custom formats remain follow-ups. `pasteFiles`
-currently accepts local file lists, not virtual-file exports from `copyFiles`.
+app's reported document state. Remote Copy selections are shared between installed
+apps and bundled Files in the original workspace. Another workspace or replaced
+file-service connection is refused. The SDK captures and checks the clipboard
+version before preparation; it never falls back to another transfer permission.
+Public Cut, cross-process selection sharing and custom formats remain follow-ups.
 
 `call(method, params?, signal?)` uses the explicit broker method map and permission checks. It is not a native-command escape hatch. Use `services.call` for custom adapter methods. Discover methods first; `granted` and `available` are separate. Custom entries include the advertised service version and an opaque `source` identity. Declare `services.acme.sensor` to request access to a selected `acme.sensor` service; all its advertised methods share that grant. The app never supplies a native session or source ID. Custom JSON result validation belongs to the app and adapter contract.
 

@@ -45,7 +45,7 @@ export interface RemoteTransfer {
   close(): Promise<void>;
 }
 export interface AppTransfersAPI {
-  /** Prepare the current native file clipboard as owned upload work. Does not start copying. */
+  /** Prepare the current file clipboard as owned upload/copy work. Does not start copying. */
   pasteClipboard(
     destination: RemoteFileLocation,
     signal?: AbortSignal,
@@ -178,12 +178,29 @@ export function appTransferClient(
     }
   }
   return {
-    pasteClipboard: (destination, signal) =>
-      prepare(
-        "clipboardPaste",
-        { binding: destination.binding, parent: destination.path },
+    pasteClipboard: async (destination, signal) => {
+      const snapshot = (await peer.call(
+        "system.transfers.clipboardInspect",
+        { binding: destination.binding },
         signal,
-      ),
+      )) as { kind: "remote" | "local" | "empty"; sequence: number | null };
+      if (snapshot.kind === "empty") return [];
+      return prepare(
+        snapshot.sequence === null
+          ? "clipboardPaste"
+          : snapshot.kind === "remote"
+            ? "clipboardCopySnapshot"
+            : "clipboardPasteSnapshot",
+        {
+          binding: destination.binding,
+          parent: destination.path,
+          ...(snapshot.sequence === null
+            ? {}
+            : { sequence: snapshot.sequence }),
+        },
+        signal,
+      );
+    },
     upload: (destination, options, signal) =>
       prepare(
         options?.folder ? "uploadFolder" : "upload",

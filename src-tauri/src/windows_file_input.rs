@@ -20,9 +20,15 @@ impl Drop for Clipboard {
 }
 
 pub fn files() -> Result<Option<Vec<PathBuf>>, String> {
+    files_at(None)
+}
+pub fn files_at(expected: Option<u32>) -> Result<Option<Vec<PathBuf>>, String> {
     unsafe {
         OpenClipboard(None).map_err(|_| "The clipboard is busy. Try Paste again.".to_string())?;
         let _clipboard = Clipboard;
+        if expected.is_some_and(|expected| expected != sequence()) {
+            return Err("The clipboard changed before Paste. Try again.".into());
+        }
         if IsClipboardFormatAvailable(CF_HDROP.0 as u32).is_err() {
             return Ok(None);
         }

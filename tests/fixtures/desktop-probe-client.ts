@@ -48,6 +48,23 @@ window.addEventListener("message", async (event) => {
   let windowError: string | undefined;
   let imageClipboard: Record<string, boolean> | undefined;
   let fileClipboard: Record<string, boolean> | undefined;
+  if (event.data.action === "file-shared-paste") {
+    const client = (await connection)!;
+    const binding = (await client.environment.get()).binding!;
+    const jobs = await client.clipboard.pasteFiles({
+      binding,
+      path: "fixture:shared-target",
+    });
+    const result = await jobs[0].run();
+    await jobs[0].close();
+    fileClipboard = {
+      completed:
+        jobs.length === 1 &&
+        jobs[0].direction === "copy" &&
+        result.status === "completed" &&
+        result.destination?.path === "fixture:shared-copied",
+    };
+  }
   if (event.data.action === "file-copy-start") {
     const client = (await connection)!;
     const binding = (await client.environment.get()).binding!;

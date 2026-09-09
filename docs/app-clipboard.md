@@ -30,12 +30,11 @@ not automatically retry an uncertain result. Completed clipboard contents retain
 their original provider even after the exporting app window closes; source
 retirement cannot silently reroute deferred streams to a different device.
 
-This API currently exports to the Windows system clipboard. Shared remote
-Copy/Paste between installed apps and the bundled Files app, public Cut, custom
-formats and other native platforms remain required follow-ups. In particular,
-`pasteFiles` below accepts CF_HDROP file lists, not these virtual-file exports.
-The existing bundled Files copy/move clipboard continues to work within its
-workspace. Neither text nor image grants authorize file exports.
+This API currently publishes to the Windows system clipboard. That selection
+can also be pasted by installed apps and the bundled Files window in the same
+ShellCanvas process and original workspace. Public Cut, custom formats, other
+native platforms and transfer between separate ShellCanvas processes remain
+follow-ups. Neither text nor image grants authorize file exports.
 
 Seven SDK/broker tests cover chunking, captured revisions, grants, ownership,
 malformed staging, cancellation/registration races, replacement and closure.
@@ -45,12 +44,20 @@ services; it does not touch the user's clipboard or claim a new Explorer test.
 
 ## Files copied on this device
 
-`client.clipboard.pasteFiles(destination, signal?)` prepares uploads from the
-native file clipboard to a `{ binding, path }` remote directory. Declare both
-`system.clipboard.files.read` and `files.upload`. The file permission is independent
-of text/image access; permission denial happens before clipboard reading.
-Discovery exposes `system.transfers.clipboardPaste` only as available when the
-workspace provides uploads and the desktop supports native file clipboard input.
+`client.clipboard.pasteFiles(destination, signal?)` prepares clipboard transfers
+to a `{ binding, path }` remote directory. Declare `system.clipboard.files.read`
+and the required transfer grant: `files.upload` for local file lists, `files.copy`
+for ShellCanvas remote selections, or both for a general-purpose file manager.
+The SDK inspects the clipboard kind/version without returning file paths, then
+uses the corresponding permission-checked preparation method. Missing grants
+never trigger a fallback to another transfer kind or source.
+
+Remote selections retain their original workspace and native file-service
+instance. Another workspace, a replaced source or a clipboard version change is
+refused. Repeated pastes create independent metadata catalogs and output paths;
+they do not mutate the published selection. A clipboard change after a paste has
+captured its selection does not redirect that transfer. Source revisions are
+checked through normal discovery and transfer operations.
 
 ```ts
 const jobs = await client.clipboard.pasteFiles(destination, signal);
@@ -70,7 +77,8 @@ pending preparation and unfinished jobs busy even if an app reports itself idle.
 Late tickets after cancellation, closure or source replacement are cleaned up;
 native root preparation itself currently finishes before that cleanup occurs.
 
-Windows currently accepts Explorer's file-list format (CF_HDROP). An empty or
+Windows accepts Explorer's file-list format (CF_HDROP) and this process's own
+remote selections. An empty or
 non-file clipboard returns no jobs. Native input paths never appear in SDK ticket
 fields. Files and folders share one disk-backed selection catalog and one queued
 job; file contents open on demand and are checked against captured metadata.
@@ -123,7 +131,7 @@ checks denied reads after a permission change. It does not overwrite the user's
 OS clipboard or establish a Paint/Explorer image interoperability result.
 The complete fixture passes 71 checks at both 1360×900 and 800×900.
 
-Shared remote file clipboard integration, Cut and custom formats remain separate work.
+Public Cut, cross-process clipboard integration and custom formats remain separate work.
 
 The file-paste checkpoint passes 73 Windows installed-app checks at 1360×900,
 including successful paste through the independently packaged SDK and denied
@@ -160,10 +168,18 @@ Cancellation before commit leaves the system clipboard unchanged. A native write
 
 ## Scope and evidence
 
+The shared file clipboard checkpoint passes all 80 Windows installed-app checks
+at 1360×900, including installed-app to installed-app, installed-app to bundled
+Files and bundled Files to installed-app Copy/Paste. Native tests check rejection
+of foreign workspaces/replaced providers and independent catalogs for repeated
+pastes. Broker tests check clipboard changes and separate copy/upload grants.
+Clipboard services in these integration checks are synthetic.
+
 The app API provides text, images, native file paste and native file export. The
 bundled Files app's workspace Copy/Cut path is documented separately in
-[system-clipboard.md](system-clipboard.md). Integrating that shared selection
-with installed apps and adding custom-format access remain open.
+[system-clipboard.md](system-clipboard.md). Copy selections are shared with
+installed apps on Windows. A bundled Cut pasted through the public API currently
+copies and retains the source; exposing move intent and custom formats remains open.
 
 `npm test -- src/extensions/clipboard-api.test.ts` exercises real RPC channels with synthetic clipboard contents: a text value larger than one RPC envelope, split surrogate pairs, empty text, snapshot consistency, separate permissions, foreign handles, ordered chunks, incomplete commits, cancellation during staging/startup, late completion, exclusive native publication and close cleanup.
 

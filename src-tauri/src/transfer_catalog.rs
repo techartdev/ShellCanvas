@@ -65,7 +65,8 @@ impl Catalog {
         // disk-backed indexes replace unbounded vectors and hash sets.
         db.execute_batch("PRAGMA journal_mode=OFF; PRAGMA synchronous=OFF; PRAGMA temp_store=FILE; PRAGMA cache_size=-2048; PRAGMA mmap_size=0;
             CREATE TABLE nodes(id INTEGER PRIMARY KEY, parent INTEGER NOT NULL, path TEXT NOT NULL UNIQUE, name_key TEXT NOT NULL, directory INTEGER NOT NULL, scanned INTEGER NOT NULL DEFAULT 0, data TEXT NOT NULL, output TEXT, UNIQUE(parent,name_key));
-            CREATE INDEX pending_directories ON nodes(scanned,directory,id);")?;
+            CREATE INDEX pending_directories ON nodes(scanned,directory,id);
+            CREATE INDEX selection_roots ON nodes(parent,id);")?;
         Ok(Self {
             db: Mutex::new(db),
             _directory: directory,
@@ -79,6 +80,21 @@ impl Catalog {
     }
     pub fn size(&self) -> u64 {
         self.size.load(Ordering::Relaxed)
+    }
+    #[cfg(windows)]
+    pub fn root_after(&self, after: u64) -> Result<Option<Node>> {
+        let text: Option<String> = self
+            .db
+            .lock()
+            .map_err(|_| anyhow::anyhow!("Transfer catalog lock failed"))?
+            .query_row(
+                "SELECT data FROM nodes WHERE parent=0 AND id>?1 ORDER BY id LIMIT 1",
+                [after],
+                |row| row.get(0),
+            )
+            .optional()?;
+        text.map(|text| serde_json::from_str(&text).map_err(Into::into))
+            .transpose()
     }
     pub fn has_directories(&self) -> Result<bool> {
         Ok(self

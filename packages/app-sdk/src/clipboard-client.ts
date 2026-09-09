@@ -12,7 +12,7 @@ export interface AppClipboardAPI {
     entries: RemoteEntryLocation[],
     signal?: AbortSignal,
   ): Promise<void>;
-  /** Prepare clipboard files/folders for upload. Run and close the returned owned transfer handles. */
+  /** Prepare local uploads or same-workspace remote copies. Run and close the returned owned transfer handles. */
   pasteFiles(
     destination: RemoteFileLocation,
     signal?: AbortSignal,

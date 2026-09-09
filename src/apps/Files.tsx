@@ -571,7 +571,8 @@ export function Files({
     return (
       canRemotePasteInto(parent) ||
       (!!services.systemFileClipboard &&
-        canUpload &&
+        (canUpload ||
+          (connected && !!session?.info.capabilities.includes("files.copy"))) &&
         !!parent &&
         !loading &&
         !busy &&
@@ -585,15 +586,31 @@ export function Files({
     setPicking(true);
     try {
       if (services.systemFileClipboard) {
-        const sequence = await services.systemClipboardSequence();
+        const snapshot = await services.inspectSystemFiles?.();
+        const sequence =
+          snapshot?.sequence ?? (await services.systemClipboardSequence());
         if (sequence !== cutClipboard.snapshot().systemSequence) {
           cutClipboard.clear();
           setSystemCopyNotice("");
+          if (snapshot?.kind === "remote") {
+            if (
+              !session?.info.capabilities.includes("files.copy") ||
+              !services.pasteCopiedFiles
+            )
+              throw new Error(
+                "This host does not support copying the remote clipboard selection.",
+              );
+            queue.enqueue(await services.pasteCopiedFiles(parent, sequence));
+            return;
+          }
           if (!session?.info.capabilities.includes("files.upload"))
             throw new Error(
               "This host does not support uploading clipboard files.",
             );
-          const tickets = await services.pasteSystemFiles(parent);
+          const tickets = await services.pasteSystemFiles(
+            parent,
+            snapshot?.sequence,
+          );
           if (tickets === null)
             throw new Error(
               "Copy files in Windows Explorer first. Clipboard text can be pasted in a terminal or editor.",

@@ -198,7 +198,17 @@ export interface ClipboardPreparation {
   id: string;
   onProgress?: (progress: TransferProgress) => void;
 }
+export interface ClipboardFileState {
+  kind: "local" | "remote" | "empty";
+  sequence: number;
+}
 export interface HostServices {
+  inspectSystemFiles?(): Promise<ClipboardFileState>;
+  pasteCopiedFiles?(
+    sessionId: number,
+    parent: string,
+    sequence: number,
+  ): Promise<TransferTicket[]>;
   prepareCopySelection?(
     sessionId: number,
     files: { path: string; revision: string }[],
@@ -215,6 +225,7 @@ export interface HostServices {
   pasteSystemFiles(
     sessionId: number,
     parent: string,
+    sequence?: number,
   ): Promise<TransferTicket[] | null>;
   cutToSystem(
     sessionId: number,
@@ -316,6 +327,11 @@ export interface HostServices {
 }
 /** Apps receive a fixed session handle, never connection administration. */
 export interface SessionServices {
+  inspectSystemFiles?(): Promise<ClipboardFileState>;
+  pasteCopiedFiles?(
+    parent: string,
+    sequence: number,
+  ): Promise<TransferTicket[]>;
   prepareCopySelection?(
     files: { path: string; revision: string }[],
     parent: string,
@@ -323,7 +339,10 @@ export interface SessionServices {
   custom?: import("./custom-services").CustomAccess;
   cancelClipboardPreparation(operation: string): Promise<void>;
   systemClipboardSequence(): Promise<number>;
-  pasteSystemFiles(parent: string): Promise<TransferTicket[] | null>;
+  pasteSystemFiles(
+    parent: string,
+    sequence?: number,
+  ): Promise<TransferTicket[] | null>;
   cutToSystem(
     path: string,
     revision: string,

@@ -33,6 +33,11 @@ function setup(grants = ["files.upload", "files.download", "files.copy"]) {
   >();
   const progress = new Map<number, (event: TransferProgress) => void>();
   const services = {
+    inspectSystemFiles: undefined as
+      undefined | (() => Promise<import("../sdk").ClipboardFileState>),
+    pasteCopiedFiles: vi.fn(async (_parent: string, _sequence: number) => [
+      ticket("copy"),
+    ]),
     systemFileClipboard: true,
     pasteSystemFiles: vi.fn(
       async (_parent: string): Promise<TransferTicket[]> => [ticket("upload")],
@@ -165,6 +170,78 @@ it("prepares without starting, keeps native tickets private, coalesces progress 
     await job.close();
     await expect(job.status()).rejects.toMatchObject({ code: "closed" });
   } finally {
+    t.close();
+  }
+});
+it("routes shared remote clipboard through copy permission and keeps the captured clipboard version", async () => {
+  const t = setup(["system.clipboard.files.read", "files.copy"]);
+  t.services.inspectSystemFiles = vi.fn(async () => ({
+    kind: "remote" as const,
+    sequence: 73,
+  }));
+  try {
+    const jobs = await t.api.pasteClipboard(destination);
+    expect(jobs).toHaveLength(1);
+    expect(jobs[0].direction).toBe("copy");
+    expect(t.services.pasteCopiedFiles).toHaveBeenCalledWith(
+      destination.path,
+      73,
+    );
+    expect(t.services.pasteSystemFiles).not.toHaveBeenCalled();
+    expect(t.services.runTransfer).not.toHaveBeenCalled();
+    await jobs[0].close();
+    t.services.pasteCopiedFiles.mockRejectedValueOnce(
+      new Error("Clipboard changed before Paste"),
+    );
+    await expect(t.api.pasteClipboard(destination)).rejects.toThrow(
+      "Clipboard changed",
+    );
+    expect(t.services.pasteCopiedFiles).toHaveBeenCalledTimes(2);
+    expect(t.services.pasteSystemFiles).not.toHaveBeenCalled();
+  } finally {
+    t.close();
+  }
+});
+it("does not substitute upload and remote-copy permissions or prepare work from an empty clipboard", async () => {
+  for (const [kind, granted] of [
+    ["remote", "files.upload"],
+    ["local", "files.copy"],
+  ] as const) {
+    const t = setup(["system.clipboard.files.read", granted]);
+    t.services.inspectSystemFiles = vi.fn(async () => ({ kind, sequence: 7 }));
+    try {
+      await expect(t.api.pasteClipboard(destination)).rejects.toMatchObject({
+        code: "denied",
+      });
+      expect(t.services.pasteCopiedFiles).not.toHaveBeenCalled();
+      expect(t.services.pasteSystemFiles).not.toHaveBeenCalled();
+      t.services.inspectSystemFiles = vi.fn(async () => ({
+        kind: "empty" as const,
+        sequence: 8,
+      }));
+      expect(await t.api.pasteClipboard(destination)).toEqual([]);
+      expect(t.busy).not.toHaveBeenCalled();
+    } finally {
+      t.close();
+    }
+  }
+});
+it("refuses an inspection completing after the app accepts a replacement source", async () => {
+  const t = setup(["system.clipboard.files.read", "files.copy"]);
+  const pending = deferred<import("../sdk").ClipboardFileState>();
+  t.services.inspectSystemFiles = vi.fn(() => pending.promise);
+  try {
+    const paste = t.api.pasteClipboard(destination);
+    const rejected = expect(paste).rejects.toMatchObject({ code: "closed" });
+    await vi.waitFor(() =>
+      expect(t.services.inspectSystemFiles).toHaveBeenCalledOnce(),
+    );
+    t.replace();
+    pending.resolve({ kind: "remote", sequence: 9 });
+    await rejected;
+    expect(t.services.pasteCopiedFiles).not.toHaveBeenCalled();
+  } finally {
+    pending.resolve({ kind: "empty", sequence: 10 });
     t.close();
   }
 });

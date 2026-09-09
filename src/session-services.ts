@@ -118,6 +118,27 @@ export function bindSession(
     notifyFileChanges(session!.id, relocate ? "relocation" : "content");
   }
   const services: SessionServices = {
+    inspectSystemFiles: backend.inspectSystemFiles
+      ? async () => {
+          const epoch = lifetimeEpoch;
+          if (closed) throw new Error("Workspace is closed");
+          const result = await backend.inspectSystemFiles!();
+          if (closed || epoch !== lifetimeEpoch)
+            throw new Error("Workspace changed during clipboard inspection");
+          return result;
+        }
+      : undefined,
+    pasteCopiedFiles: backend.pasteCopiedFiles
+      ? async (parent, sequence) => {
+          const expected = generation;
+          const result = await backend.pasteCopiedFiles!(
+            check("files.copy"),
+            parent,
+            sequence,
+          );
+          return adopt(result, expected, "files.copy");
+        }
+      : undefined,
     custom:
       backend.custom && session
         ? {
@@ -183,12 +204,12 @@ export function bindSession(
       check("files.read", expected);
       return result;
     },
-    pasteSystemFiles: async (parent) => {
+    pasteSystemFiles: async (parent, sequence) => {
       const expected = generation;
-      const result = await backend.pasteSystemFiles(
-        check("files.upload"),
-        parent,
-      );
+      const owner = check("files.upload");
+      const result = await (sequence === undefined
+        ? backend.pasteSystemFiles(owner, parent)
+        : backend.pasteSystemFiles(owner, parent, sequence));
       const adopted = await adopt(result ?? [], expected, "files.upload");
       return result === null ? null : adopted;
     },

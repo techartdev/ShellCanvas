@@ -79,10 +79,19 @@ export function scopeAppServices(
       "files.read",
       base.systemClipboardSequence.bind(base),
     ),
-    pasteSystemFiles: guard("files.upload", async (parent: string) => {
-      const result = await base.pasteSystemFiles(parent);
-      return result === null ? null : result.map(adopt);
-    }),
+    inspectSystemFiles: base.inspectSystemFiles?.bind(base),
+    pasteCopiedFiles: base.pasteCopiedFiles
+      ? guard("files.copy", async (parent: string, sequence: number) =>
+          (await base.pasteCopiedFiles!(parent, sequence)).map(adopt),
+        )
+      : undefined,
+    pasteSystemFiles: guard(
+      "files.upload",
+      async (parent: string, sequence?: number) => {
+        const result = await base.pasteSystemFiles(parent, sequence);
+        return result === null ? null : result.map(adopt);
+      },
+    ),
     prepareCopySelection: base.prepareCopySelection
       ? guard(
           "files.copy",
@@ -107,6 +116,7 @@ export function scopeAppServices(
     ),
     systemFileClipboard:
       (declared.has("files.download") ||
+        declared.has("files.copy") ||
         declared.has("files.upload") ||
         declared.has("files.move")) &&
       base.systemFileClipboard,

@@ -432,12 +432,19 @@ impl IStream_Impl for FileStream_Impl {
 
 struct Offer {
     sources: Sources,
+    remote: Option<crate::transfers::RemoteClipboardSelection>,
     sequence: u32,
     reply: tokio::sync::oneshot::Sender<std::result::Result<u32, String>>,
 }
 enum Request {
     Publish(Offer),
     Sequence(tokio::sync::oneshot::Sender<u32>),
+    Snapshot(tokio::sync::oneshot::Sender<ClipboardSnapshot>),
+}
+pub struct ClipboardSnapshot {
+    pub sequence: u32,
+    pub remote: Option<crate::transfers::RemoteClipboardSelection>,
+    pub local: bool,
 }
 static OFFERS: OnceLock<std::result::Result<mpsc::SyncSender<Request>, String>> = OnceLock::new();
 #[cfg(test)]
@@ -448,16 +455,24 @@ fn sender() -> std::result::Result<&'static mpsc::SyncSender<Request>, String> {
         let (sender, receiver) = mpsc::sync_channel::<Request>(16);
         std::thread::Builder::new().name("shellcanvas-clipboard".into()).spawn(move || unsafe {
             let initialization = OleInitialize(None);
-            let mut current: Option<(IDataObject, u32)> = None;
+            let mut current: Option<(IDataObject, u32, Option<crate::transfers::RemoteClipboardSelection>)> = None;
             loop {
                 while let Ok(request) = receiver.try_recv() {
-                    if let Some((object, _)) = &current { if OleIsCurrentClipboard(object).is_err() { current = None; } }
+                    if let Some((object, _, _)) = &current { if OleIsCurrentClipboard(object).is_err() { current = None; } }
                     let offer = match request {
                         Request::Publish(offer) => offer,
                         Request::Sequence(reply) => {
                             // Delayed rendering changes the OS serial without replacing
                             // our IDataObject. Keep its original selection identity.
-                            let _ = reply.send(current.as_ref().map(|(_, sequence)| *sequence).unwrap_or_else(crate::windows_file_input::sequence));
+                            let _ = reply.send(current.as_ref().map(|(_, sequence, _)| *sequence).unwrap_or_else(crate::windows_file_input::sequence));
+                            continue;
+                        }
+                        Request::Snapshot(reply) => {
+                            let _ = reply.send(ClipboardSnapshot {
+                                sequence: current.as_ref().map(|(_, sequence, _)| *sequence).unwrap_or_else(crate::windows_file_input::sequence),
+                                remote: current.as_ref().and_then(|(_, _, remote)| remote.clone()),
+                                local: windows::Win32::System::DataExchange::IsClipboardFormatAvailable(CF_HDROP.0 as u32).is_ok(),
+                            });
                             continue;
                         }
                     };
@@ -465,7 +480,7 @@ fn sender() -> std::result::Result<&'static mpsc::SyncSender<Request>, String> {
                         Ok(()) if windows::Win32::System::DataExchange::GetClipboardSequenceNumber() != offer.sequence => Err("The clipboard changed while preparing files. Copy again if needed.".into()),
                         Ok(()) => {
                             let object: IDataObject = VirtualFiles::new(offer.sources).into();
-                            OleSetClipboard(&object).map(|()| { let sequence = crate::windows_file_input::sequence(); current = Some((object, sequence)); sequence }).map_err(|error| error.to_string())
+                            OleSetClipboard(&object).map(|()| { let sequence = crate::windows_file_input::sequence(); current = Some((object, sequence, offer.remote)); sequence }).map_err(|error| error.to_string())
                         },
                         Err(error) => Err(error.to_string()),
                     };
@@ -473,7 +488,7 @@ fn sender() -> std::result::Result<&'static mpsc::SyncSender<Request>, String> {
                 }
                 let mut message = MSG::default();
                 while PeekMessageW(&mut message, None, 0, 0, PM_REMOVE).as_bool() { let _ = TranslateMessage(&message); DispatchMessageW(&message); }
-                if let Some((object, _)) = &current { if OleIsCurrentClipboard(object).is_err() { current = None; } }
+                if let Some((object, _, _)) = &current { if OleIsCurrentClipboard(object).is_err() { current = None; } }
                 std::thread::sleep(Duration::from_millis(10));
             }
         }).map_err(|error| error.to_string())?;
@@ -493,7 +508,22 @@ pub async fn publish(
     sources: impl Into<Sources>,
     sequence: u32,
 ) -> std::result::Result<u32, String> {
-    let sources = sources.into();
+    publish_selection(sources.into(), sequence, None).await
+}
+pub async fn snapshot() -> std::result::Result<ClipboardSnapshot, String> {
+    let (reply, result) = tokio::sync::oneshot::channel();
+    sender()?
+        .try_send(Request::Snapshot(reply))
+        .map_err(|_| "Clipboard is busy. Try again.".to_string())?;
+    result
+        .await
+        .map_err(|_| "Clipboard worker stopped".to_string())
+}
+pub async fn publish_selection(
+    sources: Sources,
+    sequence: u32,
+    remote: Option<crate::transfers::RemoteClipboardSelection>,
+) -> std::result::Result<u32, String> {
     if sources.len() > i32::MAX as usize {
         return Err("Clipboard exceeds the Windows file-index range".into());
     }
@@ -501,6 +531,7 @@ pub async fn publish(
     sender()?
         .try_send(Request::Publish(Offer {
             sources,
+            remote,
             sequence,
             reply,
         }))

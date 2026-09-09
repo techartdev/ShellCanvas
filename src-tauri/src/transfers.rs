@@ -29,6 +29,115 @@ mod tests;
 #[path = "transfer_tree.rs"]
 mod tree;
 
+#[cfg(windows)]
+#[derive(Clone)]
+pub(crate) struct RemoteClipboardSelection {
+    owner: u64,
+    service: Arc<dyn FileTransferService>,
+    catalog: Arc<catalog::Catalog>,
+}
+#[cfg(windows)]
+impl RemoteClipboardSelection {
+    fn prepare(
+        &self,
+        owner: u64,
+        service: &Arc<dyn FileTransferService>,
+        parent: String,
+    ) -> Result<(Job, String, u64, &'static str)> {
+        if self.owner != owner || !Arc::ptr_eq(&self.service, service) {
+            bail!("Copied files belong to another workspace or an earlier file connection. Copy them again on this connection.");
+        }
+        let catalog = Arc::new(catalog::Catalog::new(false)?);
+        let mut after = 0;
+        while let Some(root) = self.catalog.root_after(after)? {
+            after = root.id;
+            catalog.add(None, vec![(root.entry, root.local)])?;
+        }
+        let count = catalog.len();
+        if count == 0 {
+            bail!("The copied selection is empty");
+        }
+        let name = if count == 1 {
+            catalog.get(1)?.entry.name
+        } else {
+            format!("{count} copied items")
+        };
+        let size = catalog.size();
+        Ok((Job::Selection { catalog, parent }, name, size, "copy"))
+    }
+}
+#[derive(Serialize)]
+pub struct ClipboardFileState {
+    kind: &'static str,
+    sequence: u32,
+}
+#[tauri::command]
+pub async fn inspect_system_files() -> Result<ClipboardFileState, String> {
+    #[cfg(windows)]
+    {
+        let snapshot = crate::windows_clipboard::snapshot().await?;
+        Ok(ClipboardFileState {
+            kind: if snapshot.remote.is_some() {
+                "remote"
+            } else if snapshot.local {
+                "local"
+            } else {
+                "empty"
+            },
+            sequence: snapshot.sequence,
+        })
+    }
+    #[cfg(not(windows))]
+    {
+        Err("Native file clipboard integration is unavailable on this platform".into())
+    }
+}
+#[tauri::command]
+pub async fn paste_copied_files(
+    session_id: u64,
+    binding: Option<ConnectionIdentity>,
+    parent: String,
+    sequence: u32,
+    state: State<'_, DesktopState>,
+) -> Result<Vec<Ticket>, String> {
+    #[cfg(windows)]
+    {
+        if parent.is_empty() {
+            return Err("Choose a remote destination folder".into());
+        }
+        let service = provider(&state, session_id, binding.as_ref()).await?;
+        let snapshot = crate::windows_clipboard::snapshot().await?;
+        if snapshot.sequence != sequence {
+            return Err("The clipboard changed before Paste. Try again.".into());
+        }
+        let selection = snapshot
+            .remote
+            .ok_or("The clipboard no longer contains a ShellCanvas remote selection")?;
+        let target = service.clone();
+        let job =
+            tokio::task::spawn_blocking(move || selection.prepare(session_id, &target, parent))
+                .await
+                .map_err(error)?
+                .map_err(error)?;
+        let registry = state.registry.lock().await;
+        registry
+            .sessions
+            .get(&session_id)
+            .ok_or("Host disconnected during preparation")?
+            .check_source(&ServiceRole::Files, binding.as_ref())?;
+        state
+            .transfers
+            .lock()
+            .await
+            .add(session_id, service, vec![job])
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = (session_id, binding, parent, sequence, state);
+        Err("Native file clipboard integration is unavailable on this platform".into())
+    }
+}
+
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Ticket {
@@ -578,8 +687,9 @@ async fn prepare_clipboard(
         checkpoint(&cancel)?;
         state.registry.lock().await.sessions.get(&session).ok_or_else(|| anyhow::anyhow!("Host disconnected while preparing clipboard"))?
             .check_source(&ServiceRole::Files, binding.as_ref()).map_err(anyhow::Error::msg)?;
+        let remote = RemoteClipboardSelection { owner: session, service: service.clone(), catalog: catalog.clone() };
         let sources = crate::clipboard_stream::Sources::catalogs(vec![catalog], service, tokio::runtime::Handle::current());
-        crate::windows_clipboard::publish(sources, sequence).await.map_err(anyhow::Error::msg)
+        crate::windows_clipboard::publish_selection(sources, sequence, Some(remote)).await.map_err(anyhow::Error::msg)
     }.await;
     state.transfers.lock().await.preparations.remove(&operation);
     work.map_err(error)
@@ -666,11 +776,12 @@ pub async fn paste_system_files(
     session_id: u64,
     binding: Option<ConnectionIdentity>,
     parent: String,
+    sequence: Option<u32>,
     state: State<'_, DesktopState>,
 ) -> Result<Option<Vec<Ticket>>, String> {
     #[cfg(not(windows))]
     {
-        let _ = (session_id, binding, parent, state);
+        let _ = (session_id, binding, parent, sequence, state);
         Err("File clipboard integration is currently available on Windows.".into())
     }
     #[cfg(windows)]
@@ -680,9 +791,12 @@ pub async fn paste_system_files(
         }
         let service = provider(&state, session_id, binding.as_ref()).await?;
         let jobs = tauri::async_runtime::spawn_blocking(move || {
-            crate::windows_file_input::files()?
-                .map(|paths| clipboard_uploads(paths, parent))
-                .transpose()
+            (match sequence {
+                Some(sequence) => crate::windows_file_input::files_at(Some(sequence)),
+                None => crate::windows_file_input::files(),
+            })?
+            .map(|paths| clipboard_uploads(paths, parent))
+            .transpose()
         })
         .await
         .map_err(error)??;

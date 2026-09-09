@@ -1,6 +1,81 @@
 // SPDX-License-Identifier: MPL-2.0
 use super::*;
 
+#[cfg(windows)]
+#[tokio::test]
+async fn shared_clipboard_pastes_keep_the_original_provider_and_independent_catalogs() {
+    let memory = Memory::new(false);
+    let service: Arc<dyn FileTransferService> = memory.clone();
+    let catalog = Arc::new(catalog::Catalog::new(true).unwrap());
+    for index in 0..2 {
+        catalog
+            .add(
+                None,
+                vec![(
+                    shellcanvas_core::FileEntry {
+                        path: format!("opaque@{index}"),
+                        name: format!("{index}.bin"),
+                        kind: "file".into(),
+                        size: memory.data.len() as u64,
+                        modified: None,
+                        revision: "r1".into(),
+                    },
+                    None,
+                )],
+            )
+            .unwrap();
+    }
+    let selection = RemoteClipboardSelection {
+        owner: 10,
+        service: service.clone(),
+        catalog: catalog.clone(),
+    };
+    assert!(selection.prepare(11, &service, "target".into()).is_err());
+    let other: Arc<dyn FileTransferService> = Memory::new(false);
+    assert!(selection.prepare(10, &other, "target".into()).is_err());
+    let first = selection
+        .prepare(10, &service, "first-target".into())
+        .unwrap()
+        .0;
+    let second = selection
+        .prepare(10, &service, "second-target".into())
+        .unwrap()
+        .0;
+    let Job::Selection {
+        catalog: first_catalog,
+        ..
+    } = &first
+    else {
+        panic!("Expected selection");
+    };
+    let Job::Selection {
+        catalog: second_catalog,
+        ..
+    } = &second
+    else {
+        panic!("Expected selection");
+    };
+    assert!(!Arc::ptr_eq(first_catalog, second_catalog));
+    assert!(!Arc::ptr_eq(first_catalog, &catalog));
+    let (_, canceled) = watch::channel(false);
+    assert_eq!(
+        execute(first, service.clone(), &canceled, &mut |_| {})
+            .await
+            .unwrap(),
+        "first-target"
+    );
+    assert!(second_catalog.output(1).is_err());
+    assert!(catalog.output(1).is_err());
+    assert_eq!(
+        execute(second, service, &canceled, &mut |_| {})
+            .await
+            .unwrap(),
+        "second-target"
+    );
+    assert_eq!(memory.commits.load(Ordering::SeqCst), 4);
+    assert_eq!(memory.writes.lock().unwrap().len(), memory.data.len() * 4);
+}
+
 #[test]
 fn clipboard_uploads_capture_root_metadata_and_refuse_duplicate_names() {
     let directory = tempfile::tempdir().unwrap();

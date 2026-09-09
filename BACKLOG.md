@@ -12,6 +12,14 @@ Public console checkpoint: `client.console` supports byte reads/writes, optional
 
 ## Immediate delivery focus — everyday basics
 
+Shared file clipboard checkpoint (2026-09-09): installed apps and bundled Files
+now exchange remote Copy selections through the original workspace/provider.
+Clipboard snapshots distinguish local uploads from remote copies with separate
+permissions, reject changed selections and create independent catalogs for repeat
+pastes. The Windows installed-app fixture passes all 80 checks with synthetic
+clipboard services. Public Cut/move, custom formats, cross-process exchange,
+interruptible native preparation and the remaining kernel roadmap gates stay open.
+
 File export checkpoint (2026-09-09): the public clipboard API now exports remote
 file/folder references to the Windows system clipboard through the native streaming
 engine. Independent export/download grants, ordered metadata staging, source

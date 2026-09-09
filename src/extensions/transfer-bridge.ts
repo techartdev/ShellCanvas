@@ -30,6 +30,8 @@ export interface AppTransferSource {
         | "systemFileClipboard"
         | "copyToSystem"
         | "cancelClipboardPreparation"
+        | "inspectSystemFiles"
+        | "pasteCopiedFiles"
       >
     >;
 }
@@ -302,12 +304,23 @@ export class AppTransfers {
           if (
             typeof p.binding !== "string" ||
             fields
-              .filter((field) => field !== "entries")
+              .filter((field) => field !== "entries" && field !== "sequence")
               .some((field) => typeof p[field] !== "string")
           )
             throw new RpcError(
               "invalid",
               "Supply opaque locations and revisions.",
+            );
+          if (
+            fields.includes("sequence") &&
+            (typeof p.sequence !== "number" ||
+              !Number.isInteger(p.sequence) ||
+              p.sequence < 0 ||
+              p.sequence > 0xffffffff)
+          )
+            throw new RpcError(
+              "invalid",
+              "Supply the captured clipboard sequence.",
             );
           if (this.closed)
             throw new RpcError("closed", "Transfer owner closed.");
@@ -421,6 +434,83 @@ export class AppTransfers {
       invoke,
     });
     return new Map([
+      [
+        "system.transfers.clipboardInspect",
+        {
+          grants: ["system.clipboard.files.read"],
+          available: () => this.source()?.services.systemFileClipboard === true,
+          invoke: async (value: Json, signal: AbortSignal) => {
+            if (
+              !value ||
+              typeof value !== "object" ||
+              Array.isArray(value) ||
+              Object.keys(value).length !== 1 ||
+              typeof value.binding !== "string"
+            )
+              throw new RpcError(
+                "invalid",
+                "Supply the accepted workspace binding.",
+              );
+            const captured = this.source();
+            if (!captured || captured.services.systemFileClipboard !== true)
+              throw new RpcError(
+                "unavailable",
+                "Native file clipboard is unavailable.",
+              );
+            if (this.closed || captured.binding !== value.binding)
+              throw new RpcError("closed", "Workspace binding changed.");
+            if (signal.aborted)
+              throw new RpcError("aborted", "Clipboard inspection canceled.");
+            const state = captured.services.inspectSystemFiles
+              ? await captured.services.inspectSystemFiles()
+              : { kind: "local", sequence: null };
+            if (!this.same(captured) || signal.aborted)
+              throw new RpcError(
+                "closed",
+                "Workspace changed during clipboard inspection.",
+              );
+            if (
+              !["remote", "local", "empty"].includes(state.kind) ||
+              (state.sequence !== null &&
+                (!Number.isInteger(state.sequence) ||
+                  state.sequence < 0 ||
+                  state.sequence > 0xffffffff))
+            )
+              throw new RpcError("failed", "Invalid clipboard snapshot.");
+            return { kind: state.kind, sequence: state.sequence };
+          },
+        },
+      ],
+      prepare(
+        "clipboardCopySnapshot",
+        "files.copy",
+        ["parent", "sequence"],
+        (source, p) =>
+          source.services.pasteCopiedFiles!(
+            p.parent as string,
+            p.sequence as number,
+          ),
+        false,
+        ["system.clipboard.files.read"],
+        () =>
+          this.source()?.services.systemFileClipboard === true &&
+          typeof this.source()?.services.pasteCopiedFiles === "function",
+      ),
+      prepare(
+        "clipboardPasteSnapshot",
+        "files.upload",
+        ["parent", "sequence"],
+        async (source, p) =>
+          (await source.services.pasteSystemFiles!(
+            p.parent as string,
+            p.sequence as number,
+          )) ?? [],
+        false,
+        ["system.clipboard.files.read"],
+        () =>
+          this.source()?.services.systemFileClipboard === true &&
+          typeof this.source()?.services.pasteSystemFiles === "function",
+      ),
       prepare(
         "clipboardPaste",
         "files.upload",
