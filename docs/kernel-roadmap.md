@@ -17,6 +17,17 @@ Objective: provide a small, coherent virtual-desktop API for bundled and communi
 
 ## Direction
 
+File export checkpoint (2026-09-09): installed apps can publish remote references
+through `client.clipboard.copyFiles`, with separate file-export/download grants,
+ordered metadata chunks, original-binding checks and mandatory publication busy
+guards. Native registration reports progress early so a racing cancellation can
+reach its owner. Session cleanup no longer requires unrelated browsing permission
+or a live binding. Seven broker/SDK tests, an ownership regression and the
+77-check Windows installed-app fixture pass with synthetic clipboard services.
+Shared remote selections between installed apps and bundled Files, public Cut,
+custom formats and remaining lifecycle/platform gates remain open. Current export
+targets Windows Explorer; it does not complete unified in-desktop file clipboard.
+
 File paste checkpoint (2026-09-09): installed apps can prepare native file-list
 uploads using `client.clipboard.pasteFiles`, with separate clipboard-read and
 upload grants and the existing owned transfer lifecycle. Clipboard selections now

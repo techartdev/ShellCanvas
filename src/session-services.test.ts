@@ -4,6 +4,40 @@ import { bindSession } from "./session-services";
 import { previewServices, previewSession } from "./preview";
 import type { Directory, TerminalSession, FileRelocation } from "./sdk";
 import { watchFileChanges } from "./file-events";
+it("cancels owned clipboard exports without browsing permission after the binding closes", async () => {
+  let finish!: (sequence: number) => void;
+  const copyToSystem = vi.fn(
+    () =>
+      new Promise<number>((resolve) => {
+        finish = resolve;
+      }),
+  );
+  const cancelClipboardPreparation = vi.fn(async () => {});
+  const binding = bindSession(
+    { ...previewServices, copyToSystem, cancelClipboardPreparation },
+    {
+      ...previewSession,
+      id: 92,
+      info: { ...previewSession.info, capabilities: ["files.download"] },
+    },
+  );
+  const pending = binding.services.copyToSystem(
+    [{ path: "opaque:file", revision: "r1" }],
+    { id: "export-owned" },
+  );
+  const rejected = expect(pending).rejects.toThrow();
+  expect(() => binding.services.cancelClipboardPreparation("foreign")).toThrow(
+    "belong",
+  );
+  binding.dispose();
+  await binding.services.cancelClipboardPreparation("export-owned");
+  expect(cancelClipboardPreparation).toHaveBeenCalledWith(92, "export-owned");
+  finish(42);
+  await rejected;
+  expect(() =>
+    binding.services.cancelClipboardPreparation("export-owned"),
+  ).toThrow("belong");
+});
 it("keeps clipboard uploads session-owned and cancels late preparation after disconnect", async () => {
   const ticket = {
     id: 91,

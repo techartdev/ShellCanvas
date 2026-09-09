@@ -23,7 +23,15 @@ export interface AppTransferSource {
     | "runTransfer"
     | "cancelTransfer"
   > &
-    Partial<Pick<SessionServices, "pasteSystemFiles" | "systemFileClipboard">>;
+    Partial<
+      Pick<
+        SessionServices,
+        | "pasteSystemFiles"
+        | "systemFileClipboard"
+        | "copyToSystem"
+        | "cancelClipboardPreparation"
+      >
+    >;
 }
 export type AppTransferSourceGetter = () => AppTransferSource | undefined;
 interface Preparation {

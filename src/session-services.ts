@@ -41,6 +41,7 @@ export function bindSession(
   const changedAt = new Map<Capability, number>();
   const tickets = new Map<number, TransferTicket>();
   const customCalls = new Set<AbortController>();
+  const clipboardPreparations = new Map<string, number>();
   async function adopt(
     result: TransferTicket[],
     expected: number,
@@ -167,8 +168,14 @@ export function bindSession(
             },
           }
         : undefined,
-    cancelClipboardPreparation: (operation) =>
-      backend.cancelClipboardPreparation(check("files.read"), operation),
+    cancelClipboardPreparation: (operation) => {
+      const owner = clipboardPreparations.get(operation);
+      if (owner === undefined)
+        throw new Error(
+          "Clipboard preparation does not belong to this binding",
+        );
+      return backend.cancelClipboardPreparation(owner, operation);
+    },
     systemClipboardSequence: async () => {
       const expected = generation;
       check("files.read");
@@ -187,25 +194,41 @@ export function bindSession(
     },
     cutToSystem: async (path, revision, preparation) => {
       const expected = generation;
-      const result = await backend.cutToSystem(
-        check("files.move"),
-        path,
-        revision,
-        preparation,
-      );
-      check("files.move", expected);
-      return result;
+      const owner = check("files.move");
+      if (preparation && clipboardPreparations.has(preparation.id))
+        throw new Error("Clipboard preparation is already active");
+      if (preparation) clipboardPreparations.set(preparation.id, owner);
+      try {
+        const result = await backend.cutToSystem(
+          owner,
+          path,
+          revision,
+          preparation,
+        );
+        check("files.move", expected);
+        return result;
+      } finally {
+        if (preparation) clipboardPreparations.delete(preparation.id);
+      }
     },
     systemFileClipboard: backend.systemFileClipboard,
     copyToSystem: async (files, preparation) => {
       const expected = generation;
-      const result = await backend.copyToSystem(
-        check("files.download"),
-        files.map((file) => ({ ...file })),
-        preparation,
-      );
-      check("files.download", expected);
-      return result;
+      const owner = check("files.download");
+      if (preparation && clipboardPreparations.has(preparation.id))
+        throw new Error("Clipboard preparation is already active");
+      if (preparation) clipboardPreparations.set(preparation.id, owner);
+      try {
+        const result = await backend.copyToSystem(
+          owner,
+          files.map((file) => ({ ...file })),
+          preparation,
+        );
+        check("files.download", expected);
+        return result;
+      } finally {
+        if (preparation) clipboardPreparations.delete(preparation.id);
+      }
     },
     prepareCopySelection: backend.prepareCopySelection
       ? async (files, parent) => {

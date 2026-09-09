@@ -43,6 +43,9 @@ let clipboardImage: import("@shellcanvas/app-sdk").ClipboardImage = {
 };
 let imageReads = 0;
 let fileClipboardReads = 0;
+let fileClipboardWrites = 0;
+let heldFileExport: (() => void) | undefined;
+let fileExportCancellation = 0;
 const runtime = new DesktopRuntime(catalog, apps, localData, {
   readImage: async () => {
     imageReads++;
@@ -216,6 +219,38 @@ const services = {
     return transferTicket("copy");
   },
   systemFileClipboard: true,
+  copyToSystem: async (
+    _id: number,
+    files: { path: string; revision: string }[],
+    preparation?: import("../../src/sdk").ClipboardPreparation,
+  ) => {
+    if (files[0]?.path === "fixture:held-export") {
+      await new Promise<void>((resolve) => {
+        heldFileExport = resolve;
+      });
+      return 41;
+    }
+    if (
+      files.length !== 300 ||
+      files.some(
+        (file, i) =>
+          file.path !== `fixture:export-${i}` || file.revision !== "export-1",
+      ) ||
+      !preparation?.id
+    )
+      throw new Error("Incorrect clipboard export selection");
+    fileClipboardWrites++;
+    preparation.onProgress?.({
+      bytes: 0,
+      total: 0,
+      items: 0,
+      phase: "preparing",
+    });
+    return 42;
+  },
+  cancelClipboardPreparation: async () => {
+    fileExportCancellation++;
+  },
   pasteSystemFiles: async (_id: number, parent: string) => {
     if (parent !== "fixture:clipboard-target")
       throw new Error("Unexpected clipboard destination");
@@ -521,6 +556,7 @@ async function install(version: string) {
             "system.clipboard.image.read",
             "system.clipboard.image.write",
             "system.clipboard.files.read",
+            "system.clipboard.files.write",
           ],
           script: source,
           style,
@@ -845,6 +881,26 @@ async function run() {
   checks.sdkTransferCleanupRetry =
     transferTickets.size === 0 && transferRuns === 5;
   await report("sdk-transfers");
+  await ask(first, "file-copy-start");
+  await until(
+    () => heldFileExport && closeTransferWindow().disabled,
+    "clipboard export close guard",
+  );
+  checks.sdkFileExportBusyGuard =
+    (await ask(first, "window-close")).windowError === "busy" &&
+    first.isConnected;
+  checks.sdkFileExportCancelGuard =
+    (await ask(first, "file-copy-cancel")).fileClipboard?.canceled === true &&
+    closeTransferWindow().disabled;
+  await until(
+    () => fileExportCancellation > 0,
+    "native file export cancellation",
+  );
+  heldFileExport!();
+  await until(
+    () => !closeTransferWindow().disabled,
+    "clipboard export guard released",
+  );
   const settingResult = (await ask(first, "host-settings")).hostSettings;
   checks.sdkHostSettings =
     !!settingResult &&
@@ -1041,6 +1097,12 @@ async function run() {
     (await ask(second, "transfer-denied")).transfers?.denied === true &&
     transferRuns === 5;
   const pasted = (await ask(first, "file-clipboard")).fileClipboard;
+  checks.sdkFileClipboardExport =
+    (await ask(first, "file-copy")).fileClipboard?.published === true &&
+    fileClipboardWrites === 1;
+  checks.sdkFileClipboardExportDenied =
+    (await ask(second, "file-copy-denied")).fileClipboard?.denied === true &&
+    fileClipboardWrites === 1;
   checks.sdkFileClipboard =
     !!pasted &&
     Object.values(pasted).every(Boolean) &&

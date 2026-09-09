@@ -86,7 +86,18 @@ inputs are unavailable. A locally cut selection uploads a copy and keeps its
 source. Native file paths are not returned in ticket fields. Large selections
 share one job; contents stream natively and folders use disk-backed discovery.
 Pending native preparation remains busy until it returns, even after cancellation.
-Outgoing file copy/cut and custom-format APIs remain follow-ups.
+`clipboard.copyFiles(entries, signal?)` exports remote `{ binding, path, revision }`
+entries to the Windows clipboard. Declare `system.clipboard.files.write` and
+`files.download`. References must use one accepted binding and current revisions.
+The SDK snapshots and chunks root metadata; native code discovers folders and
+streams contents only when Explorer requests them. Keep the desktop and source
+connection open until external Paste finishes. Copy completion means publication,
+not a completed destination transfer. Cancellation cannot retract a publication
+already dispatched to the OS; do not retry uncertain results automatically.
+Pending native preparation remains host-enforced busy work, independently of an
+app's reported document state. Shared remote selections between installed apps
+and bundled Files, public Cut, and custom formats remain follow-ups. `pasteFiles`
+currently accepts local file lists, not virtual-file exports from `copyFiles`.
 
 `call(method, params?, signal?)` uses the explicit broker method map and permission checks. It is not a native-command escape hatch. Use `services.call` for custom adapter methods. Discover methods first; `granted` and `available` are separate. Custom entries include the advertised service version and an opaque `source` identity. Declare `services.acme.sensor` to request access to a selected `acme.sensor` service; all its advertised methods share that grant. The app never supplies a native session or source ID. Custom JSON result validation belongs to the app and adapter contract.
 

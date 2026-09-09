@@ -1,5 +1,48 @@
 # Clipboard API for runtime apps
 
+## Copy remote files to the system clipboard
+
+`client.clipboard.copyFiles(entries, signal?)` publishes remote file/folder
+references to the native clipboard. Entries are `{ binding, path, revision }`
+snapshots from one accepted workspace binding. Declare both
+`system.clipboard.files.write` and `files.download`. Copy does not delete sources.
+On Windows, Explorer requests file contents later through native streaming;
+successful Copy means the selection was published, not that a destination copy
+has finished. Keep ShellCanvas and the source connection running until Paste ends.
+
+```ts
+await client.clipboard.copyFiles(selectedEntries, signal);
+```
+
+The SDK snapshots references and sends ordered chunks of at most 128 entries,
+normally within 64 Ki UTF-16 units of JSON. An individual longer opaque reference
+still has to fit the RPC envelope. There is no total-selection count cap. The
+broker stages root references in memory; native folder discovery uses the disk
+catalog and does not fetch file contents at Copy. Duplicate names, unsupported
+folders, unsafe Windows names and stale source revisions are checked natively.
+
+One window owns one staging/publication slot. Incomplete staging never publishes.
+Publication contributes mandatory busy state to close/quit guards. Cancellation
+requests native preparation cleanup and retains busy state until it settles.
+Closing or changing the accepted binding retires staged references and cancels
+pending preparation. Cancellation after native publication may be too late; do
+not automatically retry an uncertain result. Completed clipboard contents retain
+their original provider even after the exporting app window closes; source
+retirement cannot silently reroute deferred streams to a different device.
+
+This API currently exports to the Windows system clipboard. Shared remote
+Copy/Paste between installed apps and the bundled Files app, public Cut, custom
+formats and other native platforms remain required follow-ups. In particular,
+`pasteFiles` below accepts CF_HDROP file lists, not these virtual-file exports.
+The existing bundled Files copy/move clipboard continues to work within its
+workspace. Neither text nor image grants authorize file exports.
+
+Seven SDK/broker tests cover chunking, captured revisions, grants, ownership,
+malformed staging, cancellation/registration races, replacement and closure.
+The independently built app passes 77 Windows integration checks, including export,
+denial and mandatory busy guards through cancellation. It uses synthetic clipboard
+services; it does not touch the user's clipboard or claim a new Explorer test.
+
 ## Files copied on this device
 
 `client.clipboard.pasteFiles(destination, signal?)` prepares uploads from the
@@ -33,8 +76,8 @@ fields. Files and folders share one disk-backed selection catalog and one queued
 job; file contents open on demand and are checked against captured metadata.
 Folders require provider folder-transfer support. A locally cut selection uploads
 a copy and retains its source. Other applications' virtual-file formats and native
-macOS/Linux file clipboard input are not yet supported. Public outgoing file
-copy/cut and custom-format APIs remain separate work.
+macOS/Linux file clipboard input are not yet supported. Public Cut and
+custom-format APIs remain separate work.
 
 ## Images
 
@@ -80,7 +123,7 @@ checks denied reads after a permission change. It does not overwrite the user's
 OS clipboard or establish a Paint/Explorer image interoperability result.
 The complete fixture passes 71 checks at both 1360×900 and 800×900.
 
-Outgoing file and custom-format clipboard APIs for installed apps remain separate work.
+Shared remote file clipboard integration, Cut and custom formats remain separate work.
 
 The file-paste checkpoint passes 73 Windows installed-app checks at 1360×900,
 including successful paste through the independently packaged SDK and denied
@@ -117,10 +160,10 @@ Cancellation before commit leaves the system clipboard unchanged. A native write
 
 ## Scope and evidence
 
-The app API provides text, images and incoming native file paste. The bundled
-Files app's outgoing file/folder Copy path is documented separately in
-[system-clipboard.md](system-clipboard.md). Outgoing file and custom-format access
-are not yet exposed through the runtime client.
+The app API provides text, images, native file paste and native file export. The
+bundled Files app's workspace Copy/Cut path is documented separately in
+[system-clipboard.md](system-clipboard.md). Integrating that shared selection
+with installed apps and adding custom-format access remain open.
 
 `npm test -- src/extensions/clipboard-api.test.ts` exercises real RPC channels with synthetic clipboard contents: a text value larger than one RPC envelope, split surrogate pairs, empty text, snapshot consistency, separate permissions, foreign handles, ordered chunks, incomplete commits, cancellation during staging/startup, late completion, exclusive native publication and close cleanup.
 

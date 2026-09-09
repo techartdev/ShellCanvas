@@ -552,6 +552,9 @@ async fn prepare_clipboard(
         registry.slots.clone()
     };
     let work: Result<u32> = async {
+        // Acknowledge registration before waiting for workers or provider I/O.
+        // Owners canceled during dispatch can now cancel the registered request.
+        let _ = on_event.send(Progress { items: Some(0), bytes: 0, total: 0, phase: "preparing" });
         checkpoint(&cancel)?;
         let _permit = tokio::select! { permit = slots.acquire() => permit?, _ = wait_for_cancel(cancel.clone()) => bail!("Transfer canceled") };
         let service = provider(state, session, binding.as_ref()).await.map_err(anyhow::Error::msg)?;

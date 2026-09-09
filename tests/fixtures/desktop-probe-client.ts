@@ -14,6 +14,8 @@ let capturedDocument:
 let capturedListing:
   AsyncIterator<import("@shellcanvas/app-sdk").RemoteDirectoryPage> | undefined;
 let watching = false;
+let fileExportAbort: AbortController | undefined;
+let fileExport: Promise<boolean> | undefined;
 let transfer: import("@shellcanvas/app-sdk").RemoteTransfer | undefined;
 let transferRunning:
   Promise<import("@shellcanvas/app-sdk").TransferResult> | undefined;
@@ -46,6 +48,54 @@ window.addEventListener("message", async (event) => {
   let windowError: string | undefined;
   let imageClipboard: Record<string, boolean> | undefined;
   let fileClipboard: Record<string, boolean> | undefined;
+  if (event.data.action === "file-copy-start") {
+    const client = (await connection)!;
+    const binding = (await client.environment.get()).binding!;
+    fileExportAbort = new AbortController();
+    fileExport = client.clipboard
+      .copyFiles(
+        [{ binding, path: "fixture:held-export", revision: "export-1" }],
+        fileExportAbort.signal,
+      )
+      .then(
+        () => false,
+        (error) => error.code === "aborted",
+      );
+    await client.window.setDocumentState({ dirty: false, busy: false });
+    fileClipboard = { started: true };
+  }
+  if (event.data.action === "file-copy-cancel") {
+    fileExportAbort!.abort();
+    fileClipboard = { canceled: await fileExport! };
+    await (await connection)!.window.setDocumentState({
+      dirty: false,
+      busy: false,
+    });
+  }
+  if (event.data.action === "file-copy") {
+    const client = (await connection)!;
+    const binding = (await client.environment.get()).binding!;
+    await client.clipboard.copyFiles(
+      Array.from({ length: 300 }, (_, i) => ({
+        binding,
+        path: `fixture:export-${i}`,
+        revision: "export-1",
+      })),
+    );
+    fileClipboard = { published: true };
+  }
+  if (event.data.action === "file-copy-denied") {
+    const client = (await connection)!;
+    const binding = (await client.environment.get()).binding!;
+    try {
+      await client.clipboard.copyFiles([
+        { binding, path: "fixture:export-0", revision: "export-1" },
+      ]);
+      fileClipboard = { denied: false };
+    } catch (error) {
+      fileClipboard = { denied: (error as { code: string }).code === "denied" };
+    }
+  }
   if (event.data.action === "file-clipboard") {
     const client = (await connection)!;
     const binding = (await client.environment.get()).binding!;

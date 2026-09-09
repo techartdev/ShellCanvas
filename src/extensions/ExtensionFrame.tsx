@@ -32,6 +32,7 @@ import {
 import { appCapabilities } from "./permissions";
 import type { ClipboardService } from "../clipboard";
 import { AppClipboard } from "./clipboard-api";
+import { AppFileClipboard } from "./file-clipboard-api";
 import { customMethods } from "./custom-bridge";
 import type { CustomAccess } from "../custom-services";
 
@@ -102,11 +103,24 @@ export function ExtensionFrame({
     let appDocument: AppDocumentState = { dirty: false, busy: false };
     let transferBusy = false;
     let settingsBusy = false;
+    let clipboardBusy = false;
     const publishDocument = () =>
       documentState.current?.({
         ...appDocument,
-        busy: appDocument.busy || transferBusy || settingsBusy,
+        busy: appDocument.busy || transferBusy || settingsBusy || clipboardBusy,
       });
+    const fileClipboard = transferSource
+      ? new AppFileClipboard(
+          transferSource,
+          () =>
+            environment.snapshot().connection === "connected" &&
+            environment.snapshot().capabilities.includes("files.download"),
+          (busy) => {
+            clipboardBusy = busy;
+            publishDocument();
+          },
+        )
+      : undefined;
     const hostSettings = hostSettingsSource
       ? new AppHostSettings(
           hostSettingsSource,
@@ -195,6 +209,9 @@ export function ExtensionFrame({
       if (clipboardOwner)
         for (const [name, method] of clipboardOwner.methods())
           methods.set(name, method);
+      if (fileClipboard)
+        for (const [name, method] of fileClipboard.methods())
+          methods.set(name, method);
       methods.set(
         "system.window.setDocumentState",
         documentStateMethod((state) => {
@@ -245,6 +262,7 @@ export function ExtensionFrame({
         },
       });
       const publishEnvironment = () => {
+        fileClipboard?.refresh();
         transfers?.refresh();
         directories?.refresh(environment.snapshot().connection === "connected");
         const state = environment.snapshot();
@@ -266,6 +284,7 @@ export function ExtensionFrame({
         approved,
       );
       peer.onClose(() => {
+        fileClipboard?.close();
         hostSettings?.close();
         transfers?.close();
         consoles?.close();
@@ -285,6 +304,7 @@ export function ExtensionFrame({
     setTransferFailure(null);
     const unmount = mountAppDocument(frame, app, token, setError);
     const retire = () => {
+      fileClipboard?.close();
       hostSettings?.close();
       transfers?.close();
       consoles?.close();

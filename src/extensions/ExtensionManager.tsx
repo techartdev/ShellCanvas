@@ -23,6 +23,8 @@ function permissionName(name: string) {
     return "Replace clipboard with an image";
   if (name === "system.clipboard.files.read")
     return "Read files and folders copied on this device for transfer";
+  if (name === "system.clipboard.files.write")
+    return "Replace the system clipboard with remote files and folders";
   return name === "system.dialogs"
     ? "Shared desktop dialogs"
     : (capabilityLabels[name as Capability] ?? name);
