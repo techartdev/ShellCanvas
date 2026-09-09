@@ -1,6 +1,6 @@
 # ShellCanvas system API and runtime extensions
 
-Status: acceptance reviewed; final source verification pending, updated 2026-09-10. This is the current scope and completion
+Status: complete for the Windows base API, updated 2026-09-10. This is the current scope and completion
 checklist for BASE-11. [Historical checkpoints](kernel-history.md) retain the
 earlier implementation and test records. Their statements about pending work
 describe that point in time, not the current backlog.
@@ -64,7 +64,8 @@ physical tablet/mobile product polish does not.
 
 ## Implemented capabilities and evidence
 
-Implemented means the stated behavior and platform, not completion of the goal.
+Implemented means the stated behavior and platform. BASE-11 is complete within
+that boundary; platform and product follow-ups remain explicitly separate.
 
 | Area                     | Current implementation                                                                                                                                                         | Contract and evidence entrypoint                                                                                                                         |
 | ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -183,10 +184,11 @@ build. The SDK commands prove consumption outside the checkout. None alone prove
 GUI behavior, device support or platform isolation. Native fixture instructions
 are in [runtime apps](runtime-apps.md) and [adapter packages](adapter-packages.md).
 
-Windows source checkpoint `458144a` passed 258 frontend tests, 186 Rust tests
+Windows source checkpoint `d3a6634` passed 258 frontend tests, 186 Rust tests
 with two intentional live probes ignored, SDK checks, formatting, Clippy and the
-normal desktop build. Final verification including the new opt-in file probe
-is pending. Current runtime evidence and each checkpoint's limits are indexed
+normal desktop build. The report is
+`.local/verification/2026-09-09T21-06-44.132Z-127e9315-bc73-4913-9d57-7f0fe161fd62.json`;
+both source snapshots are clean and identical. Current runtime evidence and each checkpoint's limits are indexed
 in the [acceptance audit](kernel-acceptance.md). Synthetic clipboard/provider
 fixtures remain distinct from the live Windows OS clipboard probes.
 
@@ -200,7 +202,7 @@ This does not enable installed UI packages or establish general Mac support.
 The acceptance audit covers independent installation without core rebuilds,
 preserved work during updates/switches, denied/foreign/stale operations, partial
 capabilities and cleanup across all eight delivery areas. Final clean-source
-verification is the remaining closure step; the follow-ups below do not expand it.
+verification passed. This closes BASE-11; the follow-ups below are separate work.
 
 ## Product work beyond this core goal
 

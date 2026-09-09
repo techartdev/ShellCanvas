@@ -83,5 +83,13 @@ foreign virtual-file input and cross-process clipboard exchange remain separate
 product work. Mac/Linux native isolation and descendant cleanup must be verified
 before enabling installed UI there. See [backlog](../BACKLOG.md).
 
-The final source verification result is recorded in the kernel roadmap. Closure
-requires that check to pass; this audit does not substitute for it.
+Final source verification passed at clean checkpoint `d3a6634`: 258 frontend
+tests, 186 Rust tests (two opt-in probes ignored), SDK package checks, formatting,
+Clippy and the normal Windows debug executable. Both source fingerprints were
+`282f1e341ff203e70cfb45875183eadbbbae6d485b55b08ffc7c94dbecfcdc97`.
+Report: `.local/verification/2026-09-09T21-06-44.132Z-127e9315-bc73-4913-9d57-7f0fe161fd62.json`.
+The subsequent closure commit changes documentation only.
+
+The resulting `target/debug/shellcanvas.exe` is 32,778,752 bytes, SHA-256
+`cf56bbb41ab779cf7111c5418dc7f2200f86864bd215a1cb9047b99b1da0655b`.
+This is a normal embedded-assets debug build, not an installer or signed release.
