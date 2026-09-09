@@ -144,8 +144,10 @@ the user's visual check. Its SHA-256 is
 `e4d241c6f51bf6555e731df048640f69922cea848420ebc82c6993254cf43c2c`.
 Final build/launch evidence is in `build-dialog.log`, `build-dialog.exit` (0),
 and `launch-dialog.log`. The shared frontend also passed a normal Windows native
-debug build. Final visual confirmation on the Mac remains separate from the
-automated fixture results.
+debug build. The user subsequently confirmed that the updated desktop fills the
+native window correctly and Settings opens correctly ("Both look correct").
+This closes the reported launch/layout issue on this test Mac; the broader native
+client acceptance items below remain open.
 
 ## Remaining evidence
 
