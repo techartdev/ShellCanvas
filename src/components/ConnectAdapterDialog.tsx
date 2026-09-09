@@ -12,6 +12,7 @@ import {
   type Configuration,
 } from "../adapters";
 import "./ConnectAdapterDialog.css";
+import { AdapterDiagnosticsPanel } from "./AdapterDiagnosticsPanel";
 import { HostKeyReviewPanel } from "./HostKeyReviewPanel";
 import type { HostKeyChallenge } from "../sdk";
 const standardRoles: Record<string, string> = {
@@ -327,6 +328,7 @@ export function ConnectAdapterDialog({
           </p>
         )}
         {loading && <p role="status">Loading connection adapters…</p>}
+        {error && <AdapterDiagnosticsPanel services={services} />}
         {hostKeyReview && (
           <HostKeyReviewPanel
             key={hostKeyReview.challenge.token}

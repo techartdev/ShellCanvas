@@ -2,6 +2,7 @@
 import { Channel, invoke, isTauri } from "@tauri-apps/api/core";
 import type { HostKeyChallenge, HostKeyReviewer } from "./sdk";
 import type { Session, ConnectionIdentity, WorkspaceStatus } from "./sdk";
+import type { ConnectionDiagnostics } from "./adapter-diagnostics";
 export type Configuration = Record<string, string | number | boolean>;
 export interface AdapterField {
   id: string;
@@ -78,6 +79,7 @@ export function restoredConfiguration(
   ) as Configuration;
 }
 export interface AdapterServices {
+  diagnostics?(): Promise<ConnectionDiagnostics[]>;
   available?(): Promise<AdapterInfo[]>;
   profiles?: WorkspaceProfileStore;
   replaceSource?(
@@ -186,6 +188,7 @@ export function adapterProfile(
   };
 }
 export const nativeAdapterServices: AdapterServices = {
+  diagnostics: () => invoke("adapter_diagnostics"),
   available: () => invoke("available_connections"),
   profiles: {
     list: () => invoke("list_workspace_profiles"),

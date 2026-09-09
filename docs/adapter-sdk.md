@@ -1,5 +1,9 @@
 # Rust adapter SDK
 
+Use the desktop's [connection diagnostics](adapter-diagnostics.md) to inspect
+startup and host-observed request outcomes without including configuration or
+payloads in reports. The SDK protocol needs no diagnostics-specific methods.
+
 The provisional `shellcanvas-adapter-sdk` crate supplies the adapter side of the
 versioned process protocol. It has no dependency on the desktop, Tauri, SSH or
 other workspace crates. The host re-exports the same framing and service

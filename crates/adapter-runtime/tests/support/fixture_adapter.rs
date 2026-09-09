@@ -146,7 +146,10 @@ async fn main() {
                                 v: 1,
                                 id,
                                 code: "denied".into(),
-                                message: "Fixture refused the operation".into(),
+                                message: params["message"]
+                                    .as_str()
+                                    .unwrap_or("Fixture refused the operation")
+                                    .into(),
                             })
                             .unwrap(),
                         )

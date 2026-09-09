@@ -93,13 +93,29 @@ impl PackageLease {
         configuration: &Value,
         deadline: std::time::Duration,
     ) -> Result<crate::AdapterProcess> {
-        let configuration = self.configuration(configuration)?;
+        self.connect_observed(configuration, deadline, crate::Diagnostics::default())
+            .await
+    }
+    pub async fn connect_observed(
+        self,
+        configuration: &Value,
+        deadline: std::time::Duration,
+        diagnostics: crate::Diagnostics,
+    ) -> Result<crate::AdapterProcess> {
+        let configuration = match self.configuration(configuration) {
+            Ok(configuration) => configuration,
+            Err(error) => {
+                diagnostics.preparation_failed();
+                return Err(error);
+            }
+        };
         let launch = self.launch();
-        Ok(crate::AdapterProcess::launch_owned(
+        Ok(crate::AdapterProcess::launch_owned_observed(
             launch,
             configuration,
             deadline,
             Some(std::sync::Arc::new(self)),
+            diagnostics,
         )
         .await?)
     }

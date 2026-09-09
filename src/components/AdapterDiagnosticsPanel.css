@@ -1,0 +1,108 @@
+.adapter-diagnostics {
+  margin: 16px 0;
+  border: 1px solid #405560;
+  border-radius: 10px;
+  background: #152731;
+  font-size: 12px;
+}
+.adapter-diagnostics > summary {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  cursor: pointer;
+  padding: 13px 15px;
+  color: #b4d6cb;
+}
+.adapter-diagnostics > summary:focus-visible,
+.adapter-diagnostics-timeline:focus-visible {
+  outline: 2px solid #a8d8c0;
+  outline-offset: 2px;
+}
+.adapter-diagnostics[open] > summary {
+  border-bottom: 1px solid #344a56;
+}
+.adapter-diagnostics-body {
+  padding: 0 15px 12px;
+}
+.adapter-diagnostics .adapter-diagnostics-note {
+  color: #9eb2be;
+  font-size: 11px;
+  line-height: 1.55;
+  margin: 12px 0;
+}
+.adapter-diagnostics-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 8px;
+}
+.adapter-diagnostics-controls label {
+  flex: 1 1 180px;
+  min-width: 0;
+  display: grid;
+  gap: 6px;
+  color: #9eb2be;
+}
+.adapter-diagnostics-controls select {
+  width: 100%;
+  min-width: 0;
+  padding: 8px;
+  border: 1px solid #405560;
+  border-radius: 6px;
+  background: #203540;
+  color: #e1e8eb;
+}
+.adapter-diagnostics-controls button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border: 1px solid #405560;
+  border-radius: 6px;
+  padding: 9px;
+  min-height: 34px;
+}
+.adapter-diagnostics-overview {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 16px 0 10px;
+}
+.adapter-diagnostics-overview strong {
+  font-weight: 500;
+  color: #b4d6cb;
+}
+.adapter-diagnostics-overview span {
+  color: #9eb2be;
+  font-size: 11px;
+}
+.adapter-diagnostics-timeline {
+  overflow: auto;
+  max-height: 240px;
+  border: 1px solid #344a56;
+  border-radius: 7px;
+}
+.adapter-diagnostics table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 11px;
+  text-align: left;
+}
+.adapter-diagnostics th {
+  position: sticky;
+  top: 0;
+  background: #203540;
+  color: #b2c4cc;
+  font-weight: 500;
+}
+.adapter-diagnostics th,
+.adapter-diagnostics td {
+  padding: 8px 9px;
+  border-bottom: 1px solid #2b414d;
+}
+.adapter-diagnostics td:first-child {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  color: #9eb2be;
+}

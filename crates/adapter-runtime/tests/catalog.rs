@@ -48,8 +48,9 @@ async fn reviewed_snapshot_runs_after_source_changes_and_old_generation_survives
         .configuration(&json!({"token":"ephemeral-secret"}))
         .unwrap();
     let executable = lease.launch().executable;
+    let diagnostics = shellcanvas_adapter_runtime::Diagnostics::default();
     let process = lease
-        .connect(&configuration, Duration::from_secs(4))
+        .connect_observed(&configuration, Duration::from_secs(4), diagnostics.clone())
         .await
         .unwrap();
     assert!(process.files().is_some());
@@ -84,6 +85,7 @@ async fn reviewed_snapshot_runs_after_source_changes_and_old_generation_survives
     process.close().await.unwrap();
     assert_eq!(catalog.collect().unwrap(), 1);
     assert!(!executable.exists());
+    assert!(!diagnostics.snapshot().events.is_empty()); // History does not retain assets.
 }
 #[test]
 fn disabled_and_changed_packages_cannot_be_launched_and_stale_decisions_are_refused() {

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 use crate::process_tree::ProcessTree;
 use crate::wire::{self, Envelope, Initialized, ServiceDescriptor};
+use crate::{DiagnosticCode, DiagnosticKind as Event, DiagnosticSnapshot, Diagnostics};
 use async_trait::async_trait;
 use serde_json::{json, Value};
 use shellcanvas_services::ConnectionLifecycle;
@@ -59,6 +60,7 @@ struct Pending {
     _permit: OwnedSemaphorePermit,
 }
 struct Inner {
+    diagnostics: Diagnostics,
     requests: mpsc::Sender<Request>,
     stop: watch::Sender<bool>,
     done: watch::Receiver<Option<Result<(), AdapterError>>>,
@@ -73,6 +75,18 @@ impl Drop for Inner {
     }
 }
 struct WakeOnDrop(Arc<Notify>);
+struct LaunchObservation {
+    diagnostics: Diagnostics,
+    completed: bool,
+}
+impl Drop for LaunchObservation {
+    fn drop(&mut self) {
+        if !self.completed {
+            self.diagnostics
+                .record(Event::InitializationCanceled, None, None);
+        }
+    }
+}
 impl Drop for WakeOnDrop {
     fn drop(&mut self) {
         self.0.notify_one();
@@ -98,6 +112,60 @@ impl AdapterProcess {
         configuration: Value,
         deadline: Duration,
         owner: Option<Arc<dyn Send + Sync>>,
+    ) -> Result<Self, AdapterError> {
+        Self::launch_owned_observed(
+            launch,
+            configuration,
+            deadline,
+            owner,
+            Diagnostics::default(),
+        )
+        .await
+    }
+    pub async fn launch_observed(
+        launch: Launch,
+        configuration: Value,
+        deadline: Duration,
+        diagnostics: Diagnostics,
+    ) -> Result<Self, AdapterError> {
+        Self::launch_owned_observed(launch, configuration, deadline, None, diagnostics).await
+    }
+    pub(crate) async fn launch_owned_observed(
+        launch: Launch,
+        configuration: Value,
+        deadline: Duration,
+        owner: Option<Arc<dyn Send + Sync>>,
+        diagnostics: Diagnostics,
+    ) -> Result<Self, AdapterError> {
+        if !diagnostics.claim() {
+            return Err(error(
+                "invalid",
+                "Use a new diagnostic history for each launch",
+                false,
+            ));
+        }
+        diagnostics.record(Event::LaunchRequested, None, None);
+        let mut observation = LaunchObservation {
+            diagnostics: diagnostics.clone(),
+            completed: false,
+        };
+        let result = Self::start(launch, configuration, deadline, owner, diagnostics.clone()).await;
+        if let Err(reason) = &result {
+            diagnostics.record(
+                Event::InitializationFailed,
+                None,
+                Some(DiagnosticCode::from_code(&reason.code)),
+            );
+        }
+        observation.completed = true;
+        result
+    }
+    async fn start(
+        launch: Launch,
+        configuration: Value,
+        deadline: Duration,
+        owner: Option<Arc<dyn Send + Sync>>,
+        diagnostics: Diagnostics,
     ) -> Result<Self, AdapterError> {
         if !launch.executable.is_absolute() || !launch.directory.is_absolute() {
             return Err(error(
@@ -151,6 +219,7 @@ impl AdapterProcess {
             )
         })?;
         let (requests, receive) = mpsc::channel(MAX_CALLS);
+        diagnostics.record(Event::Spawned, None, None);
         let (stop, stopping) = watch::channel(false);
         let (complete, done) = watch::channel(None);
         let alive = Arc::new(AtomicBool::new(true));
@@ -160,12 +229,12 @@ impl AdapterProcess {
             receive,
             stopping,
             complete,
-            alive.clone(),
-            wake.clone(),
+            (alive.clone(), wake.clone(), diagnostics.clone()),
             RetainedOwner(owner),
         ));
         let mut process = Self {
             inner: Arc::new(Inner {
+                diagnostics,
                 requests,
                 stop,
                 done,
@@ -206,6 +275,7 @@ impl AdapterProcess {
             });
         match info {
             Ok(info) => {
+                process.inner.diagnostics.record(Event::Ready, None, None);
                 process.services = Arc::new(info.services);
                 Ok(process)
             }
@@ -217,6 +287,9 @@ impl AdapterProcess {
     }
     pub fn services(&self) -> &[ServiceDescriptor] {
         &self.services
+    }
+    pub fn diagnostics(&self) -> DiagnosticSnapshot {
+        self.inner.diagnostics.snapshot()
     }
     pub fn supports(&self, service: &str, version: u32, methods: &[&str]) -> bool {
         self.services.iter().any(|item| {
@@ -242,6 +315,11 @@ impl AdapterProcess {
             .iter()
             .any(|service| service.methods.iter().any(|name| name == method))
         {
+            self.inner.diagnostics.record(
+                Event::RequestRejected,
+                None,
+                Some(DiagnosticCode::Unavailable),
+            );
             return Err(error(
                 "unavailable",
                 "This adapter does not advertise the requested method",
@@ -303,11 +381,18 @@ impl AdapterProcess {
                 "The adapter connection stopped responding",
                 dispatched.load(Ordering::Acquire),
             )),
-            Err(_) => Err(error(
-                "deadline",
-                "Adapter operation timed out; inspect any mutation before retrying",
-                dispatched.load(Ordering::Acquire),
-            )),
+            Err(_) => {
+                self.inner.diagnostics.record(
+                    Event::RequestDeadline,
+                    None,
+                    Some(DiagnosticCode::Deadline),
+                );
+                Err(error(
+                    "deadline",
+                    "Adapter operation timed out; inspect any mutation before retrying",
+                    dispatched.load(Ordering::Acquire),
+                ))
+            }
         }
     }
     /// Invalidates calls immediately. Worker cleanup survives cancellation of this waiter.
@@ -353,8 +438,7 @@ async fn run(
     mut requests: mpsc::Receiver<Request>,
     mut stop: watch::Receiver<bool>,
     complete: watch::Sender<Option<Result<(), AdapterError>>>,
-    alive: Arc<AtomicBool>,
-    wake: Arc<Notify>,
+    (alive, wake, diagnostics): (Arc<AtomicBool>, Arc<Notify>, Diagnostics),
     mut owner: RetainedOwner,
 ) {
     let mut stdin = child.stdin.take().expect("piped stdin");
@@ -401,6 +485,7 @@ async fn run(
         let mut saturated = false;
         for id in canceled {
             pending.remove(&id);
+            diagnostics.record(Event::RequestCanceled, Some(id), None);
             let data =
                 wire::encode(&Envelope::Cancel { v: 1, id }).expect("small cancellation frame");
             if outbound.try_send(data).is_err() {
@@ -429,7 +514,13 @@ async fn run(
                     _ => { break Some("The adapter sent an invalid response"); }
                 };
                 if id == 0 || id >= next { break Some("The adapter replied to an unknown request"); }
-                if let Some(item) = pending.remove(&id) { let _ = item.reply.send(value); }
+                if let Some(item) = pending.remove(&id) {
+                    match &value {
+                        Ok(_) => diagnostics.record(Event::RequestSucceeded,Some(id),None),
+                        Err(reason) => diagnostics.record(Event::RequestFailed,Some(id),Some(DiagnosticCode::from_code(&reason.code))),
+                    }
+                    let _ = item.reply.send(value);
+                } else { diagnostics.record(Event::LateReply,Some(id),None); }
                 // A completed/canceled request can have a late reply. It cannot reach another call.
             }
             request = requests.recv() => {
@@ -442,11 +533,26 @@ async fn run(
                 };
                 if outbound.try_send(data).is_err() { break Some("Adapter input stopped accepting requests"); }
                 request.dispatched.store(true, Ordering::Release);
+                diagnostics.record(Event::RequestDispatched, Some(next), None);
                 pending.insert(next, Pending { reply: request.reply, _permit: request.permit });
                 next += 1;
             }
         }
     };
+    diagnostics.record(
+        match reason {
+            None => Event::CloseRequested,
+            Some("The adapter process exited") => Event::ProcessExited,
+            Some("The adapter input pipe failed or stalled") => Event::InputFailure,
+            Some("The adapter output ended or violated the protocol") => Event::OutputFailure,
+            Some("The adapter sent an invalid response") => Event::InvalidResponse,
+            Some("The adapter replied to an unknown request") => Event::UnknownReply,
+            Some("Adapter request identity space exhausted") => Event::IdentityExhausted,
+            _ => Event::InputBackpressure,
+        },
+        None,
+        None,
+    );
     alive.store(false, Ordering::Release);
     requests.close();
     for (_, item) in pending {
@@ -477,7 +583,10 @@ async fn run(
         ))
     };
     if outcome.is_ok() {
+        diagnostics.record(Event::CleanupConfirmed, None, None);
         drop(owner.0.take());
+    } else {
+        diagnostics.record(Event::CleanupUnconfirmed, None, None);
     }
     complete.send_replace(Some(outcome));
 }

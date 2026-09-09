@@ -61,13 +61,17 @@ Implemented means the stated behavior and platform, not completion of the goal.
       canceled/rejected startup, crash/protocol failure, dropped ownership and
       supervisor termination. Preserve unrelated processes and retain assets until
       cleanup is confirmed. Current non-Windows cleanup covers only the direct child.
-- [ ] **Diagnostics and crash recovery:** bounded, useful adapter diagnostics
+- [x] **Diagnostics and crash recovery:** bounded, useful adapter diagnostics
       without credentials/configuration leaks; recover stale staging resources
       without disturbing active generations. Versioned review staging recovery is
       implemented: an OS lease protects copying/review, and collection preserves
       other processes and running generations. A real process-termination test
-      verifies recovery on Windows. The bounded diagnostics interface remains open;
-      legacy/unrecognized staging is preserved rather than guessed abandoned.
+      verifies recovery on Windows. Connection diagnostics retain 256 typed events
+      for each of 32 recent attempts, including failed startup, with refresh and
+      report export in the desktop. Real process tests cover privacy and cleanup;
+      the Windows fixture verifies failed preparation and retained live connections.
+      See [diagnostics](adapter-diagnostics.md). Legacy/unrecognized staging is
+      preserved rather than guessed abandoned; other-platform evidence stays open.
 - [x] **Standard-service starters:** independently buildable Files, Terminal and
       Remote settings examples with discovery, cancellation, resource ownership and
       production-host verification. `init --template files|console|settings` selects
@@ -112,7 +116,7 @@ are in [runtime apps](runtime-apps.md) and [adapter packages](adapter-packages.m
 Windows code checkpoint `ddbb580` passed 225 frontend tests, 146 Rust tests with
 two intentional live probes ignored, SDK checks, formatting, Clippy and the normal
 desktop build. Current Windows integration records cover 80 installed-app checks,
-68 adapter checks, 11 two-process catalog checks and eight generated-SDK app
+71 adapter checks, 11 two-process catalog checks and eight generated-SDK app
 checks. Their individual scopes and revisions matter; synthetic clipboard and
 provider fixtures are not live-device evidence.
 

@@ -70,6 +70,11 @@ sandbox adapter network/device access; keep that distinction in documentation.
 
 ## Verify
 
+Inspect [connection diagnostics](../../docs/adapter-diagnostics.md) for startup,
+request and cleanup observations. Reports omit payloads and raw adapter messages;
+do not infer a mutation's authoritative outcome from cancellation or a deadline.
+Retained history must not keep a process or package generation alive.
+
 Test the implemented protocol with representative fixtures, including unsupported
 services, errors, cancellation and cleanup. `npm run verify:adapter-sdk` proves
 independent export, generation, packaging and production-host interoperability

@@ -2,6 +2,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Cable, Plus, RefreshCw, ShieldAlert, X } from "lucide-react";
 import type { AdapterInfo, AdapterReview, AdapterServices } from "../adapters";
+import { AdapterDiagnosticsPanel } from "../components/AdapterDiagnosticsPanel";
 export function AdapterManager({ services }: { services: AdapterServices }) {
   const [items, setItems] = useState<AdapterInfo[]>([]),
     [busy, setBusy] = useState(false),
@@ -255,6 +256,7 @@ export function AdapterManager({ services }: { services: AdapterServices }) {
         Updates and disabling apply to new connections. Running connections keep
         their installed version.
       </p>
+      <AdapterDiagnosticsPanel services={services} />
     </section>
   );
 }

@@ -1,5 +1,9 @@
 # Native adapter process contract (provisional v1)
 
+See [connection diagnostics](adapter-diagnostics.md) for bounded host timelines,
+failed-startup observations and report ownership. Diagnostics require no changes
+to the adapter protocol and do not capture request contents or adapter logs.
+
 Rust adapter authors can use the [standalone adapter SDK](adapter-sdk.md) for
 framing, concurrent request dispatch and cancellation instead of implementing
 the server loop themselves. Other languages can implement this same contract.

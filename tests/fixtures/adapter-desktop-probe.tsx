@@ -3,6 +3,7 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { emit } from "@tauri-apps/api/event";
+import { clipboard } from "../../src/clipboard";
 import App from "../../src/App";
 import {
   nativeAdapterServices,
@@ -1297,6 +1298,71 @@ async function run() {
         echo.name,
         "retained",
       )) === "retained";
+    const failureOptions: AdapterConnectionOptions = {
+      name: "Missing adapter diagnostics",
+      sources: [
+        {
+          key: "diagnostic-source",
+          id: "example.device",
+          revision: "removed",
+          configuration: { token: "diagnostic-private-value" },
+        },
+      ],
+      bindings: { "example.device": "diagnostic-source" },
+    };
+    checks.failedPreparationRecorded = await nativeAdapterServices
+      .connect(failureOptions)
+      .then(
+        () => false,
+        async () => {
+          const reports = await nativeAdapterServices.diagnostics!();
+          return (
+            reports[0]?.status === "failed" &&
+            reports[0].events.some(
+              (event) => event.kind === "preparationFailed",
+            ) &&
+            !JSON.stringify(reports).includes("diagnostic-private-value")
+          );
+        },
+      );
+    (
+      await until(
+        () =>
+          document.querySelector<HTMLElement>(".adapter-diagnostics summary"),
+        "connection diagnostics disclosure",
+      )
+    ).click();
+    await until(
+      () =>
+        document
+          .querySelector(".adapter-diagnostics")
+          ?.textContent?.includes("Package preparation failed"),
+      "diagnostic failure history",
+    );
+    const originalWrite = clipboard.writeText;
+    let copied = "";
+    clipboard.writeText = async (text) => {
+      copied = text;
+    };
+    try {
+      await click("Copy report");
+      await until(() => !!copied, "diagnostic report copy");
+      checks.diagnosticReportExport =
+        JSON.parse(copied).schemaVersion === 1 &&
+        JSON.parse(copied).events.some(
+          (event: { kind: string }) => event.kind === "preparationFailed",
+        ) &&
+        !copied.includes("diagnostic-private-value");
+    } finally {
+      clipboard.writeText = originalWrite;
+    }
+    checks.diagnosticsPreserveConnection =
+      (await generatedServices.custom!.call(
+        generatedSession.id,
+        echo.binding,
+        echo.name,
+        "still running",
+      )) === "still running";
     await stage("generated-adapter");
   }
   await cleanup();

@@ -49,13 +49,19 @@ npm run tauri -- build --debug --no-bundle --config src-tauri/tauri.adapter-prob
 node scripts/run-extension-probe.mjs
 ```
 
-The latest Windows run passes 68 checks. It includes a third package generated,
+The latest Windows run passes 71 checks. It includes a third package generated,
 built and packed outside the checkout using the exported SDK CLI. The desktop
 installs it through native-code review, opens a custom-service-only workspace,
 exchanges JSON through its actual process and retains the live connection after
 package removal. Files and Terminal remain unavailable because this starter
 does not implement them. The probe reads the successful SDK verification report
 to find this package; rerun that verification if the temporary source was removed.
+
+Three diagnostics checks also verify a missing-package failure, native history
+retrieval and report export through the panel, and a still-working retained
+connection. See [connection diagnostics](adapter-diagnostics.md) for the report
+schema, retention and privacy boundaries. The first run of this expanded fixture
+hit its 25-second watchdog; an unchanged rerun completed all 71 checks.
 
 The probe builds two versions of the practice adapter and uses the actual desktop, native catalog, process host and service wrappers. The operating system's chooser is replaced by fixture packages. It checks explicit trust, install/update/disable/remove, running-generation leases, real file/console calls, mixed source identity, unavailable capabilities and reconnect. It also replaces only Files through the production UI, verifies changed file contents with the same live console handle, refuses old handles and invalid replacement identities, and checks cancellation before dispatch. Its installed SDK app checks custom-service discovery, permission denial, JSON calls, errors, cancellation reaching the process and explicit acceptance after reconnect/source replacement. Unit tests separately cover late cancellation after commit and stale status revisions. It uses separate probe application data and no real remote host or system clipboard. This is Windows integration evidence, not a test of FTP, serial, Telnet, another native platform or the operating system's chooser. Cancellation during native adapter initialization and cleanup failure presentation still need dedicated desktop walkthroughs.
 

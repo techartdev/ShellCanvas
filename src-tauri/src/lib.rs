@@ -7,6 +7,7 @@ use std::sync::{
 };
 use tauri::{ipc::Channel, State};
 use tokio::sync::{mpsc, Mutex};
+mod adapter_diagnostics;
 mod adapters;
 mod builtin_ssh;
 #[cfg(windows)]
@@ -700,6 +701,7 @@ pub fn run() {
         })
         .manage(DesktopState::default())
         .manage(adapters::AdapterJobs::default())
+        .manage(adapter_diagnostics::AdapterDiagnostics::default())
         .manage(custom_services::CustomRequests::default())
         .invoke_handler(|invoke| {
             #[cfg(debug_assertions)]
@@ -722,6 +724,7 @@ pub fn run() {
             }
             let handler: fn(tauri::ipc::Invoke<tauri::Wry>) -> bool = tauri::generate_handler![
                 adapters::list_adapters,
+                adapter_diagnostics::adapter_diagnostics,
                 adapters::available_connections,
                 workspace_profiles::list_workspace_profiles,
                 workspace_profiles::save_workspace_profile,

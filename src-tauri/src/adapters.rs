@@ -12,6 +12,13 @@ use std::{
 use tauri::{Manager, State, WebviewWindow};
 use tauri_plugin_dialog::DialogExt;
 
+struct PreparationObservation(shellcanvas_adapter_runtime::Diagnostics);
+impl Drop for PreparationObservation {
+    fn drop(&mut self) {
+        self.0.preparation_canceled();
+    }
+}
+
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct AdapterSource {
@@ -67,12 +74,20 @@ pub async fn connect_adapters(
     on_host_key: tauri::ipc::Channel<crate::connection_attempts::HostKeyChallenge>,
     app: tauri::AppHandle,
     state: State<'_, crate::DesktopState>,
+    window: WebviewWindow,
 ) -> Result<crate::SessionInfo, String> {
     options.validate()?;
     let canceled = state.attempts.lock().await.claim(request_id)?;
     let result = crate::connection_attempts::cancellable(
         canceled,
-        connect_workspace(options, request_id, on_host_key, app, &state),
+        connect_workspace(
+            options,
+            request_id,
+            on_host_key,
+            app,
+            &state,
+            window.label(),
+        ),
     )
     .await;
     state.attempts.lock().await.finish(request_id);
@@ -84,8 +99,10 @@ async fn connect_workspace(
     on_host_key: tauri::ipc::Channel<crate::connection_attempts::HostKeyChallenge>,
     app: tauri::AppHandle,
     state: &crate::DesktopState,
+    owner: &str,
 ) -> Result<crate::SessionInfo, String> {
-    let (active, info) = prepare_workspace(options, request_id, on_host_key, app, state).await?;
+    let (active, info) =
+        prepare_workspace(options, request_id, on_host_key, app, state, owner).await?;
     let connections = active.identities();
     let status = active.status();
     let id = state.next_id.fetch_add(1, Ordering::Relaxed) + 1;
@@ -116,9 +133,10 @@ pub async fn replace_adapter_source(
     options: AdapterConnectionOptions,
     request_id: u64,
     on_host_key: tauri::ipc::Channel<crate::connection_attempts::HostKeyChallenge>,
-    app: tauri::AppHandle,
     state: State<'_, crate::DesktopState>,
+    window: WebviewWindow,
 ) -> Result<SourceReplacement, String> {
+    let app = window.app_handle().clone();
     options.validate()?;
     if options.sources.len() != 1 {
         return Err("Replace one connection source at a time".into());
@@ -128,7 +146,14 @@ pub async fn replace_adapter_source(
     // cancel cannot hide the accepted result or disconnect the whole workspace.
     let prepared = crate::connection_attempts::cancellable(
         canceled.clone(),
-        prepare_workspace(options, request_id, on_host_key, app, &state),
+        prepare_workspace(
+            options,
+            request_id,
+            on_host_key,
+            app,
+            &state,
+            window.label(),
+        ),
     )
     .await;
     let result = async {
@@ -177,6 +202,7 @@ async fn prepare_workspace(
     on_host_key: tauri::ipc::Channel<crate::connection_attempts::HostKeyChallenge>,
     app: tauri::AppHandle,
     state: &crate::DesktopState,
+    owner: &str,
 ) -> Result<(crate::workspace_services::WorkspaceServices, HostInfo), String> {
     let catalog = catalog(&app)?;
     let mut connections = Vec::new();
@@ -194,8 +220,17 @@ async fn prepare_workspace(
             connections.push((source.key, prepared));
             continue;
         }
+        let identity = ConnectionIdentity {
+            instance: state.next_id.fetch_add(1, Ordering::Relaxed) + 1,
+            generation: 1,
+            adapter: source.id.clone(),
+        };
+        let log = app
+            .state::<crate::adapter_diagnostics::AdapterDiagnostics>()
+            .begin(owner, identity.clone(), request_id);
+        let _preparation = PreparationObservation(log.clone());
         let catalog = catalog.clone();
-        let (key, lease, config) = tauri::async_runtime::spawn_blocking(move || {
+        let acquired = tauri::async_runtime::spawn_blocking(move || {
             let lease = catalog
                 .acquire(&source.id, &source.revision)
                 .map_err(|error| error.to_string())?;
@@ -205,14 +240,17 @@ async fn prepare_workspace(
             Ok::<_, String>((source.key, lease, config))
         })
         .await
-        .map_err(|error| error.to_string())??;
-        let identity = ConnectionIdentity {
-            instance: state.next_id.fetch_add(1, Ordering::Relaxed) + 1,
-            generation: 1,
-            adapter: lease.info.id.clone(),
+        .map_err(|error| error.to_string())
+        .and_then(|result| result);
+        let (key, lease, config) = match acquired {
+            Ok(value) => value,
+            Err(error) => {
+                log.preparation_failed();
+                return Err(error);
+            }
         };
         let process = lease
-            .connect(&config, Duration::from_secs(30))
+            .connect_observed(&config, Duration::from_secs(30), log)
             .await
             .map_err(|error| error.to_string())?;
         connections.push((
