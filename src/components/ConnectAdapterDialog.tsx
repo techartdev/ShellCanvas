@@ -12,6 +12,8 @@ import {
   type Configuration,
 } from "../adapters";
 import "./ConnectAdapterDialog.css";
+import { HostKeyReviewPanel } from "./HostKeyReviewPanel";
+import type { HostKeyChallenge } from "../sdk";
 const standardRoles: Record<string, string> = {
   files: "Files",
   console: "Terminal",
@@ -34,8 +36,13 @@ export function ConnectAdapterDialog({
   cancel,
   manage,
   submit,
+  hostKeyReview,
 }: {
   services: AdapterServices;
+  hostKeyReview?: {
+    challenge: HostKeyChallenge;
+    decide(approve: boolean): void;
+  } | null;
   initial?: AdapterProfile;
   replacing?: boolean;
   busy: boolean;
@@ -73,7 +80,7 @@ export function ConnectAdapterDialog({
   useEffect(() => {
     let active = true;
     void Promise.all([
-      services.list(),
+      services.available?.() ?? services.list(),
       services.profiles?.list().catch((error) => {
         if (active) setFailure(String(error));
         return [];
@@ -320,6 +327,12 @@ export function ConnectAdapterDialog({
           </p>
         )}
         {loading && <p role="status">Loading connection adapters…</p>}
+        {hostKeyReview && (
+          <HostKeyReviewPanel
+            key={hostKeyReview.challenge.token}
+            {...hostKeyReview}
+          />
+        )}
         <form
           onSubmit={(event) => {
             event.preventDefault();

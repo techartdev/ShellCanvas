@@ -148,10 +148,11 @@ const adapterServices: AdapterServices = {
     native
       ? invoke("review_fixture_adapter", { requestId, version })
       : fake.review(requestId),
-  connect: async (options, signal) => {
+  connect: async (options, signal, reviewHostKey) => {
     const session = await (native ? nativeAdapterServices : fake).connect(
       options,
       signal,
+      reviewHostKey,
     );
     sessions.push(session);
     connectionOptions.push(options);
@@ -1131,6 +1132,80 @@ async function run() {
     checks.workspaceProfileRemovalKeepsWorkspace =
       (await bound.readText(extended.id, original.path)).text === saved.text;
     await stage("workspace-profiles");
+    const builtin = (await nativeAdapterServices.available!()).find(
+      (item) => item.id === "builtin:ssh",
+    )!;
+    checks.builtinConnectionAvailable = builtin?.platform === "builtin";
+    const firstSource = updatedWorkspace.profile.sources[0];
+    const mixedProfile = await nativeAdapterServices.profiles!.save({
+      name: "Mixed SSH fixture",
+      sources: [
+        firstSource,
+        {
+          key: "ssh",
+          id: builtin.id,
+          revision: builtin.revision,
+          configuration: {
+            host: "127.0.0.1",
+            port: 22,
+            username: "fixture",
+            password: "not-saved",
+            passphrase: "not-saved",
+          },
+        },
+      ],
+      bindings: { files: firstSource.key, console: "ssh" },
+    });
+    await named("Open Apps");
+    await click("Connection adapters");
+    const mixedForm = await openConnections();
+    const mixedPicker = await until(
+      () =>
+        mixedForm.querySelector<HTMLSelectElement>(
+          ".workspace-profile-picker select",
+        ),
+      "mixed profile picker",
+    );
+    await until(
+      () =>
+        Array.from(mixedPicker.options).some(
+          (option) => option.value === mixedProfile.id,
+        ),
+      "mixed profile option",
+    );
+    mixedPicker.value = mixedProfile.id;
+    mixedPicker.dispatchEvent(new Event("change", { bubbles: true }));
+    await until(
+      () => mixedForm.querySelectorAll(".adapter-source").length === 2,
+      "mixed profile sources",
+    );
+    checks.mixedSshProfile =
+      !JSON.stringify(mixedProfile).includes("not-saved") &&
+      (await label("Host", mixedForm)).value === "127.0.0.1" &&
+      (await label("Password", mixedForm)).value === "" &&
+      (await label("Key passphrase", mixedForm)).value === "";
+    input(await label("Port", mixedForm), "0");
+    const sessionCount = sessions.length;
+    await click("Open workspace", mixedForm);
+    await until(
+      () =>
+        mixedForm.textContent?.includes(
+          "SSH requires a host, username and valid port",
+        ),
+      "invalid SSH settings",
+    );
+    checks.invalidSshPreservesWorkspace =
+      sessions.length === sessionCount &&
+      (await bound.readText(extended.id, original.path)).text === saved.text;
+    await named("Close adapter connection");
+    await nativeAdapterServices.profiles!.remove(
+      mixedProfile.id,
+      mixedProfile.revision,
+    );
+    checks.builtinSshProfileRemoved = !(
+      await nativeAdapterServices.profiles!.list()
+    ).some((item) => item.id === mixedProfile.id);
+    await stage("builtin-ssh-composition");
   }
   await named("Open Apps");
   await click("Connection adapters");

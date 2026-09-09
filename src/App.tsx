@@ -429,12 +429,32 @@ export default function App({
     sourceAttempt.current = { sessionId: target.sessionId, controller };
     setReplacingSource(true);
     setError("");
+    let releaseReview = () => {};
     try {
       const result = await adapterServices.replaceSource(
         target.sessionId,
         target.expected,
         options,
         controller.signal,
+        (challenge) =>
+          new Promise<boolean>((resolve) => {
+            if (controller.signal.aborted) {
+              resolve(false);
+              return;
+            }
+            let settled = false;
+            const decide = (approve: boolean) => {
+              if (settled) return;
+              settled = true;
+              controller.signal.removeEventListener("abort", cancel);
+              setHostKeyReview(null);
+              resolve(approve);
+            };
+            const cancel = () => decide(false);
+            releaseReview = cancel;
+            controller.signal.addEventListener("abort", cancel, { once: true });
+            setHostKeyReview({ challenge, decide });
+          }),
       );
       update({
         type: "source-replaced",
@@ -452,6 +472,7 @@ export default function App({
     } catch (error) {
       setError(String(error));
     } finally {
+      releaseReview();
       sourceAttempt.current = null;
       setReplacingSource(false);
     }
@@ -1228,6 +1249,7 @@ export default function App({
       )}
       {adapterConnectOpen && adapterServices && (
         <ConnectAdapterDialog
+          hostKeyReview={hostKeyReview}
           services={adapterServices}
           initial={
             reconnectTarget && isAdapterProfile(reconnectTarget.connection)
@@ -1246,14 +1268,15 @@ export default function App({
             openApp("apps");
           }}
           submit={(options, profile) =>
-            establish(profile, (signal) =>
-              adapterServices.connect(options, signal),
+            establish(profile, (signal, review) =>
+              adapterServices.connect(options, signal, review),
             )
           }
         />
       )}
       {sourceTarget && adapterServices && (
         <ConnectAdapterDialog
+          hostKeyReview={hostKeyReview}
           services={adapterServices}
           initial={sourceTarget.profile}
           replacing

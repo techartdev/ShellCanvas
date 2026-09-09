@@ -99,6 +99,9 @@ fn sanitized(
     options.name = options.name.trim().into();
     options.validate()?;
     for source in &mut options.sources {
+        if source.id == crate::builtin_ssh::ID {
+            crate::builtin_ssh::options(source)?;
+        }
         let adapter = installed
             .iter()
             .find(|item| item.id == source.id && item.revision == source.revision && item.enabled)
@@ -208,7 +211,8 @@ pub async fn save_workspace_profile(
     let dir = crate::profile_store::storage_dir(&app)?;
     let catalog = crate::adapters::catalog(&app)?;
     tauri::async_runtime::spawn_blocking(move || {
-        let installed = catalog.list().map_err(|e| e.to_string())?;
+        let mut installed = catalog.list().map_err(|e| e.to_string())?;
+        installed.push(crate::builtin_ssh::info());
         save(&dir, options, id, revision, &installed)
     })
     .await

@@ -64,23 +64,28 @@ impl AdapterConnectionOptions {
 pub async fn connect_adapters(
     options: AdapterConnectionOptions,
     request_id: u64,
+    on_host_key: tauri::ipc::Channel<crate::connection_attempts::HostKeyChallenge>,
     app: tauri::AppHandle,
     state: State<'_, crate::DesktopState>,
 ) -> Result<crate::SessionInfo, String> {
     options.validate()?;
     let canceled = state.attempts.lock().await.claim(request_id)?;
-    let result =
-        crate::connection_attempts::cancellable(canceled, connect_workspace(options, app, &state))
-            .await;
+    let result = crate::connection_attempts::cancellable(
+        canceled,
+        connect_workspace(options, request_id, on_host_key, app, &state),
+    )
+    .await;
     state.attempts.lock().await.finish(request_id);
     result
 }
 async fn connect_workspace(
     options: AdapterConnectionOptions,
+    request_id: u64,
+    on_host_key: tauri::ipc::Channel<crate::connection_attempts::HostKeyChallenge>,
     app: tauri::AppHandle,
     state: &crate::DesktopState,
 ) -> Result<crate::SessionInfo, String> {
-    let (active, info) = prepare_workspace(options, app, state).await?;
+    let (active, info) = prepare_workspace(options, request_id, on_host_key, app, state).await?;
     let connections = active.identities();
     let status = active.status();
     let id = state.next_id.fetch_add(1, Ordering::Relaxed) + 1;
@@ -110,6 +115,7 @@ pub async fn replace_adapter_source(
     expected: ConnectionIdentity,
     options: AdapterConnectionOptions,
     request_id: u64,
+    on_host_key: tauri::ipc::Channel<crate::connection_attempts::HostKeyChallenge>,
     app: tauri::AppHandle,
     state: State<'_, crate::DesktopState>,
 ) -> Result<SourceReplacement, String> {
@@ -122,7 +128,7 @@ pub async fn replace_adapter_source(
     // cancel cannot hide the accepted result or disconnect the whole workspace.
     let prepared = crate::connection_attempts::cancellable(
         canceled.clone(),
-        prepare_workspace(options, app, &state),
+        prepare_workspace(options, request_id, on_host_key, app, &state),
     )
     .await;
     let result = async {
@@ -167,14 +173,29 @@ pub async fn replace_adapter_source(
 
 async fn prepare_workspace(
     options: AdapterConnectionOptions,
+    request_id: u64,
+    on_host_key: tauri::ipc::Channel<crate::connection_attempts::HostKeyChallenge>,
     app: tauri::AppHandle,
     state: &crate::DesktopState,
 ) -> Result<(crate::workspace_services::WorkspaceServices, HostInfo), String> {
     let catalog = catalog(&app)?;
     let mut connections = Vec::new();
     for source in options.sources {
+        if source.id == crate::builtin_ssh::ID {
+            let settings = crate::builtin_ssh::options(&source)?;
+            let prepared = crate::prepare_ssh(
+                settings,
+                request_id,
+                on_host_key.clone(),
+                app.clone(),
+                state,
+            )
+            .await?;
+            connections.push((source.key, prepared));
+            continue;
+        }
         let catalog = catalog.clone();
-        let lease = tauri::async_runtime::spawn_blocking(move || {
+        let (key, lease, config) = tauri::async_runtime::spawn_blocking(move || {
             let lease = catalog
                 .acquire(&source.id, &source.revision)
                 .map_err(|error| error.to_string())?;
@@ -185,7 +206,6 @@ async fn prepare_workspace(
         })
         .await
         .map_err(|error| error.to_string())??;
-        let (key, lease, config) = lease;
         let identity = ConnectionIdentity {
             instance: state.next_id.fetch_add(1, Ordering::Relaxed) + 1,
             generation: 1,
@@ -195,113 +215,13 @@ async fn prepare_workspace(
             .connect(&config, Duration::from_secs(30))
             .await
             .map_err(|error| error.to_string())?;
-        let files = process.files();
-        let terminal = process.terminal();
-        let lifecycle = Arc::new(process.clone());
-        let resource = crate::connection_resource::ConnectionResource::new(identity, lifecycle);
-        connections.push((key, resource, files, terminal, process));
+        connections.push((
+            key,
+            crate::prepared_source::PreparedSource::adapter(identity, process)?,
+        ));
     }
-    let mut active = crate::workspace_services::WorkspaceServices::new(
-        connections
-            .iter()
-            .map(|(_, resource, _, _, _)| resource.clone())
-            .collect(),
-    )?;
-    let mut capabilities = Vec::new();
-    let mut notices = Vec::new();
-    for (role, key) in &options.bindings {
-        let (_, resource, files, terminal, process) = connections
-            .iter()
-            .find(|(id, _, _, _, _)| id == key)
-            .ok_or("Missing connection source")?;
-        match role.as_str() {
-            "files" => {
-                active.select_service(resource, crate::workspace_services::ServiceRole::Files)?;
-                if let Some(files) = files {
-                    active.bind_files(resource, files.clone())?;
-                    capabilities.push("files.read".into());
-                    if let Some(text) = process.text() {
-                        active.bind_text(resource, text)?;
-                        if process.supports("files", 1, &["files.createText"]) {
-                            capabilities.push("files.create".into());
-                        }
-                        if process.supports("files", 1, &["files.saveText"]) {
-                            capabilities.push("files.edit".into());
-                        }
-                    }
-                    if let Some(mutations) = process.mutations() {
-                        active.bind_mutations(resource, mutations)?;
-                        capabilities.push("files.manage".into());
-                    }
-                    if let Some(moves) = process.moves() {
-                        active.bind_moves(resource, moves)?;
-                        capabilities.push("files.move".into());
-                    }
-                    if let Some(transfers) = process.transfers() {
-                        if process.downloads_supported() {
-                            capabilities.push("files.download".into());
-                        }
-                        if process.uploads_supported() {
-                            capabilities.push("files.upload".into());
-                        }
-                        if process.downloads_supported() && process.uploads_supported() {
-                            capabilities.push("files.copy".into());
-                        }
-                        if transfers.supports_folders() {
-                            capabilities.push("files.folders".into());
-                        }
-                        active.bind_transfers(resource, transfers)?;
-                    }
-                } else {
-                    notices.push(
-                        "File browsing is unavailable through the selected connection.".into(),
-                    );
-                }
-            }
-            "console" => {
-                active.select_service(resource, crate::workspace_services::ServiceRole::Console)?;
-                if let Some(terminal) = terminal {
-                    active.bind_terminal(resource, terminal.clone())?;
-                    capabilities.push("terminal".into());
-                } else {
-                    notices
-                        .push("A terminal is unavailable through the selected connection.".into());
-                }
-            }
-            "host.settings" => {
-                active.select_service(
-                    resource,
-                    crate::workspace_services::ServiceRole::HostSettings,
-                )?;
-                if let Some(settings) = process.settings() {
-                    active.bind_settings(resource, settings)?;
-                    capabilities.push("host.settings".into());
-                } else {
-                    notices.push(
-                        "Remote settings are unavailable through the selected connection.".into(),
-                    );
-                }
-            }
-            custom => {
-                let service = process.custom(custom).ok_or_else(|| {
-                    format!("The selected adapter does not advertise service {custom}")
-                })?;
-                active.bind_custom(resource, service)?;
-            }
-        }
-    }
-    active.advertise_capabilities(&capabilities);
-    let info = HostInfo {
-        provider: "adapters".into(),
-        system: "Adapter workspace".into(),
-        hostname: options.name,
-        home: None,
-        capabilities,
-        notices,
-    };
-    Ok((active, info))
+    crate::prepared_source::compose(connections, &options.bindings, options.name)
 }
-
 struct Job {
     owner: String,
     started: Instant,
@@ -490,6 +410,12 @@ pub async fn list_adapters(app: tauri::AppHandle) -> Result<Vec<AdapterInfo>, St
     tauri::async_runtime::spawn_blocking(move || catalog.list().map_err(|error| error.to_string()))
         .await
         .map_err(|error| error.to_string())?
+}
+#[tauri::command]
+pub async fn available_connections(app: tauri::AppHandle) -> Result<Vec<AdapterInfo>, String> {
+    let mut items = list_adapters(app).await?;
+    items.push(crate::builtin_ssh::info());
+    Ok(items)
 }
 #[tauri::command]
 pub async fn review_adapter(

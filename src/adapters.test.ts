@@ -1,7 +1,13 @@
 // SPDX-License-Identifier: MPL-2.0
 import { expect, it, vi } from "vitest";
 const invoke = vi.hoisted(() => vi.fn());
-vi.mock("@tauri-apps/api/core", () => ({ invoke, isTauri: () => false }));
+vi.mock("@tauri-apps/api/core", () => ({
+  invoke,
+  isTauri: () => false,
+  Channel: class {
+    onmessage: unknown;
+  },
+}));
 import {
   adapterProfile,
   restoredConfiguration,
@@ -38,6 +44,79 @@ const options = {
   ],
   bindings: { files: "files" },
 };
+it("reviews only selected SSH endpoints and ignores challenges after connection completion", async () => {
+  let finish!: (value: unknown) => void;
+  invoke.mockReset().mockImplementation((method: string) => {
+    if (method === "begin_connect") return Promise.resolve(31);
+    if (method === "connect_adapters")
+      return new Promise((resolve) => {
+        finish = resolve;
+      });
+    return Promise.resolve();
+  });
+  const review = vi.fn().mockResolvedValue(true);
+  const connecting = nativeAdapterServices.connect(
+    {
+      ...options,
+      sources: [
+        {
+          key: "ssh",
+          id: "builtin:ssh",
+          revision: "builtin-1",
+          configuration: { host: "device", port: 22, username: "root" },
+        },
+      ],
+      bindings: { console: "ssh" },
+    },
+    undefined,
+    review,
+  );
+  await vi.waitFor(() => expect(finish).toBeTypeOf("function"));
+  const args = invoke.mock.calls.find(
+    ([method]) => method === "connect_adapters",
+  )![1];
+  const challenge = {
+    host: "device",
+    port: 22,
+    algorithm: "ed25519",
+    fingerprint: "fixture",
+    token: "review",
+  };
+  args.onHostKey.onmessage(challenge);
+  await vi.waitFor(() =>
+    expect(invoke).toHaveBeenCalledWith("decide_host_key", {
+      requestId: 31,
+      token: "review",
+      approve: true,
+    }),
+  );
+  finish({ id: 100 });
+  await connecting;
+  args.onHostKey.onmessage({ ...challenge, token: "late" });
+  await Promise.resolve();
+  expect(review).toHaveBeenCalledTimes(1);
+});
+it("cancels mismatched SSH challenges before asking for approval", async () => {
+  let reject!: (error: Error) => void;
+  invoke.mockReset().mockImplementation((method: string) => {
+    if (method === "begin_connect") return Promise.resolve(32);
+    if (method === "connect_adapters")
+      return new Promise((_, fail) => {
+        reject = fail;
+      });
+    if (method === "cancel_connect") reject?.(new Error("Canceled"));
+    return Promise.resolve();
+  });
+  const review = vi.fn().mockResolvedValue(true);
+  const connecting = nativeAdapterServices.connect(options, undefined, review);
+  const rejected = expect(connecting).rejects.toThrow(/does not match/);
+  await vi.waitFor(() => expect(reject).toBeTypeOf("function"));
+  invoke.mock.calls
+    .find(([method]) => method === "connect_adapters")![1]
+    .onHostKey.onmessage({ host: "foreign", port: 22, token: "wrong" });
+  await rejected;
+  expect(review).not.toHaveBeenCalled();
+});
 it("restores only currently declared public fields and never prefills reclassified passwords", () => {
   const source = {
     ...options.sources[0],
@@ -65,13 +144,11 @@ it("restores only currently declared public fields and never prefills reclassifi
   ).toEqual({});
 });
 it("sends saved workspace revisions for updates and removal", async () => {
-  invoke
-    .mockReset()
-    .mockResolvedValue({
-      id: "saved",
-      revision: "new",
-      profile: { kind: "adapters", ...options },
-    });
+  invoke.mockReset().mockResolvedValue({
+    id: "saved",
+    revision: "new",
+    profile: { kind: "adapters", ...options },
+  });
   await nativeAdapterServices.profiles!.save(options, {
     id: "saved",
     revision: "old",
@@ -132,6 +209,7 @@ it("disconnects a late adapter result after cancellation and releases the native
     expect(invoke).toHaveBeenCalledWith("connect_adapters", {
       options,
       requestId: 17,
+      onHostKey: expect.anything(),
     }),
   );
   controller.abort();
@@ -173,6 +251,7 @@ it("delivers a committed source replacement after late cancellation without disc
       expected,
       options,
       requestId: 28,
+      onHostKey: expect.anything(),
     }),
   );
   controller.abort();

@@ -12,6 +12,8 @@ Public console checkpoint: `client.console` supports byte reads/writes, optional
 
 ## Immediate delivery focus — everyday basics
 
+Built-in SSH composition checkpoint (2026-09-09): SSH is selectable alongside installed adapters with shared preparation, host-key review and secret-free mixed profiles. A real loopback SSH console survives independent Files replacement; 64 Windows adapter checks pass. The full BASE-11 goal remains active; standalone adapter tooling, AI skills, lifecycle hardening and remaining integration/platform gates are still required.
+
 Saved workspace checkpoint: persistent adapter profiles now have Save/Open/Update/Remove controls, native credential filtering, explicit service assignments and revision checks. The Windows adapter fixture passes 60 checks, including reopening a saved profile and preserving a live workspace after profile removal. Built-in SSH/installed-adapter composition remains next; adapter tooling, AI skills and other BASE-11 gates stay open. See [saved workspace profiles](docs/workspace-profiles.md).
 
 Process transfer checkpoint: installed native adapters can supply streaming uploads/downloads/copies and incremental folder traversal to the existing desktop queue. Eight process tests cover binary data, large directories, cancellation, cleanup capacity and publication failures; 54 Windows adapter checks include confirmed queued file/folder copies. This completes the initial standard process service bridges. Persistent mixed profiles, SSH/adapter composition, standalone adapter tooling and AI skills remain BASE-11 work.

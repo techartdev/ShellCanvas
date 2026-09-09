@@ -2,6 +2,8 @@
 
 Status: accepted architectural direction, 2026-09-08. SSH is the first connector and default user path. Serial, Telnet, FTP and device APIs are future adapters, not current support claims. Names and public SDK contracts remain provisional.
 
+Implementation checkpoint (2026-09-09): native workspaces now bind service families to independent runtime adapter sources or built-in SSH. The connection chooser supports saved mixed profiles and transactional source replacement. Apps use accepted source identities; replacing Files retires its old handles while another source's console survives. Native status exposes availability and source identity. See [runtime adapters](adapter-packages.md), [workspace bindings](workspace-bindings.md) and [saved profiles](workspace-profiles.md) for current behavior and evidence. The design below includes future responsibilities beyond this checkpoint.
+
 ## A workspace can have several connections
 
 The desktop represents a logical device/workspace. It does not own one mandatory SSH connection. A workspace composes independently selected services from one or more connection adapters:

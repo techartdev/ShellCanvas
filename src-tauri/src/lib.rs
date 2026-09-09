@@ -8,6 +8,7 @@ use std::sync::{
 use tauri::{ipc::Channel, State};
 use tokio::sync::{mpsc, Mutex};
 mod adapters;
+mod builtin_ssh;
 #[cfg(windows)]
 mod clipboard_stream;
 mod connection_attempts;
@@ -19,6 +20,7 @@ mod extension_frames;
 mod extension_probe;
 mod host_trust;
 mod native_ipc;
+mod prepared_source;
 mod profile_store;
 #[cfg(test)]
 mod request_source_tests;
@@ -117,6 +119,39 @@ async fn connect_session(
     app: tauri::AppHandle,
     state: &DesktopState,
 ) -> Result<SessionInfo, String> {
+    let source = prepare_ssh(options, request_id, on_host_key, app, state).await?;
+    let info = source.info.clone();
+    let bindings = [
+        ("files".into(), "ssh".into()),
+        ("console".into(), "ssh".into()),
+        ("host.settings".into(), "ssh".into()),
+    ]
+    .into();
+    let (active, _) = prepared_source::compose(
+        vec![("ssh".into(), source)],
+        &bindings,
+        info.hostname.clone(),
+    )?;
+    let id = state.next_id.fetch_add(1, Ordering::Relaxed) + 1;
+    let status = active.status();
+    let connections = active.identities();
+    state.registry.lock().await.sessions.insert(id, active);
+    Ok(SessionInfo {
+        id,
+        info,
+        source_revision: status.source_revision,
+        connections,
+        services: status.services,
+        custom_sources: status.custom_sources,
+    })
+}
+async fn prepare_ssh(
+    options: ConnectOptions,
+    request_id: u64,
+    on_host_key: Channel<connection_attempts::HostKeyChallenge>,
+    app: tauri::AppHandle,
+    state: &DesktopState,
+) -> Result<prepared_source::PreparedSource, String> {
     let trust_dir = profile_store::storage_dir(&app)?;
     let trust_path = host_trust::store_path(&trust_dir);
     let connection = match Connection::connect_with_trust_store(&options, trust_path.clone()).await
@@ -174,7 +209,6 @@ async fn connect_session(
             None
         }
     };
-    let id = state.next_id.fetch_add(1, Ordering::Relaxed) + 1;
     let mut mutations: Option<Arc<dyn FileMutationService>> = None;
     let mut moves: Option<Arc<dyn FileMoveService>> = None;
     let mut transfers: Option<Arc<dyn FileTransferService>> = None;
@@ -216,39 +250,15 @@ async fn connect_session(
         },
         connection.clone(),
     );
-    let mut active = ActiveSession::new(vec![resource.clone()])?;
-    active.bind_terminal(&resource, connection.clone())?;
-    if let Some(service) = files {
-        active.bind_files(&resource, service)?;
-    }
-    if let Some(service) = text {
-        active.bind_text(&resource, service)?;
-    }
-    if let Some(service) = mutations {
-        active.bind_mutations(&resource, service)?;
-    }
-    if let Some(service) = moves {
-        active.bind_moves(&resource, service)?;
-    }
-    if let Some(service) = transfers {
-        active.bind_transfers(&resource, service)?;
-    }
-    if let Some(service) = settings {
-        active.bind_settings(&resource, service)?;
-    }
-    let connections = active.identities();
-    active.advertise_capabilities(&info.capabilities);
-    let services = active.status().services;
-    let custom_sources = active.custom_sources();
-    state.registry.lock().await.sessions.insert(id, active);
-    Ok(SessionInfo {
-        source_revision: 0,
-        id,
-        info,
-        connections,
-        services,
-        custom_sources,
-    })
+    let mut source = prepared_source::PreparedSource::new(resource, info)?;
+    source.terminal = Some(connection);
+    source.files = files;
+    source.text = text;
+    source.mutations = mutations;
+    source.moves = moves;
+    source.transfers = transfers;
+    source.settings = settings;
+    Ok(source)
 }
 
 #[tauri::command]
@@ -706,6 +716,7 @@ pub fn run() {
             }
             let handler: fn(tauri::ipc::Invoke<tauri::Wry>) -> bool = tauri::generate_handler![
                 adapters::list_adapters,
+                adapters::available_connections,
                 workspace_profiles::list_workspace_profiles,
                 workspace_profiles::save_workspace_profile,
                 workspace_profiles::remove_workspace_profile,

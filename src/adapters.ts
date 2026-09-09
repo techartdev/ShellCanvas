@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
-import { invoke, isTauri } from "@tauri-apps/api/core";
+import { Channel, invoke, isTauri } from "@tauri-apps/api/core";
+import type { HostKeyChallenge, HostKeyReviewer } from "./sdk";
 import type { Session, ConnectionIdentity, WorkspaceStatus } from "./sdk";
 export type Configuration = Record<string, string | number | boolean>;
 export interface AdapterField {
@@ -77,12 +78,14 @@ export function restoredConfiguration(
   ) as Configuration;
 }
 export interface AdapterServices {
+  available?(): Promise<AdapterInfo[]>;
   profiles?: WorkspaceProfileStore;
   replaceSource?(
     sessionId: number,
     expected: ConnectionIdentity,
     options: AdapterConnectionOptions,
     signal?: AbortSignal,
+    reviewHostKey?: HostKeyReviewer,
   ): Promise<SourceReplacement>;
   list(): Promise<AdapterInfo[]>;
   review(requestId: string): Promise<AdapterReview | null>;
@@ -97,7 +100,53 @@ export interface AdapterServices {
   connect(
     options: AdapterConnectionOptions,
     signal?: AbortSignal,
+    reviewHostKey?: HostKeyReviewer,
   ): Promise<Session>;
+}
+function connectionReview(
+  options: AdapterConnectionOptions,
+  requestId: number,
+  cancel: () => void,
+  signal?: AbortSignal,
+  review?: HostKeyReviewer,
+) {
+  const channel = new Channel<HostKeyChallenge>();
+  let finished = false,
+    failure: unknown;
+  channel.onmessage = (challenge) => {
+    void (async () => {
+      if (finished || signal?.aborted) return;
+      if (
+        !options.sources.some(
+          (source) =>
+            source.id === "builtin:ssh" &&
+            String(source.configuration.host).toLowerCase() ===
+              challenge.host.toLowerCase() &&
+            (source.configuration.port ?? 22) === challenge.port,
+        )
+      )
+        throw new Error(
+          "Host-key review does not match a selected SSH connection.",
+        );
+      const approve = (await review?.(challenge)) ?? false;
+      if (finished || signal?.aborted) return;
+      await invoke("decide_host_key", {
+        requestId,
+        token: challenge.token,
+        approve,
+      });
+    })().catch((error) => {
+      failure = error;
+      cancel();
+    });
+  };
+  return {
+    channel,
+    finish: () => {
+      finished = true;
+    },
+    error: () => failure,
+  };
 }
 export interface SourceReplacement extends WorkspaceStatus {
   sourceRevision: number;
@@ -137,6 +186,7 @@ export function adapterProfile(
   };
 }
 export const nativeAdapterServices: AdapterServices = {
+  available: () => invoke("available_connections"),
   profiles: {
     list: () => invoke("list_workspace_profiles"),
     save: (options, previous) =>
@@ -148,13 +198,20 @@ export const nativeAdapterServices: AdapterServices = {
     remove: (id, revision) =>
       invoke("remove_workspace_profile", { id, revision }),
   },
-  async replaceSource(sessionId, expected, options, signal) {
+  async replaceSource(sessionId, expected, options, signal, reviewHostKey) {
     if (signal?.aborted) throw new Error("Connection canceled");
     const requestId = await invoke<number>("begin_connect");
     const cancel = () => {
       void invoke("cancel_connect", { requestId }).catch(() => {});
     };
     signal?.addEventListener("abort", cancel, { once: true });
+    const review = connectionReview(
+      options,
+      requestId,
+      cancel,
+      signal,
+      reviewHostKey,
+    );
     try {
       if (signal?.aborted) throw new Error("Connection canceled");
       // A successful result is already committed. Even late cancellation must
@@ -164,8 +221,12 @@ export const nativeAdapterServices: AdapterServices = {
         expected,
         options,
         requestId,
+        onHostKey: review.channel,
       });
+    } catch (error) {
+      throw review.error() ?? error;
     } finally {
+      review.finish();
       signal?.removeEventListener("abort", cancel);
       cancel();
     }
@@ -177,25 +238,36 @@ export const nativeAdapterServices: AdapterServices = {
   setEnabled: (id, revision, enabled) =>
     invoke("set_adapter_enabled", { id, revision, enabled }),
   remove: (id, revision) => invoke("remove_adapter", { id, revision }),
-  async connect(options, signal) {
+  async connect(options, signal, reviewHostKey) {
     if (signal?.aborted) throw new Error("Connection canceled");
     const requestId = await invoke<number>("begin_connect");
     const cancel = () => {
       void invoke("cancel_connect", { requestId }).catch(() => {});
     };
     signal?.addEventListener("abort", cancel, { once: true });
+    const review = connectionReview(
+      options,
+      requestId,
+      cancel,
+      signal,
+      reviewHostKey,
+    );
     try {
       if (signal?.aborted) throw new Error("Connection canceled");
       const result = await invoke<Session>("connect_adapters", {
         options,
         requestId,
+        onHostKey: review.channel,
       });
       if (signal?.aborted) {
         await invoke("disconnect", { sessionId: result.id });
         throw new Error("Connection canceled");
       }
       return result;
+    } catch (error) {
+      throw review.error() ?? error;
     } finally {
+      review.finish();
       signal?.removeEventListener("abort", cancel);
       cancel();
     }

@@ -4173,7 +4173,9 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "async-trait",
+ "rand",
  "rusqlite",
+ "russh",
  "serde",
  "serde_json",
  "shellcanvas-adapter-runtime",
