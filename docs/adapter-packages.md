@@ -37,7 +37,7 @@ Installable manifests use schema version 1 and contain `id`, `name`, semantic `v
 
 The installer rejects links, escaping paths, case aliases and reserved Windows names. Metadata has a 1 MiB parsing bound. Asset copying and hashing use 64 KiB chunks; there is no arbitrary total payload or file-tree entry limit. Review captures a staged snapshot, so changing the original folder cannot change the package being approved. Review requests are window-owned, cancelable, single-use and expire after ten minutes.
 
-The catalog lives under Tauri's local application-data directory in `adapters/`. Atomic catalog writes and cross-process locks enforce revision-checked install/update/enable/remove decisions. Each package generation has its own directory. Acquisition verifies its declared assets again and holds an OS file lease through initialization, process execution and confirmed cleanup. Updating, disabling or removing a package does not replace a running connection's assets. Updates preserve disabled state. Collection removes only unreferenced, unleased generations; crash-abandoned review staging cleanup is still pending.
+The catalog lives under Tauri's local application-data directory in `adapters/`. Atomic catalog writes and cross-process locks enforce revision-checked install/update/enable/remove decisions. Each package generation has its own directory. Acquisition verifies its declared assets again and holds an OS file lease through initialization, process execution and confirmed cleanup. Updating, disabling or removing a package does not replace a running connection's assets. Updates preserve disabled state. Collection removes only unreferenced, unleased generations. Versioned review staging now holds an OS lease from creation through copying and review. Catalog listing, installation and removal attempt recovery of abandoned staging; active reviews in other app processes are preserved. Installation releases the staging lease under the catalog lock before renaming on Windows. Cleanup checks canonical containment and refuses links/reparse points. Unknown, legacy and future-format staging directories are preserved because they do not establish this lease contract; no age or PID guess is used. Cleanup failures leave data for a later attempt and do not hide installed adapters.
 
 See [the process contract](adapter-process.md) for framing, service methods, ownership, cancellation and failure semantics. [Custom advertised services](custom-services.md) are selected in each source's Additional services field and exposed to installed apps through reviewed `services.<id>` grants. The [standalone Rust SDK and CLI](adapter-sdk.md) now provide source/package schemas, custom and standard-service starters and build/pack/validate commands, using the same manifest validation as the desktop. Windows adapter trees now use per-generation job objects, with exit checks before releasing installed assets. Publisher authentication, non-Windows process-tree supervision and native runtime verification remain open.
 
@@ -62,3 +62,15 @@ The probe builds two versions of the practice adapter and uses the actual deskto
 The transfer checkpoint passes 54 checks. It opens the configured adapter through the connection UI, verifies advertised capabilities, creates/saves text, rejects stale text revisions, creates a folder, renames/moves/removes a file, and applies settings with stale-revision refusal. It also completes file and folder copy jobs through the native queue and refuses a stale source revision. These calls use the production native service wrappers and a separate synthetic adapter process. Configure **Transfers (download, upload or both)** and **Folder transfers** on the practice adapter to try these services; transfer data is synthetic and separate from the text-action fixture.
 
 The runner writes `.local/native-extension-probe/result.json`. Restore the normal desktop afterward with `npm run verify -- --native`; the special probe executable is not a distributable desktop build.
+
+## Review crash recovery evidence
+
+The production catalog test terminates a separate process retaining a real review,
+then collects its abandoned staging while preserving another process's review,
+a local review and an installed adapter connection. It verifies normal EOF/drop
+cleanup, successful installation with the Windows lease handoff, and collection
+of the removed generation only after its adapter has closed. Unit tests also
+cover the pre-copy lease and incomplete construction before the lease file exists;
+unknown and older staging formats remain untouched. These checks run in
+`cargo test -p shellcanvas-adapter-runtime --lib --test catalog --locked`.
+They passed on Windows; this is not additional macOS/Linux runtime evidence.

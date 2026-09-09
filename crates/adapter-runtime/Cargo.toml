@@ -44,3 +44,8 @@ test = false
 name = "sdk-settings"
 path = "../adapter-sdk/examples/settings.rs"
 test = false
+
+[[bin]]
+name = "catalog-review-fixture"
+path = "tests/support/catalog_review_fixture.rs"
+test = false

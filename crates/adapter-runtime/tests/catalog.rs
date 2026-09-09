@@ -222,3 +222,87 @@ fn foreign_reviews_and_corrupt_or_future_catalogs_are_not_overwritten() {
         );
     }
 }
+
+async fn holding_review(root: &Path, source: &Path) -> tokio::process::Child {
+    use tokio::io::AsyncBufReadExt;
+    let mut command = tokio::process::Command::new(env!("CARGO_BIN_EXE_catalog-review-fixture"));
+    command
+        .args([root, source])
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::null())
+        .kill_on_drop(true);
+    #[cfg(windows)]
+    command.creation_flags(0x08000000);
+    let mut child = command.spawn().unwrap();
+    let mut output = tokio::io::BufReader::new(child.stdout.take().unwrap());
+    let mut line = String::new();
+    tokio::time::timeout(Duration::from_secs(10), output.read_line(&mut line))
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(line.trim(), "ready");
+    child
+}
+
+#[tokio::test]
+async fn crash_recovery_preserves_other_process_reviews_and_live_generations() {
+    let root = tempfile::tempdir().unwrap();
+    let catalog = Catalog::new(root.path().to_owned());
+    let (source, _) = source();
+    let manifest = source.path().join("adapter.json");
+    let mut crashed = holding_review(root.path(), &manifest).await;
+    let mut surviving = holding_review(root.path(), &manifest).await;
+    let local_review = review(&catalog, &source);
+    let installed = catalog.install(review(&catalog, &source)).unwrap();
+    let process = catalog
+        .acquire(&installed.id, &installed.revision)
+        .unwrap()
+        .connect(&json!({}), Duration::from_secs(4))
+        .await
+        .unwrap();
+    catalog.remove(&installed.id, &installed.revision).unwrap();
+    assert_eq!(
+        fs::read_dir(root.path().join("staging")).unwrap().count(),
+        3
+    );
+    assert_eq!(catalog.collect().unwrap(), 0);
+    crashed.kill().await.unwrap(); // OS termination: no Rust destructors run.
+    assert!(crashed.wait().await.unwrap().code() != Some(0));
+    assert_eq!(catalog.collect().unwrap(), 1);
+    assert_eq!(
+        fs::read_dir(root.path().join("staging")).unwrap().count(),
+        2
+    );
+    assert_eq!(
+        process
+            .call(
+                "acme.echo",
+                json!("still connected"),
+                Duration::from_secs(4)
+            )
+            .await
+            .unwrap(),
+        "still connected"
+    );
+    drop(local_review);
+    assert_eq!(
+        fs::read_dir(root.path().join("staging")).unwrap().count(),
+        1
+    );
+    drop(surviving.stdin.take()); // Normal EOF runs review cleanup.
+    assert!(
+        tokio::time::timeout(Duration::from_secs(4), surviving.wait())
+            .await
+            .unwrap()
+            .unwrap()
+            .success()
+    );
+    assert_eq!(
+        fs::read_dir(root.path().join("staging")).unwrap().count(),
+        0
+    );
+    process.close().await.unwrap();
+    assert_eq!(catalog.collect().unwrap(), 1);
+    assert_eq!(catalog.collect().unwrap(), 0);
+}

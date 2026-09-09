@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 //! Reviewed, version-pinned native packages. Never executes code while reviewing/installing.
+use crate::catalog_staging::Staging;
 use crate::Launch;
 use anyhow::{bail, Context, Result};
 use serde::{Deserialize, Serialize};
@@ -12,7 +13,6 @@ use std::{
     path::{Path, PathBuf},
     sync::atomic::{AtomicBool, Ordering},
 };
-use tempfile::TempDir;
 
 const MANIFEST_LIMIT: u64 = 1024 * 1024;
 use shellcanvas_adapter_sdk::package::relative;
@@ -67,7 +67,7 @@ struct Store {
 }
 pub struct Review {
     owner: PathBuf,
-    staged: TempDir,
+    staged: Staging,
     record: Record,
     expected: Option<String>,
 }
@@ -184,19 +184,18 @@ impl Catalog {
         if manifest.platform != format!("{}-{}", std::env::consts::OS, std::env::consts::ARCH) {
             bail!("This adapter package is for a different platform");
         }
-        let (expected, enabled) = self.locked(|| {
+        let (expected, enabled, staged) = self.locked(|| {
             let store = self.load()?;
-            Ok(store
+            let (expected, enabled) = store
                 .records
                 .iter()
                 .find(|record| record.manifest.id == manifest.id)
                 .map(|record| (Some(record.revision.clone()), record.enabled))
-                .unwrap_or((None, true)))
+                .unwrap_or((None, true));
+            // Publish the staging directory and its lease under the same lock
+            // used by recovery. Copying then proceeds outside the catalog lock.
+            Ok((expected, enabled, Staging::new(&self.root)?))
         })?;
-        fs::create_dir_all(self.root.join("staging"))?;
-        let staged = tempfile::Builder::new()
-            .prefix("review-")
-            .tempdir_in(self.root.join("staging"))?;
         let payload = staged.path().join("payload");
         fs::create_dir(&payload)?;
         for entry in &manifest.files {
@@ -229,7 +228,6 @@ impl Catalog {
         let mut metadata = File::create(staged.path().join("manifest.json"))?;
         serde_json::to_writer_pretty(&mut metadata, &record.manifest)?;
         metadata.sync_all()?;
-        File::create(staged.path().join("lease.lock"))?.sync_all()?;
         Ok(Review {
             owner: self.root.canonicalize()?,
             staged,
@@ -238,7 +236,7 @@ impl Catalog {
         })
     }
     /// A review is consumed once. Stale catalog decisions cannot overwrite another app process.
-    pub fn install(&self, review: Review) -> Result<AdapterInfo> {
+    pub fn install(&self, mut review: Review) -> Result<AdapterInfo> {
         self.locked(|| {
             if review.owner != self.root.canonicalize()? {
                 bail!("This review belongs to another adapter catalog");
@@ -256,6 +254,7 @@ impl Catalog {
             if destination.exists() {
                 bail!("Adapter generation already exists");
             }
+            review.staged.release_for_install();
             fs::rename(review.staged.path(), &destination)?;
             let info = review.record.info();
             if let Some(index) = index {
@@ -326,7 +325,8 @@ impl Catalog {
         }
         Ok(lease)
     }
-    /// Collect only unreferenced generations with no shared leases in any app process.
+    /// Collect unreferenced generations and abandoned versioned reviews, only
+    /// when no OS lease is held in any app process. Returns directories removed.
     pub fn collect(&self) -> Result<usize> {
         self.locked(|| {
             let retained: HashSet<_> = self
@@ -366,7 +366,7 @@ impl Catalog {
                     removed += 1;
                 }
             }
-            Ok(removed)
+            Ok(removed + crate::catalog_staging::collect(&self.root)?)
         })
     }
 }

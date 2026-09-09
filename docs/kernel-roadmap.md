@@ -63,7 +63,11 @@ Implemented means the stated behavior and platform, not completion of the goal.
       cleanup is confirmed. Current non-Windows cleanup covers only the direct child.
 - [ ] **Diagnostics and crash recovery:** bounded, useful adapter diagnostics
       without credentials/configuration leaks; recover stale staging resources
-      without disturbing active generations.
+      without disturbing active generations. Versioned review staging recovery is
+      implemented: an OS lease protects copying/review, and collection preserves
+      other processes and running generations. A real process-termination test
+      verifies recovery on Windows. The bounded diagnostics interface remains open;
+      legacy/unrecognized staging is preserved rather than guessed abandoned.
 - [x] **Standard-service starters:** independently buildable Files, Terminal and
       Remote settings examples with discovery, cancellation, resource ownership and
       production-host verification. `init --template files|console|settings` selects

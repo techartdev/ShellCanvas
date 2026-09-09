@@ -422,9 +422,14 @@ pub async fn review_fixture_adapter(
 #[tauri::command]
 pub async fn list_adapters(app: tauri::AppHandle) -> Result<Vec<AdapterInfo>, String> {
     let catalog = catalog(&app)?;
-    tauri::async_runtime::spawn_blocking(move || catalog.list().map_err(|error| error.to_string()))
-        .await
-        .map_err(|error| error.to_string())?
+    tauri::async_runtime::spawn_blocking(move || {
+        // Reopening the catalog recovers crash-abandoned review staging. A
+        // cleanup failure must not hide installed adapters or active connections.
+        let _ = catalog.collect();
+        catalog.list().map_err(|error| error.to_string())
+    })
+    .await
+    .map_err(|error| error.to_string())?
 }
 #[tauri::command]
 pub async fn available_connections(app: tauri::AppHandle) -> Result<Vec<AdapterInfo>, String> {
