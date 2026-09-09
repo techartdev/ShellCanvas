@@ -1,5 +1,8 @@
 # Standalone app development
 
+The public [window API](app-window.md) provides window snapshots, focus, minimize,
+maximize, restore and guarded close requests, in addition to document state.
+
 The canonical runtime client and public types now live in `packages/app-sdk`. The desktop re-exports these same implementations, so the standalone package and host contract do not maintain separate copies. Native host brokers and storage/clipboard ownership remain in the desktop. The existing Field Notes example imports `@shellcanvas/app-sdk` by package name.
 
 The package is not published to npm yet. From a fresh repository checkout:

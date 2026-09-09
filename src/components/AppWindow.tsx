@@ -23,6 +23,8 @@ import { scopeAppServices } from "../app-services";
 import { AppBoundary } from "./AppBoundary";
 import { ContextMenu } from "./ContextMenu";
 import { ConfirmDialog } from "./ConfirmDialog";
+import { RpcError } from "../extensions/rpc";
+import type { WindowControls } from "../extensions/window-api";
 export function AppWindow({
   app,
   context,
@@ -36,6 +38,7 @@ export function AppWindow({
   cascade = 0,
   dirty = false,
   busy = false,
+  workspaceActive = true,
 }: {
   app: DesktopApp;
   context: AppContext;
@@ -49,6 +52,7 @@ export function AppWindow({
   cascade?: number;
   dirty?: boolean;
   busy?: boolean;
+  workspaceActive?: boolean;
 }) {
   const appServices = useMemo(
     () => scopeAppServices(context.services, app),
@@ -141,10 +145,86 @@ export function AppWindow({
     return () => query.removeEventListener("change", changed);
   }, []);
   const [confirmClose, setConfirmClose] = useState(false);
+  const document = useRef({ dirty, busy });
+  document.current = { dirty, busy };
   const requestClose = () => {
-    if (busy) return;
-    if (dirty) setConfirmClose(true);
+    if (document.current.busy) return;
+    if (document.current.dirty) setConfirmClose(true);
     else close();
+  };
+  const lifecycle = useRef({ requestClose, workspaceActive });
+  lifecycle.current = { requestClose, workspaceActive };
+  const alive = useRef(false);
+  const closeTimer = useRef<ReturnType<typeof setTimeout> | undefined>(
+    undefined,
+  );
+  useLayoutEffect(() => {
+    alive.current = true;
+    return () => {
+      alive.current = false;
+      clearTimeout(closeTimer.current);
+    };
+  }, []);
+  const requireActiveWindow = () => {
+    if (!alive.current) throw new RpcError("closed", "This window has closed.");
+    if (!lifecycle.current.workspaceActive)
+      throw new RpcError(
+        "unavailable",
+        "Switch to this workspace before controlling its windows.",
+      );
+  };
+  const windowControls: WindowControls = {
+    getState: () => ({
+      visible,
+      focused,
+      mode: maximized ? "maximized" : tiled ? `tiled-${tiled}` : "normal",
+      canMaximize: desktopLayout,
+    }),
+    focus: () => {
+      requireActiveWindow();
+      focus();
+    },
+    minimize: () => {
+      requireActiveWindow();
+      minimize();
+    },
+    maximize: () => {
+      requireActiveWindow();
+      if (!desktopLayout)
+        throw new RpcError(
+          "unavailable",
+          "Maximize is unavailable in the compact layout.",
+        );
+      setMaximized(true);
+      setTiled(null);
+      setAdjustment(null);
+      focus();
+    },
+    restore: () => {
+      requireActiveWindow();
+      setMaximized(false);
+      setTiled(null);
+      setAdjustment(null);
+      focus();
+    },
+    requestClose: () => {
+      requireActiveWindow();
+      if (document.current.busy)
+        throw new RpcError(
+          "busy",
+          "Wait for this window's work to finish before closing it.",
+        );
+      // Reply before teardown is scheduled; delivery to a closing frame is not guaranteed.
+      // Coalesce requests and recheck guards when the desktop handles the request.
+      if (closeTimer.current !== undefined) return;
+      closeTimer.current = setTimeout(() => {
+        closeTimer.current = undefined;
+        if (alive.current && lifecycle.current.workspaceActive) {
+          focus();
+          lifecycle.current.requestClose();
+        }
+      }, 0);
+    },
   };
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
   const closeMenu = useCallback(() => setMenu(null), []);
@@ -487,6 +567,11 @@ export function AppWindow({
               {...context}
               services={appServices}
               system={systemScope.api}
+              window={windowControls}
+              setDocumentState={(state) => {
+                document.current = state;
+                context.setDocumentState?.(state);
+              }}
               visible={visible}
               connected={context.connected !== false && !reason}
               unavailableReason={reason ?? undefined}
@@ -565,7 +650,9 @@ export function AppWindow({
           message={`Your changes in ${title} have not been saved to the remote host.`}
           confirmLabel="Discard and close"
           disabled={busy}
-          confirm={close}
+          confirm={() => {
+            if (!document.current.busy) close();
+          }}
           cancel={() => setConfirmClose(false)}
         />
       )}

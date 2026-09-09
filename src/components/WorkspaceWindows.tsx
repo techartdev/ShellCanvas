@@ -99,6 +99,7 @@ export function WorkspaceWindows({
             title={`${instanceTitle(app, instance)}${instance.extension ? ` · ${app.subtitle}` : ""}`}
             dirty={instance.dirty}
             busy={instance.busy}
+            workspaceActive={active}
             cascade={instance.ordinal - 1}
             context={{
               ...context,

@@ -209,6 +209,7 @@ function RuntimeDocument({
           lease={lease}
           system={system}
           onDocumentState={context.setDocumentState}
+          windowControls={context.window}
           storage={storage}
           clipboard={clipboard}
           environment={environment}

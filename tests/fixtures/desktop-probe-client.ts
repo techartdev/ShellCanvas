@@ -42,6 +42,32 @@ window.addEventListener("message", async (event) => {
   let files: Record<string, boolean> | undefined;
   let transfers: Record<string, boolean> | undefined;
   let hostSettings: Record<string, boolean> | undefined;
+  let windowState: import("@shellcanvas/app-sdk").AppWindowState | undefined;
+  let windowError: string | undefined;
+  if (event.data.action.startsWith("window-")) {
+    const client = (await connection)!;
+    try {
+      const action = event.data.action.slice(7);
+      if (action === "clean-close") {
+        await client.window.setDocumentState({ dirty: false, busy: false });
+        void client.window.requestClose().catch(() => {});
+        return; // The host observes frame retirement; no reply from a destroyed app is required.
+      }
+      if (action !== "state") {
+        const commands = {
+          focus: client.window.focus,
+          minimize: client.window.minimize,
+          maximize: client.window.maximize,
+          restore: client.window.restore,
+          close: client.window.requestClose,
+        };
+        await commands[action as keyof typeof commands]();
+      }
+      windowState = await client.window.getState();
+    } catch (error) {
+      windowError = (error as { code: string }).code;
+    }
+  }
   if (event.data.action.startsWith("host-settings")) {
     try {
       const client = (await connection)!;
@@ -456,6 +482,8 @@ window.addEventListener("message", async (event) => {
       files,
       transfers,
       hostSettings,
+      windowState,
+      windowError,
       clipboard,
       environment,
       services,

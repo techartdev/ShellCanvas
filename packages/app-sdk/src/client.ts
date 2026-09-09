@@ -8,7 +8,11 @@ import {
   appHostSettingsClient,
   type AppHostSettingsAPI,
 } from "./host-settings-client.js";
-import type { AppDocumentState } from "./window-api.js";
+import type {
+  AppDocumentState,
+  AppWindowAPI,
+  AppWindowState,
+} from "./window-api.js";
 import type { AppStorageAPI, AppValue, StoragePage } from "./storage-api.js";
 import type {
   AppEnvironment,
@@ -26,7 +30,7 @@ export interface ExtensionClient {
   readonly console: AppConsoleAPI;
   readonly transfers: AppTransfersAPI;
   readonly hostSettings: AppHostSettingsAPI;
-  readonly window: { setDocumentState(state: AppDocumentState): Promise<void> };
+  readonly window: AppWindowAPI;
   readonly storage: AppStorageAPI;
   readonly settings: AppStorageAPI;
   readonly environment: { get(signal?: AbortSignal): Promise<AppEnvironment> };
@@ -204,6 +208,37 @@ export function connectToShellCanvas(
         events: appEventClient(peer),
         clipboard: appClipboardClient(peer),
         window: Object.freeze({
+          getState: async (signal?: AbortSignal) =>
+            (await peer.call(
+              "system.window.getState",
+              null,
+              signal,
+            )) as unknown as AppWindowState,
+          focus: async (signal?: AbortSignal) => {
+            await peer.call("system.window.focus", null, signal);
+            requestAnimationFrame(() =>
+              requestAnimationFrame(() => {
+                if (
+                  !peer.isClosed &&
+                  lastFocus instanceof HTMLElement &&
+                  lastFocus.isConnected
+                )
+                  lastFocus.focus({ preventScroll: true });
+              }),
+            );
+          },
+          minimize: async (signal?: AbortSignal) => {
+            await peer.call("system.window.minimize", null, signal);
+          },
+          maximize: async (signal?: AbortSignal) => {
+            await peer.call("system.window.maximize", null, signal);
+          },
+          restore: async (signal?: AbortSignal) => {
+            await peer.call("system.window.restore", null, signal);
+          },
+          requestClose: async (signal?: AbortSignal) => {
+            await peer.call("system.window.requestClose", null, signal);
+          },
           setDocumentState: async (state: AppDocumentState) => {
             await peer.call(
               "system.window.setDocumentState",

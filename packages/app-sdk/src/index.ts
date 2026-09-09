@@ -21,7 +21,11 @@ export type {
   RemoteTextDocument,
   RemoteDirectoryPage,
 } from "./file-client.js";
-export type { AppDocumentState } from "./window-api.js";
+export type {
+  AppDocumentState,
+  AppWindowAPI,
+  AppWindowState,
+} from "./window-api.js";
 export type { AppStorageAPI, AppValue, StoragePage } from "./storage-api.js";
 export type {
   AppEnvironment,

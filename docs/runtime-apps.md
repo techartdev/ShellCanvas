@@ -41,7 +41,7 @@ Return to **Apps**, review the rebuilt package, and install the update. Existing
 
 **Disable** stops new launches and preserves existing work. It is not immediate revocation of already-running instances. **Remove** requires all of this catalog's windows for that app, including old generations, to be closed. Closing retires that instance's channel and document. Normal close confirmation uses app-reported dirty/busy state; a dishonest app can misreport its own work. Installed state persists across reloads; unsaved document recovery across crashes/restarts is not implemented.
 
-The developing client exposes `client.window.setDocumentState({ dirty, busy, title? })`. It can update only its own window, cannot provide a foreign window ID, and needs no remote-service grant. Field Notes reports draft edits and busy state; Save As marks the draft clean only if the saved text matches the current editor contents.
+The client exposes `client.window.setDocumentState({ dirty, busy, title? })`, window snapshots, focus/minimize/maximize/restore and guarded close requests. It can control only its own window, cannot provide a foreign window ID, and needs no remote-service grant. Field Notes reports draft edits and busy state; Save As marks the draft clean only if the saved text matches the current editor contents. See [window semantics](app-window.md), including close-channel teardown and inactive-workspace restrictions.
 
 Render windows in stable mount order and change CSS stacking order when focusing them. Moving an iframe's DOM node can reload its browsing context. The catalog workbench maintains separate mount order and stacking order, so switching between versions does not reload either app.
 

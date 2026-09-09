@@ -17,6 +17,15 @@ Objective: provide a small, coherent virtual-desktop API for bundled and communi
 
 ## Direction
 
+Window API checkpoint (2026-09-09): installed apps can read window state, focus,
+minimize, maximize, restore and request guarded close through the public SDK.
+Host-owned callbacks accept no target identity; transfers/settings retain their
+mandatory busy guards. The independent SDK build and 64-check Windows installed-app
+fixture pass, including eight window checks. Compact-layout and inactive-workspace
+control walkthroughs remain follow-ups. File/image/custom clipboard APIs, catalog
+coordination, adapter lifecycle hardening, standard-service starters and the other
+integration/platform gates remain open. Older checkpoints below are historical.
+
 AI development skills checkpoint: repository entrypoints now cover runtime apps, device adapters and package lifecycle. Structure and references are validated; their fresh-project app/adapter workflows pass, along with eight generated-app Windows checks and the 68-check adapter installation fixture. See [skill usage and evidence](ai-development-skills.md). This completes the initial skills deliverable; standard-service starter variants, remaining app window/clipboard APIs, lifecycle hardening and final integration/platform gates remain open. Older checkpoint paragraphs below are historical, including statements that skills had not started.
 
 Adapter tooling checkpoint: the exported Rust SDK includes source/package schemas, a custom-service generator and native build/pack/validate commands. Package metadata validation is shared with the desktop. A fresh generated project builds outside the repository, interoperates with the production host, and installs through the Windows desktop fixture; all 68 checks pass. Standard-service starter variants, AI development skills and the remaining lifecycle/platform gates below are still required. Older checkpoint paragraphs record the scope at their respective dates.

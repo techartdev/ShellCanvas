@@ -401,6 +401,8 @@ function ask(frame: HTMLIFrameElement, action = "snapshot") {
     files?: Record<string, boolean>;
     transfers?: Record<string, boolean>;
     hostSettings?: Record<string, boolean>;
+    windowState?: import("@shellcanvas/app-sdk").AppWindowState;
+    windowError?: string;
     environment?: AppEnvironment;
     services?: readonly ServiceMethodInfo[];
     environmentEvents?: AppEnvironment[];
@@ -619,6 +621,50 @@ async function run() {
     (state) => state.environmentEvents?.at(-1)?.visible === true,
   );
   checks.visibilityEvents = true;
+  checks.windowDiscovery = [
+    "getState",
+    "focus",
+    "minimize",
+    "maximize",
+    "restore",
+    "requestClose",
+  ].every((action) =>
+    initialEnvironment.services?.some(
+      (method) =>
+        method.name === `system.window.${action}` &&
+        method.available &&
+        method.granted &&
+        method.permissions.length === 0,
+    ),
+  );
+  await ask(first, "window-minimize");
+  await until(
+    () => first.closest(".app-window")!.classList.contains("hidden-window"),
+    "SDK minimize",
+  );
+  checks.windowMinimize =
+    (await ask(first, "window-state")).windowState?.visible === false;
+  await ask(first, "window-focus");
+  await until(
+    () => !first.closest(".app-window")!.classList.contains("hidden-window"),
+    "SDK focus restores",
+  );
+  checks.windowFocus =
+    (await ask(first, "window-state")).windowState?.focused === true;
+  await ask(first, "window-maximize");
+  await until(
+    () => first.closest(".app-window")!.classList.contains("maximized"),
+    "SDK maximize",
+  );
+  checks.windowMaximize =
+    (await ask(first, "window-state")).windowState?.mode === "maximized";
+  await ask(first, "window-restore");
+  await until(
+    () => !first.closest(".app-window")!.classList.contains("maximized"),
+    "SDK restore",
+  );
+  checks.windowRestore =
+    (await ask(first, "window-state")).windowState?.mode === "normal";
   const preparedTransfer = (await ask(first, "transfer-prepare")).transfers;
   checks.sdkTransferPreparation =
     !!preparedTransfer &&
@@ -635,6 +681,9 @@ async function run() {
   checks.sdkTransferBusyGuard =
     closeTransferWindow().disabled &&
     !first.closest(".app-window")!.querySelector(".unsaved-dot");
+  checks.windowTransferCloseGuard =
+    (await ask(first, "window-close")).windowError === "busy" &&
+    first.isConnected;
   if (isTauri()) {
     await getCurrentWindow().close();
     await until(
@@ -941,30 +990,26 @@ async function run() {
     "removal refused",
   );
   checks.removeRefused = true;
-  first
-    .closest(".app-window")!
-    .querySelector<HTMLButtonElement>('button[aria-label^="Close "]')!
-    .click();
+  await ask(first, "window-close");
   (await until(() => button("Keep working"), "dirty close review")).click();
   checks.keepWorking =
     (await ask(first)).text === "A draft kept across package updates.";
+  checks.windowDirtyCloseGuard = checks.keepWorking;
   first
     .closest(".app-window")!
     .querySelector<HTMLButtonElement>('button[aria-label^="Close "]')!
     .click();
   (await until(() => button("Discard and close"), "discard choice")).click();
   await until(() => !first.isConnected, "old app window retired");
-  second
-    .closest(".app-window")!
-    .querySelector<HTMLButtonElement>('button[aria-label^="Close "]')!
-    .click();
-  (
-    await until(() => button("Discard and close"), "updated app dirty close")
-  ).click();
+  second.contentWindow!.postMessage(
+    { type: "desktop-probe", action: "window-clean-close" },
+    "*",
+  );
   await until(
     () => !document.querySelector('iframe[title="Native Notes"]'),
     "runtime windows retired",
   );
+  checks.windowCleanClose = !second.isConnected;
   button("Remove").click();
   await until(() => !catalog.snapshot().length, "package removed");
   checks.removedAfterClose = true;

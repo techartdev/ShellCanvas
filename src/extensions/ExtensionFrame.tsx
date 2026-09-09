@@ -13,7 +13,12 @@ import {
   type AppHostSettingsSourceGetter,
 } from "./host-settings-bridge";
 import type { AppLease } from "./catalog";
-import { documentStateMethod, type AppDocumentState } from "./window-api";
+import {
+  documentStateMethod,
+  windowMethods,
+  type WindowControls,
+  type AppDocumentState,
+} from "./window-api";
 import { isFrameHandshake, mountAppDocument } from "./frame-document";
 import { appStorageMethods } from "./app-storage";
 import type { AppStorageBackend } from "./storage-api";
@@ -39,6 +44,7 @@ export function ExtensionFrame({
   grants,
   lease,
   onDocumentState,
+  windowControls,
   storage,
   clipboard,
   environment: suppliedEnvironment,
@@ -53,6 +59,7 @@ export function ExtensionFrame({
   grants: readonly string[];
   lease?: AppLease;
   onDocumentState?: (state: AppDocumentState) => void;
+  windowControls?: WindowControls;
   storage?: AppStorageBackend;
   clipboard?: ClipboardService;
   environment?: RuntimeEnvironment;
@@ -70,6 +77,8 @@ export function ExtensionFrame({
   } | null>(null);
   const [retryingTransfers, setRetryingTransfers] = useState(false);
   const documentState = useRef(onDocumentState);
+  const controls = useRef(windowControls);
+  controls.current = windowControls;
   const [fallbackEnvironment] = useState(() => new RuntimeEnvironment());
   const environment = suppliedEnvironment ?? fallbackEnvironment;
   documentState.current = onDocumentState;
@@ -157,6 +166,8 @@ export function ExtensionFrame({
         app.permissions.includes(grant),
       );
       const methods = new Map(systemMethods(system, approved));
+      for (const [name, method] of windowMethods(() => controls.current))
+        methods.set(name, method);
       if (fileSource)
         for (const [name, method] of fileMethods(fileSource))
           methods.set(name, method);

@@ -41,19 +41,28 @@ try {
 }
 ```
 
-| Service                | API                                                                           | Required grants                                                                             |
-| ---------------------- | ----------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
-| Shared message box     | `system.dialogs.messageBox(options, {signal}?)`                               | `system.dialogs`                                                                            |
-| Open/Save selection    | `system.dialogs.openFile(options?, control?)`, `saveFile(options?, control?)` | `system.dialogs`, `files.read`                                                              |
-| Save text workflow     | `system.files.saveTextAs({text, name?, directory?, allowReplace?}, control?)` | `system.dialogs`, `files.read`, `files.create`; replacement additionally needs `files.edit` |
-| Own window state       | `window.setDocumentState({dirty, busy, title?})`                              | Intrinsic to this app window                                                                |
-| Local data/preferences | `storage` and `settings`: `get`, `put`, `remove`, `list`                      | `system.storage`                                                                            |
-| Environment/discovery  | `environment.get(signal?)`, `services.list(signal?)`                          | Intrinsic; individual methods still enforce their grants                                    |
-| State events           | `events.subscribe(listener, onError?)` returns an unsubscribe function        | Intrinsic; event contents are filtered by the host                                          |
-| Text clipboard         | `clipboard.readText(signal?)`, `writeText(text, signal?)`                     | `system.clipboard.read` or `system.clipboard.write`                                         |
-| Custom device services | `services.call(method, params?, signal?)`                                     | `services.<service-id>` for the selected adapter service                                    |
+| Service                | API                                                                                 | Required grants                                                                             |
+| ---------------------- | ----------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
+| Shared message box     | `system.dialogs.messageBox(options, {signal}?)`                                     | `system.dialogs`                                                                            |
+| Open/Save selection    | `system.dialogs.openFile(options?, control?)`, `saveFile(options?, control?)`       | `system.dialogs`, `files.read`                                                              |
+| Save text workflow     | `system.files.saveTextAs({text, name?, directory?, allowReplace?}, control?)`       | `system.dialogs`, `files.read`, `files.create`; replacement additionally needs `files.edit` |
+| Own window state       | `window.setDocumentState({dirty, busy, title?})`, `window.getState(signal?)`        | Intrinsic to this app window                                                                |
+| Window actions         | `window.focus`, `minimize`, `maximize`, `restore`, `requestClose` (optional signal) | Intrinsic; active workspace only                                                            |
+| Local data/preferences | `storage` and `settings`: `get`, `put`, `remove`, `list`                            | `system.storage`                                                                            |
+| Environment/discovery  | `environment.get(signal?)`, `services.list(signal?)`                                | Intrinsic; individual methods still enforce their grants                                    |
+| State events           | `events.subscribe(listener, onError?)` returns an unsubscribe function              | Intrinsic; event contents are filtered by the host                                          |
+| Text clipboard         | `clipboard.readText(signal?)`, `writeText(text, signal?)`                           | `system.clipboard.read` or `system.clipboard.write`                                         |
+| Custom device services | `services.call(method, params?, signal?)`                                           | `services.<service-id>` for the selected adapter service                                    |
 
 All methods are asynchronous except subscription disposal. `connectToShellCanvas(timeoutMs?)` must run inside a desktop-owned app frame. `dispose()` closes the instance channel; page teardown does this automatically. Named types, `Json`, `RpcCode` and `RpcError` are exported from the package root. Manifest parsers/types are available from `@shellcanvas/app-sdk/package`.
+
+Window actions affect only the calling window in the active workspace. `getState()`
+returns visibility, focus, layout mode and `canMaximize`; maximize is unavailable
+in compact layouts. Restore clears tiling/maximization and restores visibility.
+`requestClose()` uses normal busy/draft protection. Its reply acknowledges a
+request, not completed closure or user consent to discard. Save before requesting
+close: the app and channel may disappear before a reply or continuation executes.
+Cancellation cannot undo an already accepted window action.
 
 `call(method, params?, signal?)` uses the explicit broker method map and permission checks. It is not a native-command escape hatch. Use `services.call` for custom adapter methods. Discover methods first; `granted` and `available` are separate. Custom entries include the advertised service version and an opaque `source` identity. Declare `services.acme.sensor` to request access to a selected `acme.sensor` service; all its advertised methods share that grant. The app never supplies a native session or source ID. Custom JSON result validation belongs to the app and adapter contract.
 
