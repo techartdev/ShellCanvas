@@ -1,150 +1,131 @@
 # ShellCanvas system API and runtime extensions
 
-Objective: provide a small, coherent virtual-desktop API for bundled and community apps, with reusable system UI and runtime-loadable apps, device providers and connection adapters. Adding an extension must not require rebuilding the desktop. This document tracks the full objective, not just the first implementation slice.
+Status: active, updated 2026-09-09. This is the current scope and completion
+checklist for BASE-11. [Historical checkpoints](kernel-history.md) retain the
+earlier implementation and test records. Their statements about pending work
+describe that point in time, not the current backlog.
 
-## Delivery and evidence gates
+## Objective and design rules
 
-| Area                       | Required behavior                                                                                                                                      | Completion evidence                                                                                                    | Status      |
-| -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------- | ----------- |
-| System UI                  | Promise-based message boxes, Open and Save pickers, consistent keyboard/focus behavior, per-window cancellation and session isolation                  | Bundled app adoption, lifecycle tests, desktop/tablet walkthrough                                                      | In progress |
-| App system services        | Versioned API for app/window lifecycle, settings/storage, clipboard, events and service discovery; structured errors and cancellation                  | Independent sample app using only the public SDK; contract tests                                                       | In progress |
-| Runtime apps               | Install, validate, activate, update, disable and remove packages while the desktop runs; preserve unsaved work and reject stale calls                  | Load a separately built app without rebuilding/restarting core; update and unload walkthrough                          | In progress |
-| Extension boundary         | Package identity, declared access, isolated external UI, enforced broker, revocation and resource cleanup                                              | Negative fixtures for direct IPC, undeclared calls, foreign handles, late replies and teardown                         | In progress |
-| Runtime adapters/providers | Versioned transport-neutral contract and lifecycle; only supported services advertised; arbitrary protocol implementations supplied as packages        | Independently built adapter loaded at runtime, files/console/custom-service fixtures, failed leg and replacement tests | In progress |
-| Composition and hot switch | Independent service bindings and generations, explicit replacement, live instances pinned or safely retired, no silent rerouting of pending operations | Mixed-service workspace and partial reconnect/hot-switch walkthrough                                                   | In progress |
-| Developer experience       | Public SDK, package schema, starter generators, runnable examples, error reference, compatibility/lifecycle documentation                              | Clean-checkout starter build and package installation with no core edits                                               | In progress |
-| AI development skills      | Repository-distributed skills for apps, extension packages and protocol/device adapters; deterministic commands and verification guidance              | Follow each skill to generate/build/test/load its example                                                              | Implemented |
+Provide a small, coherent virtual-desktop API for bundled and community apps,
+with reusable system UI and runtime-loadable apps, device providers and
+connection adapters. Adding or updating an extension must not require rebuilding
+the desktop. SDKs, schemas, starters, documentation and AI development skills must
+let authors build independent packages from a clean checkout.
 
-## Direction
+- Apps consume workspace services, not SSH sessions or OS-specific path syntax.
+  Files, console, settings and custom services can come from different sources.
+  Missing capabilities disable only the relevant actions.
+- A versioned process protocol supports native device/protocol implementations
+  without a dynamic-library ABI. Native adapters are trusted OS programs, not
+  sandboxed UI packages. External UI uses isolated frames and a reviewed broker;
+  trusted bundled app privileges must not leak into installed apps.
+- Updates and source replacement preserve generation ownership. Old requests,
+  handles and approvals must never act on a replacement package or host.
+  Existing work retains its generation or is explicitly retired.
+- Shared dialogs belong to their requesting window. A picker returns a
+  provider-owned location; it neither writes bytes nor grants overwrite access.
+- Keep source, packages, app data, credentials and temporary metadata separate.
+  Examples use synthetic services without credentials. Cancellation cannot undo
+  a completed mutation.
 
-Windows adapter tree checkpoint (2026-09-09): adapters start suspended, join a
-private job object and resume only after assignment. Cleanup stops descendants,
-waits for process exits and retains installed assets if cleanup is unconfirmed.
-Three real-process tests cover close/drop, crash/protocol failure, canceled/rejected
-startup and termination of the owning supervisor, with independent adapters left
-running. Non-Windows tree supervision, diagnostics, crash staging cleanup and the
-other delivery gates remain required. See [adapter lifecycle](adapter-process.md).
+## Implemented capabilities and evidence
 
-Catalog coordination checkpoint (2026-09-09): desktop instances now refresh app
-catalog changes through invalidation plus focus/periodic recovery. Asynchronous
-launch checks current storage under a shared app lease; removal requires an
-exclusive lease across all generations. Running windows retain their original
-code/grants. Eleven real two-process Windows checks pass, including removal after
-terminating the fixture peer. Native macOS/Linux evidence, public Cut/custom
-clipboard formats, adapter lifecycle hardening and other delivery gates remain.
-See [runtime coordination](runtime-apps.md#multiple-desktop-instances).
+Implemented means the stated behavior and platform, not completion of the goal.
 
-Shared file clipboard checkpoint (2026-09-09): installed apps and bundled Files
-can paste each other's remote Copy selections within the original workspace and
-file-service instance. Paste captures the clipboard version, uses copy permission
-for remote selections and upload permission for local files, and creates a fresh
-disk catalog per paste. Source replacement and changed clipboard contents reject
-the operation. All 80 Windows installed-app checks pass, including app-to-app,
-app-to-Files and Files-to-app paths; native tests verify original-provider ownership
-and independent repeated pastes. These tests use synthetic clipboard services.
-Public Cut/move, custom formats, cross-process clipboard exchange, interruptible
-native preparation and remaining lifecycle/platform gates are still open. Earlier
-checkpoint paragraphs below describe their scope at that time.
+| Area                     | Current implementation                                                                                                                                     | Contract and evidence entrypoint                                                                                                                         |
+| ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| System UI                | Window-owned message boxes, Open/Save pickers, revision-checked Save As, focus/cancellation and bundled Editor adoption                                    | [System API](system-api.md); generated app and desktop fixtures                                                                                          |
+| App lifecycle            | Environment/discovery/events; window snapshots and controls; guarded close; revision-checked app data/settings                                             | [Window API](app-window.md), [events](app-events.md), [storage](app-storage.md)                                                                          |
+| Remote app services      | Text documents, file actions and paged directory API; byte consoles; native transfer jobs; remote settings and namespaced custom calls                     | [Files](app-files.md), [console](app-console.md), [transfers](app-transfers.md), [settings](app-host-settings.md), [custom services](custom-services.md) |
+| Clipboard                | Text and RGBA images; Windows native file export/paste; remote Copy shared between installed apps and bundled Files within the original workspace/provider | [App clipboard](app-clipboard.md), [native clipboard](system-clipboard.md); injected clipboard fixtures and native transfer tests                        |
+| Runtime apps             | Persistent reviewed install/update/disable/remove, retained code/grants and dirty/busy guards; fresh launch checks and cross-process removal leases        | [Runtime apps](runtime-apps.md); Windows installed-app and two-process fixtures                                                                          |
+| App boundary             | Owner-bound resource loader, isolated document, guarded native IPC, enforced broker and foreign/stale handle refusal                                       | [Runtime apps](runtime-apps.md); Windows negative fixtures. Other platforms remain gated                                                                 |
+| Runtime adapters         | Reviewed packages, immutable asset generations, cross-process leases, typed configuration and concurrent versioned protocol                                | [Packages](adapter-packages.md), [process contract](adapter-process.md); process and Windows installation fixtures                                       |
+| Adapter services         | Optional directory/text/file actions, streamed transfers, byte console, settings and custom services                                                       | [Process contract](adapter-process.md); production-host service/transfer tests                                                                           |
+| Composition              | Built-in SSH alongside installed adapters, explicit assignments, secret-free profiles, independent replacement and accepted app rebinding                  | [Bindings](workspace-bindings.md), [profiles](workspace-profiles.md); Windows fixture and loopback SSH test                                              |
+| Windows process lifetime | Suspended startup into an owned job, descendant termination and confirmed exits; retained assets after unconfirmed cleanup                                 | [Adapter lifecycle](adapter-process.md); real descendant and supervisor-termination tests                                                                |
+| Developer kit            | Independent TypeScript app and Rust adapter SDKs, schemas, app/custom-adapter generators, build/pack/validate commands and examples                        | [App SDK](app-sdk.md), [adapter SDK](adapter-sdk.md); exported packages built outside the checkout and installed through fixtures                        |
+| AI skills                | Portable app, adapter and package lifecycle instructions with validated links and executed fresh-project workflows                                         | [AI development skills](ai-development-skills.md)                                                                                                        |
 
-File export checkpoint (2026-09-09): installed apps can publish remote references
-through `client.clipboard.copyFiles`, with separate file-export/download grants,
-ordered metadata chunks, original-binding checks and mandatory publication busy
-guards. Native registration reports progress early so a racing cancellation can
-reach its owner. Session cleanup no longer requires unrelated browsing permission
-or a live binding. Seven broker/SDK tests, an ownership regression and the
-77-check Windows installed-app fixture pass with synthetic clipboard services.
-Shared remote selections between installed apps and bundled Files, public Cut,
-custom formats and remaining lifecycle/platform gates remain open. Current export
-targets Windows Explorer; it does not complete unified in-desktop file clipboard.
+## Remaining implementation and integration gates
 
-File paste checkpoint (2026-09-09): installed apps can prepare native file-list
-uploads using `client.clipboard.pasteFiles`, with separate clipboard-read and
-upload grants and the existing owned transfer lifecycle. Clipboard selections now
-share one disk catalog and one queued job; the old 16-root clipboard limit is
-removed. Files open on demand with metadata checks, and per-item completion
-updates allow cancellation between items. The Windows installed-app fixture passes
-73 checks with synthetic clipboard services. Large-selection, permission and late
-cancellation tests pass. Outgoing app file copy/cut, custom formats, interruptible
-native root preparation and remaining lifecycle/platform gates are still open.
-The separate Upload/Download picker limits have not changed.
+- [ ] **Public clipboard semantics:** Cut/move intent with authoritative outcomes,
+      custom formats, cross-process exchange and interruptible native preparation.
+      Preserve source identity, grants and cancellation ownership. A bundled Cut
+  pasted through the public API currently copies and retains the source. Verify
+  live OS image/file interoperability separately from injected fixtures.
+  Extend catalog-backed selection to the remaining Upload/Download chooser paths,
+  which still limit selection to 16 roots; retain bounded active jobs/streams
+  without using a total selection count as the resource strategy.
+- [ ] **Non-Windows adapter lifetime:** ordinary descendants on close,
+      canceled/rejected startup, crash/protocol failure, dropped ownership and
+      supervisor termination. Preserve unrelated processes and retain assets until
+      cleanup is confirmed. Current non-Windows cleanup covers only the direct child.
+- [ ] **Diagnostics and crash recovery:** bounded, useful adapter diagnostics
+      without credentials/configuration leaks; recover stale staging resources
+      without disturbing active generations.
+- [ ] **Standard-service starters:** independently buildable Files, Terminal and
+      Remote settings examples with discovery, cancellation, resource ownership and
+      production-host verification. The existing generator supplies custom services.
+- [ ] **Incremental native browsing:** the public API is paged, but its native
+      browser listing still materializes a directory. Use provider cursors and
+      cancellation without a total-tree/file cap. Transfers already use incremental
+      traversal and a disk-backed metadata catalog.
+- [ ] **Composition UI walkthroughs:** successful mixed SSH/adapter enrollment
+      through host-key review, initialization cancellation and committed replacement
+      with a cleanup warning. Exercise files-only, console-only, custom-API-only and
+      partially disconnected workspaces. Preserve unrelated consoles and drafts.
+- [ ] **Native platform evidence:** build/run macOS and Linux, then verify actual
+      app-frame isolation, broker, catalog leases, custom protocols and cleanup before
+      enabling installed UI there. A shell build does not establish runtime isolation.
+- [ ] **Interaction/accessibility:** dialogs, keyboard/focus, guards and partial
+      capabilities across desktop/tablet layouts. Compact Windows fixtures cover
+      800×900 and 1360×900; physical tablet/mobile behavior remains a separate gate.
+- [ ] **Documentation and API review:** align SDK declarations, method/grant
+      discovery, schemas, examples, skills and guides. Remove superseded pending-work
+      claims while preserving historical evidence. Review errors, cancellation and
+      lifetime rules from an independent extension author's perspective.
 
-Image clipboard checkpoint (2026-09-09): the SDK now reads/writes RGBA images with
-separate image grants, window-owned chunk streams, captured pixels and complete
-publication. Six protocol tests and two native-wrapper cleanup tests pass; the
-independently built app passes 71 Windows desktop checks, including native image
-resources and denied image reads. This uses an injected clipboard, not the user's
-OS clipboard. File/custom-format APIs and live OS image interoperability remain.
-The window API's compact and inactive-workspace walkthroughs now pass at 800×900
-and 1360×900. Physical tablet/mobile validation remains a different gate.
+## Verification and completion audit
 
-Window API checkpoint (2026-09-09): installed apps can read window state, focus,
-minimize, maximize, restore and request guarded close through the public SDK.
-Host-owned callbacks accept no target identity; transfers/settings retain their
-mandatory busy guards. The independent SDK build and 64-check Windows installed-app
-fixture pass, including eight window checks. Compact-layout and inactive-workspace
-control walkthroughs remain follow-ups. File/image/custom clipboard APIs, catalog
-coordination, adapter lifecycle hardening, standard-service starters and the other
-integration/platform gates remain open. Older checkpoints below are historical.
+See [verification](verification.md) for report semantics and commands:
 
-AI development skills checkpoint: repository entrypoints now cover runtime apps, device adapters and package lifecycle. Structure and references are validated; their fresh-project app/adapter workflows pass, along with eight generated-app Windows checks and the 68-check adapter installation fixture. See [skill usage and evidence](ai-development-skills.md). This completes the initial skills deliverable; standard-service starter variants, remaining app window/clipboard APIs, lifecycle hardening and final integration/platform gates remain open. Older checkpoint paragraphs below are historical, including statements that skills had not started.
+```sh
+npm run verify -- --native
+npm run verify:sdk
+npm run verify:adapter-sdk
+```
 
-Adapter tooling checkpoint: the exported Rust SDK includes source/package schemas, a custom-service generator and native build/pack/validate commands. Package metadata validation is shared with the desktop. A fresh generated project builds outside the repository, interoperates with the production host, and installs through the Windows desktop fixture; all 68 checks pass. Standard-service starter variants, AI development skills and the remaining lifecycle/platform gates below are still required. Older checkpoint paragraphs record the scope at their respective dates.
+The first fingerprints source and runs local checks plus the platform's debug
+build. The SDK commands prove consumption outside the checkout. None alone proves
+GUI behavior, device support or platform isolation. Native fixture instructions
+are in [runtime apps](runtime-apps.md) and [adapter packages](adapter-packages.md).
 
-Adapter SDK server checkpoint: a dependency-independent Rust crate now owns the shared wire contract and concurrent adapter server. Five contract tests and two production-host process tests cover dispatch, cancellation, fragmented input and shutdown. The source archive builds an example outside the checkout and interoperates with the host. Standalone package schemas/generation/packaging and generated-package desktop installation remain required; this is not the completed developer kit. See [the adapter SDK](adapter-sdk.md).
+Windows code checkpoint `ddbb580` passed 225 frontend tests, 146 Rust tests with
+two intentional live probes ignored, SDK checks, formatting, Clippy and the normal
+desktop build. Current Windows integration records cover 80 installed-app checks,
+68 adapter checks, 11 two-process catalog checks and eight generated-SDK app
+checks. Their individual scopes and revisions matter; synthetic clipboard and
+provider fixtures are not live-device evidence.
 
-Built-in SSH composition checkpoint: the connection chooser can combine SSH with installed adapter sources, save public configuration and independently replace sources. SSH retains its endpoint-specific host-key review. Shared preparation leases close discarded sources. A real loopback SSH test passes console I/O after independent Files replacement; 64 Windows adapter checks pass, including mixed-profile secret omission and failed SSH preparation preserving the workspace. A valid mixed SSH GUI enrollment walkthrough, adapter tooling, AI skills and remaining lifecycle/platform gates are still required. Older checkpoint paragraphs below record their scope at that time.
+Mac validation is in progress on a 2012 Intel MacBook Air with Catalina 10.15.8.
+The exact `ddbb580` repository was transferred, dependencies installed and frontend
+built using isolated Node 20.20.2. Native compilation/launch is not yet proven.
+This does not enable installed UI packages or establish general Mac support.
 
-Saved workspace checkpoint: the adapter connection dialog now saves/reopens/updates/removes persistent profiles with explicit service assignments. Native schema-based filtering omits credentials; atomic revision-checked storage preserves concurrent edits and corrupt files. Reopening reviews missing/changed adapters and never prefills fields reclassified as passwords. Three native profile tests, two frontend cases and 60 Windows adapter integration checks pass. Built-in SSH plus installed-adapter composition, adapter tooling, AI skills and the remaining platform/lifecycle gates are still required.
+Before completion, map every objective and unchecked gate to current source,
+commands/tests and rendered/runtime evidence. Check independent installation
+without core rebuilds, preserved work during updates/switches, denied/foreign/stale
+operations, partial capabilities and cleanup. Missing or indirect evidence leaves
+a requirement open. Preserve all eight delivery areas: system UI, app services,
+runtime apps, extension boundary, adapters/providers, composition, developer
+experience and AI skills. BASE-11 remains active until all requirements are proven.
 
-Process transfer checkpoint: installed adapters now implement the native streaming transfer contract with independent upload/download capabilities and optional directory readers. Byte chunks and directory pages are bounded; there is no total-file/tree cap. Handles own cleanup permits through cancellation and reject continuation after an uncertain offset. Eight separate-process transfer tests and 54 Windows adapter checks pass, including native queued file/folder copies. Persistent mixed profiles, built-in SSH plus installed-adapter composition, adapter tooling, AI skills and platform/lifecycle gates remain required.
+## Product work beyond this core goal
 
-Standard adapter services checkpoint: installed native processes can now supply text read/create/save, folder/rename/move/remove and provider-defined remote settings through the neutral contracts. File operations remain on their Files source; settings are independently assignable. Optional methods determine capabilities, revisions remain provider-owned, and malformed write replies report uncertain outcomes. Nine separate-process service tests and 51 Windows adapter integration checks pass, including text/settings conflicts and file relocation. The process transfer bridge, persistent mixed profiles, adapter tooling, AI skills and remaining platform/lifecycle gates are still required.
-
-Public remote-settings checkpoint: `client.hostSettings` exposes provider fields and revision-checked apply through separate `host.settings.read` and `host.settings.write` grants. The desktop accounts for native work after app cancellation and combines its busy state with transfers. Seven SDK/RPC tests, permission-mapping tests, independent SDK packaging and the 56-check Windows installed-app walkthrough pass. See [runtime app remote settings](app-host-settings.md). Remaining process-adapter bridges, persistent mixed profiles, adapter tooling, AI skills and platform/lifecycle gates remain required.
-
-Public transfer checkpoint: the SDK and broker now prepare upload/download/copy jobs, keep bytes in the native engine, expose coalesced progress and preserve authoritative outcomes after cancellation. The desktop owns busy state for pending selection and unfinished jobs, with a host retry action for failed cleanup of unseen tickets. Eight SDK/RPC tests, standalone SDK builds and the 49-check Windows installed-app walkthrough pass. See [runtime app transfers](app-transfers.md). Provider settings, remaining adapter bridges, persistent mixed profiles, adapter tooling, AI skills and the other gates remain open.
-
-Public console checkpoint: installed apps now open byte-oriented consoles through the SDK using the namespaced `system.console` permission. Handles expose read/write, optional resizing and explicit close; source changes retire old handles. Native output acknowledgements provide backpressure without blocking input or cancellation. Pending opens, unfinished writes and unconfirmed cleanup remain accounted for. The 45-check Windows adapter walkthrough passed binary streaming through a separately built app and adapter, independent console closure, permission denial and reconnect retirement/new binding. See [runtime app consoles](app-console.md). Transfers/settings are tracked above; remaining adapter bridges and developer tooling are still required.
-
-Operation availability checkpoint: native file status distinguishes browsing from text-document access. The broker and SDK discovery use this metadata, and bundled editor actions explain unsupported text access while preserving drafts. Targeted tests cover read-only text support and operation loss without invalidating directory reads. Both Windows probes passed 40 checks: the adapter probe covers browsing-only discovery, calls and editor controls; the installed-app probe checks the independently built example disables and restores its text action across reconnect acceptance. This does not complete the remaining service bridges or delivery gates.
-
-- Apps consume workspace services, not SSH sessions or OS-specific path syntax. Existing file/terminal/settings contracts remain useful; custom namespaced services must be possible without adding every vendor operation to the kernel.
-- Keep trusted bundled React modules working while the external package API is introduced. External code must not gain the bundled webview's unrestricted native privileges.
-- UI packages and native connection adapters have different execution/trust requirements. Avoid an unstable native dynamic-library ABI. A versioned process/service protocol is the candidate for adapters that need arbitrary networking, serial devices or platform libraries; the process trust model must be explicit.
-- Runtime update is a generation change. Existing work must either retain its original generation or finish/cancel before replacement. An old reply cannot act on a new host or new package generation.
-- System file pickers return provider-owned locations. Selecting a destination does not write bytes or grant permission to overwrite; a save workflow performs validation and conflict handling through the service contract.
-- Keep source code, installed packages, private credentials, app data and temporary transfer metadata separate. SDK examples must work without real credentials.
-
-This remains an active implementation plan. A passing unit suite alone does not establish runtime installation, cross-platform isolation, real protocol support or completion of the goal.
-
-## Runtime boundary checkpoint
-
-The [runtime app system](runtime-apps.md) now integrates persistent installation and reviewed grants into the actual desktop's Apps manager, launcher and dock. Running windows pin their package and permission generation. Update/disable preserve drafts; removal requires closing the running windows. App-reported document state participates in normal close, workspace-close and native-quit reviews.
-
-The Windows native boundary has an executable WebView2 probe and an owner-bound custom-resource loader. It exposed Wry's subframe initialization behavior; the native IPC transport is now guarded before its invocation-key closure is initialized. Native canary checks verify denied direct IPC while the approved broker works. The desktop CSP permits the managed app-resource origin. Other native platforms remain gated pending equivalent evidence; resource containment and publisher authentication are not claimed.
-
-A separate desktop integration probe renders the real desktop with a separately bundled sample and fake host services. It checks two installed versions, draft and grant isolation, shared dialogs, disable/removal, dirty-close protection and explicit reconnect rebinding. Native runs additionally exercise quit protection. A browser walkthrough verifies overlapping iframe-body focus. These fixtures do not connect to a real host or automate the operating system's package chooser. See [the probe instructions](runtime-apps.md#native-desktop-integration-probe).
-
-Remaining runtime-app work includes cross-process catalog invalidation and running-window coordination, further app services, the standalone adapter SDK/schema/starters and AI development skills. The standalone app SDK and independent installed-adapter source replacement are implemented below. Local checks and Windows integration do not complete all delivery gates.
-
-App-owned [local data and settings](app-storage.md) now have an explicit permission, paginated keys, revision-checked writes/deletes and cancellation. Data persists independently of packages and sessions. The SDK and Field Notes example use the brokered API.
-
-The desktop now supplies [environment snapshots, service discovery and state events](app-events.md). Discovery uses the registered method map and keeps permissions separate from availability. Window-owned event journals provide bounded replay with explicit reset; SDK listeners share one cancelable stream. Reconnect approval and visibility changes are covered by the native integration fixture. Further window lifecycle actions remain required.
-
-The runtime [text clipboard API](app-clipboard.md) has separate read/write grants, chunked delivery, captured read snapshots, complete-before-publish writes and window-owned cleanup. The desktop fixture injects synthetic clipboard contents to check the native frame/broker path without replacing the user's clipboard. Runtime file/custom-format clipboard services, further window lifecycle actions and the remaining developer tooling stay open.
-
-The [native adapter process foundation](adapter-process.md) launches an external executable through a versioned protocol and supplies file/console service bridges plus arbitrary advertised method calls. Real local process tests cover failure isolation, cancellation, paged browsing and console ownership.
-
-[Runtime adapter packages](adapter-packages.md) now have reviewed installation, immutable asset generations, revision-checked catalog changes, cross-process file leases, typed configuration and production workspace routing. The Windows desktop can assign files and terminal to independent installed adapter processes. Its native fixture covers installation/update/disable/removal, active-generation retention, service identity, unavailable capabilities and whole-workspace reconnect. Password fields are excluded from reconnect metadata. These checks use a separately compiled synthetic adapter, not real FTP/serial implementations.
-
-Selected [custom adapter services](custom-services.md) now route through the installed-app broker and public SDK. The desktop reviews per-service grants, pins each call to its workspace/source, forwards cancellation and refuses stale completions. The Windows adapter fixture also installs an SDK example and tests denied access, JSON results, adapter errors and explicit reconnect approval. Vendor operations no longer require individual kernel methods.
-
-Remaining adapter/composition work includes persistent composite profiles, mixing built-in SSH with installed adapters, remaining standard service bridges, process-tree containment, cross-platform evidence and the public adapter SDK/schema/starters. The complete objective and its other delivery gates remain open.
-
-The native [workspace owner](workspace-bindings.md#prepared-source-replacement) supports transactional replacement of a prepared source with independent service lifetimes, expected-identity validation, preserved service-family assignments and capability changes. Retained old handles retire without affecting another source or another workspace's lease. Standard IPC captures and validates source identities, and queued transfers retain their provider. The desktop now exposes independent installed-adapter replacement with app acceptance, cancellation before commit, committed-result delivery after late cancellation and source-revision protection against stale polls. The 37-check Windows adapter fixture passed, including Files-only replacement with surviving console I/O and custom-service replacement requiring acceptance. Initialization cancellation and cleanup-warning UI walkthroughs remain explicit follow-ups.
-
-Desktop window bindings change only for apps that declare the replaced services. Files resets provider-owned locations; Editor keeps drafts/undo but detaches the old save destination; unrelated Terminal handles remain stable. A [desktop source-switch fixture](workspace-bindings.md#desktop-source-switch-probe) checks these behaviors with synthetic providers. The native adapter fixture additionally checks the production command/UI and installed-app replacement acceptance.
-
-The [standalone app SDK](app-sdk.md) now owns the runtime client and shared public types. Its packed distribution includes declarations, manifest/package schemas, a starter generator, build/validation commands, API/error guidance and a license. Verification installs the tarball into fresh projects outside the repository and builds the generated starter and lifecycle fixture through that installed SDK. No registry publication is claimed. Native integration exercises the independently generated app; adapter SDK/schema/starters and AI skills remain separate unfinished deliverables.
-
-The public SDK now exposes [remote file services](app-files.md): text reads, create-only writes, revision-checked saves, paged directory iteration and folder/rename/move/delete actions. Every request carries the app window's accepted binding; retained documents, entries and listings cannot target a replacement connection. Field Notes can open and edit documents using this API. The 38-check Windows installed-app walkthrough passes multi-page listings, exact revision conflicts, a complete file-action sequence, denied file access and stale-operation refusal after reconnect. Directory contract tests cover 50,000 entries, cancellation, ownership and bounded retained resources; mutation tests preserve entry revisions and reject mixed-binding moves before dispatch. The walkthrough uses the externally installed SDK tarball and synthetic providers. Directory paging currently sits above the materialized native listing; transfer APIs and the process adapter text/mutation bridges remain required work. Public consoles are implemented in the checkpoint above.
+Actual Serial, Telnet, FTP, SMB and vendor API adapters need representative devices
+and protocol-specific tests. WispCrew/AI assistant integration, a marketplace,
+optimized/signed distribution, mobile releases and hosted web service remain
+product backlog items. The core must permit these paths without forcing them
+into this milestone. See [the backlog](../BACKLOG.md) and [providers](providers.md).

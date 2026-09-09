@@ -22,7 +22,7 @@ The UI never builds shell commands. Linux detection executes a small fixed set o
 
 ## Desktop apps
 
-Desktop windows now also supply a lifetime-bound `context.system` for shared message boxes, remote Open/Save pickers and revision-checked text Save As. UI requests are queued centrally and canceled with their owner; file locations remain provider-owned. The bundled Editor uses this first [system API](system-api.md). The broader [kernel and runtime-extension roadmap](kernel-roadmap.md) tracks runtime loading, process/service contracts, hot replacement, developer tools and AI skills; these are not yet delivered by the static app registry.
+Desktop windows now also supply a lifetime-bound `context.system` for shared message boxes, remote Open/Save pickers and revision-checked text Save As. UI requests are queued centrally and canceled with their owner; file locations remain provider-owned. The bundled Editor uses this first [system API](system-api.md). The broader [kernel and runtime-extension roadmap](kernel-roadmap.md) tracks runtime loading, process/service contracts, hot replacement, developer tools and AI skills; these are supplied by the separate runtime package system, not the static bundled app registry.
 
 `src/sdk.ts` defines `DesktopApp`, `AppContext`, and `HostServices`. `src/apps/registry.ts` registers the bundled apps. The shell renders windows and dock entries from that registry. Local apps can declare no SSH requirements; a calendar or calculator would not need a host session.
 
@@ -30,13 +30,13 @@ Desktop windows now also supply a lifetime-bound `context.system` for shared mes
 
 An app declares required and optional capabilities such as `files.read` or `terminal`. A missing requirement produces an explicit unavailable state; missing optional services leave the app available. Generic windows supply an app-scoped service handle that rejects undeclared calls before reaching the workspace, and transfer tickets remain scoped to the acquiring app. See [service declarations](app-services.md). The registry is a development extension point, **not a security sandbox**. Bundled code shares a trusted webview and can call application commands.
 
-Future external extensions need an isolated execution surface, permission-enforcing native APIs, lifecycle management, resource limits, and SDK version negotiation. They must not receive passwords or private keys. Public SDK stability and a plugin marketplace come after that work.
+Installed [runtime apps](runtime-apps.md) use isolated documents, a permission-enforcing broker, owned resources and SDK version negotiation. They do not receive passwords or private keys. Windows boundary checks are implemented; other native platforms, stronger resource containment and publisher authentication remain open. SDK stability and a marketplace are separate delivery decisions.
 
 ## Remote-system providers
 
 `crates/ssh-core/src/provider.rs` separates `SystemProvider` from `FileSystemProvider`. Linux is the first system provider; SFTP is reusable across systems. A future Windows provider should detect its supported command environment, handle its system operations and path conventions, and report capabilities without adding Windows checks to React components.
 
-Provider selection accepts an ordered provider list and a total time budget. `ProbeContext`, `HostInfo` and `CommandProbe` live in the connection-neutral service-contracts crate; Linux detection does not take a concrete SSH connection. A bounded cache shares exact-command successes/failures for one inspection attempt and is discarded afterward. A connector without exec keeps its fallback information and capabilities. The current SSH entry point supplies LinuxProvider; tests cover unknown, limited, failed and timed-out detection. See [device detection](device-detection.md). This is not yet a full connection adapter registry.
+Provider selection accepts an ordered provider list and a total time budget. `ProbeContext`, `HostInfo` and `CommandProbe` live in the connection-neutral service-contracts crate; Linux detection does not take a concrete SSH connection. A bounded cache shares exact-command successes/failures for one inspection attempt and is discarded afterward. A connector without exec keeps its fallback information and capabilities. The current SSH entry point supplies LinuxProvider; tests cover unknown, limited, failed and timed-out detection. See [device detection](device-detection.md). Runtime connection adapters use the separate [package catalog](adapter-packages.md); device detection remains a service-provider concern.
 
 Apps now receive session-bound services without connection/profile administration or session-ID arguments. File and terminal requests capture their workspace identity; disposed handles reject new calls and late results. This is a trusted-code API boundary, not extension isolation. Next come connection-neutral Rust contracts, composite workspace bindings, per-service capability states and provider-owned filesystem navigation. See [provider requirements and actual compatibility](providers.md). macOS, Windows, Raspberry Pi OS, appliances and additional connection protocols are roadmap targets, not verified support claims.
 
@@ -44,7 +44,7 @@ Apps now receive session-bound services without connection/profile administratio
 
 The established connection now implements a [transport-independent lifecycle](connection-lifecycle.md). The native workspace holds a shared resource with a separate connection identity; health/disconnect no longer reach into an SSH client handle. Setup/trust remain in the SSH adapter.
 
-The subsequent [workspace binding layer](workspace-bindings.md) now routes all native service roles through explicit resource/lifetime guards. Mixed-source and shared-lease behavior is verified in native fixtures; production connection setup remains SSH-only while per-binding status and reconnect UI are developed.
+The subsequent [workspace binding layer](workspace-bindings.md) now routes all native service roles through explicit resource/lifetime guards. Mixed-source and shared-lease behavior is verified in native fixtures; production setup can combine [built-in SSH and installed adapters](adapter-packages.md), save explicit service assignments and replace one source without replacing unrelated services.
 
 - Session IDs prevent commands from accidentally acting on a replacement host.
 - A native registry keeps independent connections and terminal owners under a short mutex. Network connection setup does not remove or block an existing host. Terminal creation rechecks ownership after its network await, so disconnecting during creation cannot register an orphan.

@@ -76,6 +76,7 @@ and verifies that removing its package preserves the live connection. The native
 file chooser is replaced with the verified fixture path. This is runtime package
 installation evidence on Windows, not support for a real device protocol.
 
-Standard-service starter variants, AI development skills and remaining
-lifecycle/platform gates are still required. Actual device implementations are
-separate from the generated synthetic custom service.
+Standard-service starter variants and remaining lifecycle/platform gates are
+still required. [AI development skills](ai-development-skills.md) are implemented
+and their fresh-project workflows have been exercised. Actual device
+implementations are separate from the generated synthetic custom service.

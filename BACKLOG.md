@@ -1,92 +1,23 @@
 # Development backlog
 
-Updated: 2026-09-08. `[x]` means implemented and checked within the stated scope. `[ ]` means pending. Order inside each milestone is intentional; no launch dates are promised.
+Updated: 2026-09-09. `[x]` means implemented and checked within the stated scope.
+`[ ]` means pending. No launch dates are promised.
 
-Current BASE-11 checkpoint (2026-09-09): runtime app and adapter packages, shared system dialogs/storage/events/text clipboard, standalone app SDK and independent installed-adapter source replacement are implemented. The Windows adapter fixture verifies Files replacement with a surviving console and custom-app acceptance. Remaining goal work and evidence gates are tracked in [the kernel roadmap](docs/kernel-roadmap.md); historical milestone notes below are not a completion claim for the full extension platform.
-
-Public app file checkpoint: binding-aware remote text read/create/save, paged directory iteration and folder/rename/move/delete actions now run through the SDK and broker. The Windows installed-app probe passes 38 checks including stale revisions, multi-page listings, the file-action sequence, reconnect isolation and denied access. Transfer SDK APIs are still pending; public consoles are implemented in the checkpoint below; see [runtime app files](docs/app-files.md). The current listing backend materializes a directory; paging is at the app boundary.
-
-Operation availability checkpoint: browsing-only adapters advertise directory access without text documents. Bundled controls and SDK discovery respect this distinction independently of read/write permissions. Both Windows integration probes now pass 40 checks, including editor controls and the installed example's reconnect availability refresh. The full BASE-11 goal remains active.
-
-Public console checkpoint: `client.console` supports byte reads/writes, optional resizing, cancellation and independently owned handles through `system.console`. Native output waits for consumption, while input and teardown remain independent. The Windows adapter fixture now passes 45 checks, including a 150,000-byte SDK round trip, independent close, permission denial and fresh connection use. Public transfer/settings APIs, remaining process-adapter bridges, persistent mixed profiles, adapter SDK/starters and AI development skills remain open.
+Current BASE-11 implementation, remaining requirements and evidence gates live in
+[the kernel roadmap](docs/kernel-roadmap.md). Runtime apps/adapters, composition,
+shared system services, SDKs and initial AI skills are implemented within their
+stated Windows/synthetic validation scope. The full extension goal remains active.
+Superseded checkpoint paragraphs are retained in [history](docs/kernel-history.md).
+The older milestone and validation notes below describe their recorded slices;
+the kernel roadmap takes precedence for current BASE-11 status.
 
 ## Immediate delivery focus — everyday basics
-
-Windows adapter tree checkpoint (2026-09-09): per-generation job objects now own
-ordinary adapter descendants from suspended startup through cleanup. Tests verify
-child/grandchild exit, failure/cancellation cleanup, supervisor termination and an
-unaffected independent adapter. Non-Windows tree supervision, diagnostics, crash
-staging cleanup and remaining kernel roadmap gates stay open.
-
-Catalog coordination checkpoint (2026-09-09): installed app changes refresh other
-desktop instances, and removal checks running leases across processes/generations.
-New launches reread authoritative storage; existing windows retain code/grants.
-Eleven Windows two-process checks pass, including termination releasing the test
-peer's lease. Other platform evidence and remaining kernel roadmap gates stay open.
-
-Shared file clipboard checkpoint (2026-09-09): installed apps and bundled Files
-now exchange remote Copy selections through the original workspace/provider.
-Clipboard snapshots distinguish local uploads from remote copies with separate
-permissions, reject changed selections and create independent catalogs for repeat
-pastes. The Windows installed-app fixture passes all 80 checks with synthetic
-clipboard services. Public Cut/move, custom formats, cross-process exchange,
-interruptible native preparation and the remaining kernel roadmap gates stay open.
-
-File export checkpoint (2026-09-09): the public clipboard API now exports remote
-file/folder references to the Windows system clipboard through the native streaming
-engine. Independent export/download grants, ordered metadata staging, source
-retirement and host-enforced busy guards are covered by seven SDK/broker tests and
-the 77-check Windows installed-app fixture. Cancellation retains its original
-binding owner even after disconnect or capability loss. Shared remote clipboard
-selections across installed and bundled apps, Cut/custom formats and the other
-kernel roadmap gates are still required.
-
-File paste checkpoint (2026-09-09): the public SDK now prepares incoming native
-file clipboard transfers through owned handles and separate read/upload grants.
-Clipboard selections share one disk catalog/job, removing the old 16-root Copy
-limit without holding one open file per root. The 73-check Windows installed-app
-fixture passes using synthetic clipboard services. Large-selection/source-change
-and cancellation tests cover the native engine and SDK. Public outgoing file
-copy/cut, custom formats, native preparation cancellation and the remaining
-kernel roadmap gates remain open. Separate Upload/Download picker limits remain.
-
-Image clipboard checkpoint (2026-09-09): installed apps can read/write RGBA images
-through separate grants and chunked, window-owned transfers. Six protocol tests,
-two native-wrapper cleanup tests and 71 Windows installed-app checks pass. The
-fixture uses injected clipboard content and real native image resources; live OS
-clipboard interoperability remains unverified. Window compact/inactive-workspace
-checks also pass at 800×900 and 1360×900. File/custom-format app clipboard APIs,
-catalog coordination and remaining kernel roadmap gates stay open.
-
-Window API checkpoint (2026-09-09): the public SDK now exposes snapshots,
-focus/minimize/maximize/restore and guarded close requests. Window broker tests,
-independent SDK builds and 64 Windows installed-app checks pass. The host's busy
-guards and unsaved-work review apply to SDK close requests. See [window API](docs/app-window.md).
-Compact/inactive-workspace walkthroughs and the other kernel roadmap gates remain.
-
-AI skills checkpoint (2026-09-09): [app, adapter and package skills](docs/ai-development-skills.md) are written and structurally validated. Their standalone generation/build/validation workflows pass; the generated app passed eight Windows checks and generated-adapter installation is covered by 68 adapter checks. The initial skills deliverable is complete. Standard-service starter variants and remaining BASE-11 API/lifecycle/platform gates are still open.
-
-Adapter tooling checkpoint (2026-09-09): public source/package schemas, shared native package validation, a custom-service generator and standalone build/pack/validate CLI are implemented. A generated project builds outside the repository and installs/connects in the Windows desktop; 68 adapter checks pass. Standard-service starter variants, AI development skills and remaining BASE-11 lifecycle/platform gates stay open. Earlier checkpoint paragraphs below are historical.
-
-Adapter SDK server checkpoint: the standalone Rust crate, shared wire contract, concurrent server and exported-source example are implemented. Contract and real-process tests cover cancellation, independent requests, framing and shutdown. Package schemas/generation/packaging, generated-package desktop installation, AI skills and the other BASE-11 gates remain required; see [adapter SDK status](docs/adapter-sdk.md).
-
-Built-in SSH composition checkpoint (2026-09-09): SSH is selectable alongside installed adapters with shared preparation, host-key review and secret-free mixed profiles. A real loopback SSH console survives independent Files replacement; 64 Windows adapter checks pass. The full BASE-11 goal remains active; standalone adapter tooling, AI skills, lifecycle hardening and remaining integration/platform gates are still required.
-
-Saved workspace checkpoint: persistent adapter profiles now have Save/Open/Update/Remove controls, native credential filtering, explicit service assignments and revision checks. The Windows adapter fixture passes 60 checks, including reopening a saved profile and preserving a live workspace after profile removal. Built-in SSH/installed-adapter composition remains next; adapter tooling, AI skills and other BASE-11 gates stay open. See [saved workspace profiles](docs/workspace-profiles.md).
-
-Process transfer checkpoint: installed native adapters can supply streaming uploads/downloads/copies and incremental folder traversal to the existing desktop queue. Eight process tests cover binary data, large directories, cancellation, cleanup capacity and publication failures; 54 Windows adapter checks include confirmed queued file/folder copies. This completes the initial standard process service bridges. Persistent mixed profiles, SSH/adapter composition, standalone adapter tooling and AI skills remain BASE-11 work.
-
-Standard adapter services checkpoint: native process adapters now expose optional text, file changes/moves and remote settings through production workspace bindings. Nine process service tests and 51 Windows adapter checks pass, including revision conflicts and real process calls from the desktop. The process transfer bridge and remaining BASE-11 deliverables are still pending; see [the process contract](docs/adapter-process.md).
-
-Public remote-settings checkpoint: separate read/write grants, provider-owned field metadata, revision-checked apply and mandatory in-flight write guards are implemented. Seven SDK/RPC tests, permission-mapping tests, standalone SDK packaging and 56 Windows installed-app checks pass. Remaining process-adapter service bridges, persistent mixed profiles, adapter SDK/starters and AI skills stay open. See [runtime app remote settings](docs/app-host-settings.md).
-
-Public transfer checkpoint: SDK job preparation, run/status/watch/cancel/close, mandatory desktop busy guards and host retry for failed cleanup of unseen tickets are implemented. Eight SDK/RPC tests, standalone SDK packaging and 49 Windows installed-app checks pass. This extends the existing native engine to external apps; it does not complete the remaining adapter/settings/developer-tooling goal. See [runtime app transfers](docs/app-transfers.md).
 
 Prioritize a dependable working desktop over adding protocols or more bundled apps. Delivered: terminal containment/actions, saved host CRUD, independent host workspaces, Files context actions/clipboard, multiple app instances, existing-file text editing with unsaved guards, and persistent desktop/app preferences. Save As, explicit reconnect, provider-owned navigation, regular-file transfers and provider-defined host settings are also implemented. Next: remaining native integration and failure-handling gates. [Core completion work](docs/core-completion.md) tracks the active overnight goal. Keep the composite-adapter architecture as a constraint rather than building every adapter now.
 
 ## M1 — Extensible base (current)
 
-- [ ] **BASE-11 — System API and runtime extension core (active).** Full scope and evidence gates live in [the kernel roadmap](docs/kernel-roadmap.md). First implemented slice: window-owned message boxes, reusable remote Open/Save dialogs, text Save As workflow, cancellation and bundled Editor adoption. Runtime package loading, adapter hot switching, public SDK/starters and AI development skills remain required work; see [the system API](docs/system-api.md).
+- [ ] **BASE-11 — System API and runtime extension core (active).** Shared dialogs and app services, runtime app/adapter packages, independent source replacement, public SDK/schema tooling and initial AI skills are implemented. Remaining clipboard semantics, platform/lifecycle work, standard-service starters, incremental browsing and integration gates are listed in [the kernel roadmap](docs/kernel-roadmap.md). Keep that complete checklist as the acceptance criteria.
 
 - [x] **BASE-01 — Versioned bundled app registration.** Validate unique IDs, API version, scope, capabilities and layout. Derive initial apps from manifests. Gate: an app with a new ID can open without shell edits; invalid manifests fail clearly. Unit coverage and Host details provide the proof.
 - [x] **BASE-02 — Window lifecycle.** Keep minimized apps mounted; close unmounts them; dock reopens closed apps; maintain full focus order. Preserve toolbar/dock work area. Gate: three-app focus/minimize/close tests, browser walkthrough, frontend build. Files/Terminal now support multiple instances with unique identities and independent lifecycle.

@@ -63,11 +63,11 @@ All calls accept an optional second argument `{ signal: AbortSignal }`. User can
 
 `SystemError.code` is one of `aborted`, `closed`, `unavailable`, `invalid`, or `busy`. Provider errors continue to carry their own messages; this first slice does not yet normalize all backend errors. The queue allows 32 pending dialogs to prevent accidental prompt flooding. This is unrelated to file or directory size.
 
-Cancellation prevents future steps, but cannot roll back a write already dispatched to a remote provider. Retain drafts and inspect the destination after a connection loss during writing; do not automatically retry writes. Window lifecycle, storage, clipboard, custom services and externally enforced grants remain in the broader roadmap.
+Cancellation prevents future steps, but cannot roll back a write already dispatched to a remote provider. Retain drafts and inspect the destination after a connection loss during writing; do not automatically retry writes. Window lifecycle, storage, clipboard and custom services are available through the [runtime app SDK](app-sdk.md), with broker-enforced grants. Their remaining integration and platform gates are tracked in the kernel roadmap.
 
 ## Verification
 
 - Eight contract tests cover queue ordering/owner isolation, immutable request contents, late replies, AbortSignal, hidden/closed owners, capability loss, selection without file access, replacement confirmation, conflicts, captured drafts, closure during inspection and explicit no-replacement saves.
 - `/tests/fixtures/system-api.html` exercises the same window-scoped API without a real host. Browser checks passed multi-selection with suffix filtering, opaque folder navigation, empty-folder selection, revision-checked replacement, default-action focus, Escape and focus restoration.
 - The picker was inspected at desktop size and 600 × 800; its navigation, content and actions remain visible. This is responsive-browser evidence, not a native tablet release claim.
-- Local native Open/Save file handles, runtime extension packages and adapter hot switching remain separate delivery gates. Existing native transfer pickers continue to work through their current service methods.
+- Local native Open/Save selection is exposed through [owned transfer preparation](app-transfers.md); runtime packages and adapter replacement have their own integration guides. These remote location pickers do not expose unrestricted local file handles.
