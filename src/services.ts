@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 import { Channel, invoke as nativeInvoke, isTauri } from "@tauri-apps/api/core";
 import { createNativeCustomServices } from "./custom-services";
+import { nativeDirectory } from "./directory-reader";
 import type {
   HostServices,
   ConnectionIdentity,
@@ -33,6 +34,7 @@ const commandRoles: Record<string, "files" | "console" | "settings"> = {
   move_entry: "files",
   remove_entry: "files",
   list_directory: "files",
+  open_directory: "files",
   preview_file: "files",
   read_text: "files",
   save_text: "files",
@@ -214,6 +216,8 @@ function createNativeServices(pins?: SourcePins): HostServices {
     alive: (sessionId) => invoke("session_alive", { sessionId }),
     status: (sessionId) => invoke("session_status", { sessionId }),
     list: (sessionId, path) => invoke("list_directory", { sessionId, path }),
+    openDirectory: (sessionId, path, signal) =>
+      nativeDirectory(invoke, sessionId, path, signal),
     preview: (sessionId, path) => invoke("preview_file", { sessionId, path }),
     readText: (sessionId, path) => invoke("read_text", { sessionId, path }),
     saveText: (sessionId, path, text, revision) =>

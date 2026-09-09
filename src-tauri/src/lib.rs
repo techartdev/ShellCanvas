@@ -5,7 +5,7 @@ use std::sync::{
     atomic::{AtomicU64, Ordering},
     Arc,
 };
-use tauri::{ipc::Channel, State};
+use tauri::{ipc::Channel, Manager, State};
 use tokio::sync::{mpsc, Mutex};
 mod adapter_diagnostics;
 mod adapters;
@@ -16,6 +16,7 @@ mod connection_attempts;
 mod connection_resource;
 mod custom_binding;
 mod custom_services;
+mod directories;
 mod extension_frames;
 #[cfg(debug_assertions)]
 mod extension_probe;
@@ -40,6 +41,7 @@ use workspace_services::ServiceRole;
 use workspace_services::WorkspaceServices as ActiveSession;
 #[derive(Default)]
 struct DesktopState {
+    directories: directories::DirectoryReaders,
     registry: Arc<Mutex<SessionRegistry<ActiveSession>>>,
     next_id: AtomicU64,
     attempts: Mutex<connection_attempts::ConnectionAttempts>,
@@ -266,6 +268,7 @@ async fn decide_host_key(
 async fn disconnect(session_id: u64, state: State<'_, DesktopState>) -> Result<(), String> {
     let removed = state.registry.lock().await.remove(session_id);
     state.transfers.lock().await.close_session(session_id);
+    state.directories.close_session(session_id);
     if let Some(old) = removed {
         old.disconnect().await?;
     }
@@ -674,6 +677,13 @@ async fn close_terminal(
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .on_window_event(|window, event| {
+            if matches!(event, tauri::WindowEvent::Destroyed) {
+                if let Some(state) = window.try_state::<DesktopState>() {
+                    state.directories.close_owner(window.label());
+                }
+            }
+        })
         .invoke_system(native_ipc::initialization_script())
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_dialog::init())
@@ -742,6 +752,9 @@ pub fn run() {
                 decide_host_key,
                 disconnect,
                 list_directory,
+                directories::open_directory,
+                directories::read_directory,
+                directories::close_directory,
                 preview_file,
                 read_text,
                 save_text,

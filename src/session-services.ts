@@ -16,6 +16,7 @@ import {
 import { notifyFileChanges, beginFileRelocation } from "./file-events";
 import { fileClipboard } from "./file-clipboard";
 import { RpcError } from "./extensions/rpc";
+import { directoryCanceled, snapshotDirectory } from "./directory-reader";
 
 /** Lifetime and capability checks complement native ownership checks; not a sandbox. */
 export function bindSession(
@@ -41,6 +42,7 @@ export function bindSession(
   const changedAt = new Map<Capability, number>();
   const tickets = new Map<number, TransferTicket>();
   const customCalls = new Set<AbortController>();
+  const directoryCalls = new Set<AbortController>();
   const clipboardPreparations = new Map<string, number>();
   async function adopt(
     result: TransferTicket[],
@@ -462,6 +464,57 @@ export function bindSession(
       check("files.read", expected);
       return result;
     },
+    openDirectory: async (path, signal) => {
+      const expected = generation;
+      const sessionId = check("files.read");
+      const controller = new AbortController();
+      const abort = () => controller.abort();
+      const release = () => {
+        directoryCalls.delete(controller);
+        signal?.removeEventListener("abort", abort);
+      };
+      directoryCalls.add(controller);
+      controller.signal.addEventListener("abort", release, { once: true });
+      signal?.addEventListener("abort", abort, { once: true });
+      if (signal?.aborted) controller.abort();
+      let reader: import("./sdk").DirectoryReader | undefined;
+      try {
+        reader = backend.openDirectory
+          ? await backend.openDirectory(sessionId, path, controller.signal)
+          : await snapshotDirectory(
+              () => backend.list(sessionId, path),
+              controller.signal,
+            );
+        check("files.read", expected);
+        if (controller.signal.aborted) throw directoryCanceled();
+        const opened = reader;
+        return {
+          async next(readSignal) {
+            try {
+              check("files.read", expected);
+              if (controller.signal.aborted) throw directoryCanceled();
+              const page = await opened.next(readSignal);
+              check("files.read", expected);
+              if (controller.signal.aborted) throw directoryCanceled();
+              if (page.done) release();
+              return page;
+            } catch (error) {
+              release();
+              await opened.close().catch(() => {});
+              throw error;
+            }
+          },
+          async close() {
+            release();
+            await opened.close();
+          },
+        };
+      } catch (error) {
+        release();
+        await reader?.close().catch(() => {});
+        throw error;
+      }
+    },
     preview: async (path) => {
       const expected = generation;
       const result = await backend.preview(check("files.read"), path);
@@ -526,6 +579,10 @@ export function bindSession(
       ++generation;
       if (textChanged) textChangedAt = generation;
       changes.forEach((cap) => changedAt.set(cap, generation));
+      if (changes.includes("files.read")) {
+        for (const controller of directoryCalls) controller.abort();
+        directoryCalls.clear();
+      }
       if (
         options.clipboardLifecycle !== false &&
         (changes.includes("files.move") || changes.includes("files.read"))
@@ -549,6 +606,8 @@ export function bindSession(
     },
     dispose: () => {
       closed = true;
+      for (const controller of directoryCalls) controller.abort();
+      directoryCalls.clear();
       for (const controller of customCalls) controller.abort();
       customCalls.clear();
       ++generation;

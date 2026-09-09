@@ -4,6 +4,42 @@ import { bindSession } from "./session-services";
 import { previewServices, previewSession } from "./preview";
 import type { Directory, TerminalSession, FileRelocation } from "./sdk";
 import { watchFileChanges } from "./file-events";
+it("retires open and pending directory readers when their accepted source changes", async () => {
+  let suppliedSignal: AbortSignal | undefined;
+  let finish!: (reader: import("./sdk").DirectoryReader) => void;
+  const close = vi.fn(async () => {});
+  const openDirectory = vi.fn(
+    async (_id: number, _path?: string, signal?: AbortSignal) => {
+      suppliedSignal = signal;
+      return new Promise<import("./sdk").DirectoryReader>((resolve) => {
+        finish = resolve;
+      });
+    },
+  );
+  const first = { instance: 71, generation: 1, adapter: "fixture" };
+  const session = {
+    ...previewSession,
+    services: [
+      {
+        capability: "files.read" as const,
+        state: "available" as const,
+        source: first,
+      },
+    ],
+  };
+  const owner = bindSession({ ...previewServices, openDirectory }, session);
+  const pending = owner.services.openDirectory!("opaque");
+  owner.updateAvailability({
+    ...session,
+    services: [{ ...session.services[0], source: { ...first, generation: 2 } }],
+  });
+  expect(suppliedSignal?.aborted).toBe(true);
+  finish({ next: vi.fn(), close });
+  await expect(pending).rejects.toThrow("no longer connected");
+  expect(close).toHaveBeenCalledOnce();
+  expect(openDirectory).toHaveBeenCalledTimes(1);
+  owner.dispose();
+});
 it("cancels owned clipboard exports without browsing permission after the binding closes", async () => {
   let finish!: (sequence: number) => void;
   const copyToSystem = vi.fn(

@@ -187,6 +187,7 @@ const transport: HostServices = native
         close: async () => {},
       }),
     };
+const directoryObservations: { pages: number; closed: boolean }[] = [];
 function instrument(transport: HostServices): HostServices {
   return {
     ...transport,
@@ -194,6 +195,28 @@ function instrument(transport: HostServices): HostServices {
       ? (session) => instrument(transport.bindSources!(session))
       : undefined,
     profiles: async () => [],
+    openDirectory: transport.openDirectory
+      ? async (sessionId, path, signal) => {
+          const reader = await transport.openDirectory!(
+            sessionId,
+            path,
+            signal,
+          );
+          const observation = { pages: 0, closed: false };
+          directoryObservations.push(observation);
+          return {
+            async next(signal) {
+              const page = await reader.next(signal);
+              observation.pages++;
+              return page;
+            },
+            async close() {
+              await reader.close();
+              observation.closed = true;
+            },
+          };
+        }
+      : undefined,
     terminal: async (id, cols, rows, onEvent) => {
       const handle = await transport.terminal(id, cols, rows, (event) => {
         if (event.type === "output")
@@ -574,7 +597,33 @@ async function run() {
       catalog.find((method) => method.name === "system.files.readText")
         ?.available === false &&
       (await askCustom(customFrame, "text")).code === "unavailable";
+    const beforeDirectories = directoryObservations.length;
     const browsed = (await askCustom(customFrame, "browse")).value;
+    await until(
+      () => directoryObservations.at(-1)?.closed,
+      "SDK early directory cleanup",
+    );
+    checks.sdkDirectoryDemand =
+      directoryObservations.length === beforeDirectories + 1 &&
+      directoryObservations.at(-1)!.pages === 1;
+    const fullDirectory = (await askCustom(customFrame, "browse-all"))
+      .value as { entries: number; pages: number };
+    await until(
+      () => directoryObservations.at(-1)?.closed,
+      "SDK directory EOF cleanup",
+    );
+    checks.sdkDirectoryComplete =
+      fullDirectory.entries === 350 &&
+      fullDirectory.pages === 3 &&
+      directoryObservations.at(-1)!.pages === 3;
+    const canceledDirectory = await askCustom(customFrame, "browse-cancel");
+    await until(
+      () => directoryObservations.at(-1)?.closed,
+      "SDK paused directory cancellation",
+    );
+    checks.sdkDirectoryCancellation =
+      canceledDirectory.value === 128 &&
+      directoryObservations.at(-1)!.pages === 1;
     checks.browsingOperationAvailable =
       catalog.find((method) => method.name === "system.files.listStart")
         ?.available === true &&

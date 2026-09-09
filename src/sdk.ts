@@ -183,6 +183,14 @@ export interface Directory {
   roots: FilePlace[];
   entries: FileEntry[];
 }
+export interface DirectoryPage {
+  directory: Directory;
+  done: boolean;
+}
+export interface DirectoryReader {
+  next(signal?: AbortSignal): Promise<DirectoryPage>;
+  close(): Promise<void>;
+}
 export type TerminalEvent =
   | { type: "output"; data: number[] }
   | { type: "closed" }
@@ -310,6 +318,11 @@ export interface HostServices {
   alive(sessionId: number): Promise<boolean>;
   status?(sessionId: number): Promise<WorkspaceStatus | null>;
   list(sessionId: number, path?: string): Promise<Directory>;
+  openDirectory?(
+    sessionId: number,
+    path?: string,
+    signal?: AbortSignal,
+  ): Promise<DirectoryReader>;
   preview(sessionId: number, path: string): Promise<string>;
   readText(sessionId: number, path: string): Promise<TextDocument>;
   saveText(
@@ -383,6 +396,7 @@ export interface SessionServices {
   removeEntry(path: string, revision: string): Promise<void>;
   moveEntry(path: string, parent: string, revision: string): Promise<string>;
   list(path?: string): Promise<Directory>;
+  openDirectory?(path?: string, signal?: AbortSignal): Promise<DirectoryReader>;
   preview(path: string): Promise<string>;
   readText(path: string): Promise<TextDocument>;
   saveText(path: string, text: string, revision: string): Promise<TextDocument>;

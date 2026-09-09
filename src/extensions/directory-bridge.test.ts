@@ -2,7 +2,7 @@
 import { expect, it, vi } from "vitest";
 import { AppDirectories } from "./directory-bridge";
 import type { AppFileSource } from "./file-bridge";
-import type { Directory } from "../sdk";
+import type { Directory, DirectoryReader } from "../sdk";
 import { RpcPeer, type RpcTransport } from "./rpc";
 import { appFileClient } from "../../packages/app-sdk/src/file-client";
 
@@ -23,6 +23,132 @@ function directory(count: number): Directory {
     })),
   };
 }
+it("uses provider readers on demand across the public SDK without materializing list", async () => {
+  const test = setup(50000);
+  let offset = 0;
+  const next = vi.fn(async () => {
+    const entries = test.data.entries.slice(offset, offset + 128);
+    offset += entries.length;
+    return {
+      directory: { ...test.data, entries },
+      done: offset === test.data.entries.length,
+    };
+  });
+  const close = vi.fn(async () => {});
+  test.services.openDirectory = vi.fn(async () => ({ next, close }));
+  try {
+    const iterator = test.api
+      .list({ binding: "first" })
+      [Symbol.asyncIterator]();
+    expect(next).not.toHaveBeenCalled();
+    const first = await iterator.next();
+    expect(first.value.entries).toHaveLength(128);
+    expect(next).toHaveBeenCalledTimes(1);
+    await iterator.next();
+    expect(next).toHaveBeenCalledTimes(2);
+    await iterator.return?.();
+    expect(close).toHaveBeenCalledOnce();
+    expect(test.services.list).not.toHaveBeenCalled();
+    expect(offset).toBe(256);
+  } finally {
+    test.close();
+  }
+});
+it("splits a provider page by UTF-8 bytes without fetching another page", async () => {
+  const test = setup(4);
+  test.data.entries.forEach((entry) => {
+    entry.name = "🌿".repeat(140000);
+  });
+  const next = vi.fn(async () => ({ directory: test.data, done: true }));
+  test.services.openDirectory = async () => ({ next, close: async () => {} });
+  try {
+    let count = 0;
+    for await (const page of test.api.list({ binding: "first" })) {
+      expect(
+        new TextEncoder().encode(JSON.stringify(page)).length,
+      ).toBeLessThan(1024 * 1024);
+      expect(page.entries).toHaveLength(1);
+      count += page.entries.length;
+    }
+    expect(count).toBe(4);
+    expect(next).toHaveBeenCalledOnce();
+  } finally {
+    test.close();
+  }
+});
+it("refuses overlapping reads and closes a late page without retiring a reused identity", async () => {
+  const test = setup(257);
+  let finish!: (page: { directory: Directory; done: boolean }) => void;
+  const close = vi.fn(async () => {});
+  const next = vi.fn(async () => ({
+    directory: { ...test.data, entries: test.data.entries.slice(0, 128) },
+    done: false,
+  }));
+  next.mockImplementationOnce(async () => ({
+    directory: { ...test.data, entries: test.data.entries.slice(0, 128) },
+    done: false,
+  }));
+  next.mockImplementationOnce(
+    () =>
+      new Promise((resolve) => {
+        finish = resolve;
+      }),
+  );
+  test.services.openDirectory = async () => ({ next, close });
+  try {
+    await test.methods
+      .get("system.files.listStart")!
+      .invoke({ id: "same", binding: "first", path: null }, signal());
+    const pending = test.methods
+      .get("system.files.listNext")!
+      .invoke({ id: "same" }, signal());
+    expect(() =>
+      test.methods
+        .get("system.files.listNext")!
+        .invoke({ id: "same" }, signal()),
+    ).toThrow("already");
+    await test.methods
+      .get("system.files.listClose")!
+      .invoke({ id: "same" }, signal());
+    test.services.openDirectory = async () => ({
+      next: async () => ({
+        directory: { ...test.data, entries: test.data.entries.slice(0, 128) },
+        done: false,
+      }),
+      close: async () => {},
+    });
+    await test.methods
+      .get("system.files.listStart")!
+      .invoke({ id: "same", binding: "first", path: null }, signal());
+    finish({ directory: { ...test.data, entries: [] }, done: true });
+    await expect(pending).rejects.toMatchObject({ code: "closed" });
+    expect(close).toHaveBeenCalledOnce();
+    await expect(
+      test.client.call("system.files.listNext", { id: "same" }),
+    ).resolves.toMatchObject({ done: false });
+  } finally {
+    test.close();
+  }
+});
+it("reports unconfirmed reader cleanup instead of completing the scan", async () => {
+  const test = setup(0);
+  test.services.openDirectory = async () => ({
+    next: async () => ({ directory: test.data, done: true }),
+    close: async () => {
+      throw new Error("uncertain close");
+    },
+  });
+  try {
+    await expect(
+      test.api.list({ binding: "first" })[Symbol.asyncIterator]().next(),
+    ).rejects.toMatchObject({
+      code: "failed",
+      message: "Directory cleanup could not be confirmed.",
+    });
+  } finally {
+    test.close();
+  }
+});
 function setup(count = 257, grants = ["files.read"]) {
   const data = directory(count);
   const services = {
@@ -31,6 +157,9 @@ function setup(count = 257, grants = ["files.read"]) {
     moveEntry: vi.fn(),
     removeEntry: vi.fn(),
     list: vi.fn(async () => data),
+    openDirectory: undefined as
+      | undefined
+      | ((path?: string, signal?: AbortSignal) => Promise<DirectoryReader>),
     readText: vi.fn(),
     saveText: vi.fn(),
     createText: vi.fn(),

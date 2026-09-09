@@ -49,6 +49,33 @@ const capableSession = {
   },
 };
 
+it("routes allowed app directory readers without materializing a list", async () => {
+  const reader = { next: vi.fn(), close: vi.fn(async () => {}) };
+  const openDirectory = vi.fn(async () => reader);
+  const binding = bindSession(
+    { ...previewServices, openDirectory },
+    capableSession,
+  );
+  const scoped = scopeAppServices(
+    binding.services,
+    manifest("browse", ["files.read"]),
+  );
+  const controller = new AbortController();
+  const opened = await scoped.openDirectory!(
+    "opaque:folder",
+    controller.signal,
+  );
+  expect(openDirectory).toHaveBeenCalledWith(
+    capableSession.id,
+    "opaque:folder",
+    expect.any(AbortSignal),
+  );
+  expect(reader.next).not.toHaveBeenCalled();
+  await opened.close();
+  expect(reader.close).toHaveBeenCalledOnce();
+  binding.dispose();
+});
+
 it("only the owning app can cancel its clipboard preparation", async () => {
   let finish!: (sequence: number) => void;
   const cancel = vi.fn(async () => {});
@@ -102,6 +129,7 @@ it("rejects every undeclared service before invoking a capable host", async () =
   const scoped = scopeAppServices(base, manifest("info-only", []));
   const attempts = [
     scoped.list(),
+    scoped.openDirectory!(),
     scoped.preview("file"),
     scoped.readText("file"),
     scoped.saveText("file", "text", "rev"),

@@ -143,6 +143,9 @@ export function scopeAppServices(
         adopt(await base.prepareCopy(path, revision, parent)),
     ),
     list: guard("files.read", base.list.bind(base)),
+    openDirectory: base.openDirectory
+      ? guard("files.read", base.openDirectory.bind(base))
+      : undefined,
     preview: guard("files.read", base.preview.bind(base)),
     readText: guard("files.read", base.readText.bind(base)),
     saveText: guard("files.edit", base.saveText.bind(base)),

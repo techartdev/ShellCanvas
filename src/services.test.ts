@@ -77,6 +77,7 @@ it("captures each source once and attaches it to all native service requests", a
   files.generation = 2;
   const requests = [
     () => bound.list(700),
+    () => bound.openDirectory!(700),
     () => bound.preview(700, "opaque"),
     () => bound.readText(700, "opaque"),
     () => bound.saveText(700, "opaque", "text", "rev"),

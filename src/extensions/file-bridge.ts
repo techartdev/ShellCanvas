@@ -10,6 +10,7 @@ export interface AppFileSource {
     | "saveText"
     | "createText"
     | "list"
+    | "openDirectory"
     | "makeDirectory"
     | "renameEntry"
     | "moveEntry"

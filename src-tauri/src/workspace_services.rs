@@ -236,6 +236,9 @@ impl WorkspaceServices {
             .get(role)
             .is_some_and(|source| source.identity() == identity)
     }
+    pub fn service_connection(&self, role: &ServiceRole) -> Option<Arc<ConnectionResource>> {
+        self.selected.get(role).cloned()
+    }
     pub fn select_service(
         &mut self,
         source: &Arc<ConnectionResource>,

@@ -69,6 +69,31 @@ window.addEventListener("message", async (event) => {
           break;
         }
         break;
+      case "browse-all": {
+        let entries = 0,
+          pages = 0;
+        for await (const page of client.files.list({
+          binding: (await client.environment.get()).binding!,
+        })) {
+          entries += page.entries.length;
+          pages++;
+        }
+        value = { entries, pages };
+        break;
+      }
+      case "browse-cancel": {
+        const controller = new AbortController();
+        const reader = client.files
+          .list(
+            { binding: (await client.environment.get()).binding! },
+            controller.signal,
+          )
+          [Symbol.asyncIterator]();
+        value = (await reader.next()).value.entries.length;
+        controller.abort();
+        await reader.return?.();
+        break;
+      }
       case "list":
         value = await client.services.list();
         break;

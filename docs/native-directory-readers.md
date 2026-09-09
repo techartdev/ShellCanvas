@@ -46,14 +46,31 @@ connection creation uses `SftpBrowser`.
 
 ## Current integration boundary
 
-The native providers and workspace ownership layer support incremental reads.
-The current `list_directory` IPC call, bundled Files/pickers and the public app
-broker still use materialized `list()` results. Consequently, this checkpoint
-does **not** make the whole desktop directory pipeline incremental. Remaining
-work is native reader registration and cancellation, source/window ownership
-through IPC, broker paging, and incremental adoption by bundled consumers.
-Keep the [incremental browsing gate](kernel-roadmap.md) open until those paths
-are exercised end to end. Transfers already have their own incremental readers.
+The `open_directory`, `read_directory` and `close_directory` IPC calls register
+owned scans with the original native window, workspace and file-source identity.
+Opening reserves a reader; the first read opens the provider. Reads are sequential
+and validate source ownership before and after delivery. Disconnect, source
+replacement and window destruction cancel the matching scans. Cleanup remains
+available after read access is retired and never targets a replacement source.
+
+The public app broker and app permission scope use these readers. Each app window
+can own 16 scans, and the native registry permits 32 active scans across the
+desktop. These are concurrent-resource limits, not directory-entry limits.
+Canceled opens keep their capacity until the late handle is closed. Failed or
+timed-out cleanup retains its native capacity charge and cached failure until
+the physical source disconnects; repeated close does not retry an uncertain
+remote operation. Provider open, page and cleanup operations have 30-second
+deadlines. A worker failure also reports unconfirmed cleanup.
+
+The broker buffers at most one provider page and splits replies to fit its
+1 MiB UTF-8 envelope. It fetches another page only on demand. Early iterator
+return, abort, source retirement and frame disposal close the original reader.
+Legacy and preview services without a reader use a materialized snapshot fallback.
+
+Bundled Files and system file pickers still use `list_directory` and materialize
+their listings. Keep the [incremental browsing gate](kernel-roadmap.md) open
+until those consumers are migrated and exercised. Transfers already have their
+own incremental readers.
 
 ## Evidence
 
@@ -61,6 +78,8 @@ are exercised end to end. Transfers already have their own incremental readers.
 cargo test -p shellcanvas-core --test directory --locked
 cargo test -p shellcanvas-adapter-runtime --test services --locked
 cargo test -p shellcanvas directory_pages_and_cleanup --locked
+cargo test -p shellcanvas directories::tests --locked
+npm test -- --run src/directory-reader.test.ts src/extensions/directory-bridge.test.ts src/session-services.test.ts src/app-services.test.ts
 ```
 
 The five SFTP tests use the actual protocol over an in-memory duplex connection:
@@ -72,6 +91,12 @@ batches. Adapter process tests verify demand, independent positions, cancellatio
 and invalid continuations without poisoning unrelated services. The workspace
 test replaces a source while a page is pending and checks original-reader cleanup
 and survival of another workspace using that connection.
+
+Five native registry tests cover lazy opening, reader ownership, sequential reads,
+late-open cancellation, pending reads, cached cleanup failures, capacity recovery
+after physical disconnect and worker panic. Frontend tests cover native IPC
+cancellation, app permission routing, one-page demand, UTF-8 envelope splitting,
+source changes, early return and cleanup failure delivery.
 
 The authorized read-only `root@evtinsait` probe on 2026-09-09 also passed the new
 SFTP reader's first page and early close, complete home/root/parent browsing,

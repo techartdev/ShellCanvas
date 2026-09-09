@@ -79,13 +79,14 @@ Implemented means the stated behavior and platform, not completion of the goal.
       verifier builds and packages all four outside the checkout, checks source and
       package schemas, and passes six standard-service tests against the production
       host. See [starter behavior and evidence](adapter-sdk.md#standard-service-starters).
-- [ ] **Incremental native browsing:** the public API is paged, but its native
-      browser listing still materializes a directory. Use provider cursors and
-      cancellation without a total-tree/file cap. Transfers already use incremental
-      traversal and a disk-backed metadata catalog.
+- [ ] **Incremental native browsing:** migrate bundled Files and system file pickers
+      from materialized listings to provider pages and cancellation without a
+      total-tree/file cap. Transfers already use incremental traversal and a
+      disk-backed metadata catalog.
       [Native directory readers](native-directory-readers.md) now supply demand-driven
       adapter and SFTP pages with cancellation/cleanup and source replacement checks.
-      IPC registration, broker integration and bundled consumers remain to be migrated.
+      Native IPC registration, app permission routing and public broker integration
+      now preserve that demand and ownership. Bundled consumers remain to be migrated.
 - [ ] **Composition UI walkthroughs:** successful mixed SSH/adapter enrollment
       through host-key review, initialization cancellation and committed replacement
       with a cleanup warning. Exercise files-only, console-only, custom-API-only and

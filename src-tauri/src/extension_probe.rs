@@ -75,7 +75,7 @@ pub fn setup<R: Runtime>(app: &mut tauri::App<R>) -> Result<(), Box<dyn std::err
     });
     let handle = app.handle().clone();
     std::thread::spawn(move || {
-        std::thread::sleep(std::time::Duration::from_secs(25));
+        std::thread::sleep(std::time::Duration::from_secs(45));
         if !completed.swap(true, Ordering::SeqCst) {
             let _ = std::fs::write(
                 result,

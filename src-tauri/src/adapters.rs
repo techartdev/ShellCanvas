@@ -178,6 +178,7 @@ pub async fn replace_adapter_source(
         let retired = workspace.replace_source(&expected, candidate)?;
         if replaces_files {
             transfers.close_session(session_id);
+            state.directories.close_source(session_id, &expected);
         }
         let mut result = SourceReplacement {
             status: workspace.status(),

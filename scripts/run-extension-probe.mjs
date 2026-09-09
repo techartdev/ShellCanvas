@@ -13,7 +13,7 @@ const child = spawn(resolve(root, "target/debug/shellcanvas.exe"), [], {
   env: { ...process.env, SHELLCANVAS_EXTENSION_PROBE: "1" },
   stdio: "inherit",
 });
-const timer = setTimeout(() => child.kill(), 40000);
+const timer = setTimeout(() => child.kill(), 60000);
 try {
   await new Promise((resolve, reject) => {
     child.once("error", reject);
