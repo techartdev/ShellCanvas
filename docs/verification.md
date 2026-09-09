@@ -14,7 +14,7 @@ The separate `npm run verify:sdk` command packs and installs the SDK into fresh 
 `npm run verify:adapter-sdk` exports the Rust adapter SDK and builds/runs its
 example outside the checkout against the production host. It requires `tar` and
 cached Cargo dependencies. See [adapter SDK verification](adapter-sdk.md) for
-the report, scope and unfinished developer-kit deliverables.
+the report, scope and generated standard-service examples.
 
 That command also builds the SDK CLI, generates/builds/packages a new adapter,
 checks exported schemas, and tests the generated executable with the host. Run it

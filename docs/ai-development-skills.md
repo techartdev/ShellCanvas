@@ -39,7 +39,7 @@ accept the artifacts and reject invalid fields/defaults.
 
 The generated app passed eight Windows interaction checks for installation,
 shared message/Open/Save dialogs, saved text, local storage and dirty-close/draft
-preservation. The generated adapter installation is covered by the 68-check
-Windows adapter fixture, including custom-service-only connection, actual service
+preservation. The generated adapter installation is covered by the retained 68-check
+Windows adapter checkpoint, including custom-service-only connection, actual service
 calls and connection survival after package removal. These are synthetic fixture
 workflows, not real device implementation tests or an independent AI-agent study.

@@ -317,22 +317,40 @@ fn empty_files_are_verified_and_streams_reject_writes_and_invalid_formats() {
 #[test]
 #[ignore]
 fn explorer_clipboard_probe() {
+    let automated = std::env::var("SHELLCANVAS_FILE_CLIPBOARD_RUN")
+        .ok()
+        .map(|value| uuid::Uuid::parse_str(&value).expect("Probe run must be a UUID"));
+    let folder_name = automated
+        .map(|run| format!("ShellCanvas-{run}"))
+        .unwrap_or_else(|| "Folder probe".into());
+    let run_directory = automated.map(|run| {
+        let directory = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .unwrap()
+            .join(".local/live-file-clipboard")
+            .join(run.to_string());
+        assert!(
+            directory.is_dir(),
+            "Dedicated runner must create the run directory"
+        );
+        directory
+    });
     let (runtime, memory, first) = fixture(8 * 1024 * 1024 + 17);
     let mut second = first.clone();
     second.entry.name = "Second file.bin".into();
     second.display_path = second.entry.name.clone();
-    let sources = if std::env::var_os("SHELLCANVAS_FOLDER_PROBE").is_some() {
+    let sources = if automated.is_some() || std::env::var_os("SHELLCANVAS_FOLDER_PROBE").is_some() {
         let mut first = first;
-        first.display_path = "Folder probe\\Nested\\First.bin".into();
-        second.display_path = "Folder probe\\Second.bin".into();
+        first.display_path = format!("{folder_name}\\Nested\\First.bin");
+        second.display_path = format!("{folder_name}\\Second.bin");
         let mut root = first.clone();
         root.entry.kind = "directory".into();
         root.entry.size = 0;
-        root.display_path = "Folder probe".into();
+        root.display_path = folder_name.clone();
         let mut nested = root.clone();
-        nested.display_path = "Folder probe\\Nested".into();
+        nested.display_path = format!("{folder_name}\\Nested");
         let mut empty = root.clone();
-        empty.display_path = "Folder probe\\Empty".into();
+        empty.display_path = format!("{folder_name}\\Empty");
         vec![root, nested, empty, first, second]
     } else {
         vec![first, second]
@@ -360,6 +378,45 @@ fn explorer_clipboard_probe() {
             None,
         ))
         .unwrap();
+    if let Some(directory) = run_directory {
+        assert_eq!(memory.opens.load(Ordering::SeqCst), 0);
+        std::fs::write(
+            directory.join("ready.json"),
+            "{\"ready\":true,\"opensBeforePaste\":0}",
+        )
+        .unwrap();
+        let expected = vec![
+            directory.join(&folder_name).join("Nested/First.bin"),
+            directory.join(&folder_name).join("Second.bin"),
+        ];
+        for _ in 0..900 {
+            if let Ok(Some(paths)) = crate::windows_file_input::files() {
+                if paths == expected {
+                    assert_eq!(memory.finishes.load(Ordering::SeqCst), 2);
+                    for path in &paths {
+                        assert_eq!(std::fs::read(path).unwrap(), memory.bytes);
+                    }
+                    assert!(directory.join(&folder_name).join("Empty").is_dir());
+                    std::fs::write(
+                        directory.join("native-result.json"),
+                        serde_json::to_vec(&serde_json::json!({
+                            "success": true,
+                            "opensBeforePaste": 0,
+                            "verifiedStreams": memory.finishes.load(Ordering::SeqCst),
+                            "windowsFileListDecoded": true,
+                            "incomingBytesMatched": true,
+                            "emptyFolderPreserved": true
+                        }))
+                        .unwrap(),
+                    )
+                    .unwrap();
+                    return;
+                }
+            }
+            std::thread::sleep(Duration::from_millis(100));
+        }
+        panic!("Independent Windows file clipboard exchange timed out");
+    }
     eprintln!("EXPLORER_READY: two generated files; expected size 8388625 each. Ctrl+V into an owned test folder. Opens before Paste: {}", memory.opens.load(Ordering::SeqCst));
     for _ in 0..180 {
         std::thread::sleep(Duration::from_secs(1));

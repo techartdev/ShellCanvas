@@ -1,6 +1,6 @@
 # ShellCanvas system API and runtime extensions
 
-Status: active, updated 2026-09-09. This is the current scope and completion
+Status: acceptance reviewed; final source verification pending, updated 2026-09-10. This is the current scope and completion
 checklist for BASE-11. [Historical checkpoints](kernel-history.md) retain the
 earlier implementation and test records. Their statements about pending work
 describe that point in time, not the current backlog.
@@ -83,7 +83,7 @@ Implemented means the stated behavior and platform, not completion of the goal.
 
 ## Remaining implementation and integration gates
 
-- [ ] **Current clipboard contract:** single-item Cut/move intent with authoritative
+- [x] **Current clipboard contract:** single-item Cut/move intent with authoritative
       outcomes, publication permissions and honest cancellation behavior.
       Preserve source identity, grants and cancellation ownership. A bundled Cut
       now pastes through the public API as a move with a native exclusive reservation,
@@ -96,8 +96,11 @@ Implemented means the stated behavior and platform, not completion of the goal.
       live OS image/file interoperability separately from injected fixtures.
       The [live Windows image exchange](live-image-clipboard-validation.md) now
       passes both directions with an independent .NET reader/writer and restores
-      the original clipboard. This validates opaque images; it does not close the
-      separate live file-interoperability review.
+      the original clipboard. The independent [live Windows file exchange](live-file-clipboard-validation.md)
+      also passes: lazy OLE streams, exact bytes/hashes, nested/empty folders and
+      native file-list decoding. Its successful repeat restored the current text
+      clipboard; the earlier restoration-verification failure is retained explicitly.
+      These are layered OS and SDK checks, not new Explorer UI or live-host claims.
       Upload/Download chooser selections now use one catalog-backed batch without a
       fixed root-count limit; active jobs and streams remain bounded separately.
 - [ ] **Follow-up: non-Windows adapter lifetime:** ordinary descendants on close,
@@ -148,17 +151,22 @@ Implemented means the stated behavior and platform, not completion of the goal.
 - [ ] **Follow-up: native platform evidence:** build/run macOS and Linux, then verify actual
       app-frame isolation, broker, catalog leases, custom protocols and cleanup before
       enabling installed UI there. A shell build does not establish runtime isolation.
-- [ ] **Interaction/accessibility:** dialogs, keyboard/focus, guards and partial
+- [x] **Interaction/accessibility:** dialogs, keyboard/focus, guards and partial
       capabilities across desktop/tablet layouts. Compact Windows fixtures cover
       800×900 and 1360×900; physical tablet/mobile behavior is follow-up product work.
       The current browser walkthrough verifies compact Open/Save/folder pickers,
       keyboard selection, safe replacement defaults and focus restoration. It found
       and fixed lost opener focus across the compound Save As replacement review;
       a two-owner regression checks cancellation and successful replacement.
-- [ ] **Documentation and API review:** align SDK declarations, method/grant
+- [x] **Documentation and API review:** align SDK declarations, method/grant
       discovery, schemas, examples, skills and guides. Remove superseded pending-work
       claims while preserving historical evidence. Review errors, cancellation and
       lifetime rules from an independent extension author's perspective.
+      The [eight-area acceptance audit](kernel-acceptance.md) maps the fixed
+      contract to implementation/runtime evidence and its explicit limits.
+      Fresh independent app and all four adapter starter builds pass; public
+      guides keep permissions, capability discovery, ownership and cancellation
+      distinct. No new API family or mandatory device service was added.
 
 ## Verification and completion audit
 
@@ -175,12 +183,12 @@ build. The SDK commands prove consumption outside the checkout. None alone prove
 GUI behavior, device support or platform isolation. Native fixture instructions
 are in [runtime apps](runtime-apps.md) and [adapter packages](adapter-packages.md).
 
-Windows code checkpoint `ddbb580` passed 225 frontend tests, 146 Rust tests with
-two intentional live probes ignored, SDK checks, formatting, Clippy and the normal
-desktop build. Current Windows integration records cover 88 installed-app checks,
-71 adapter checks, 11 two-process catalog checks and eight generated-SDK app
-checks. Their individual scopes and revisions matter; synthetic clipboard and
-provider fixtures are not live-device evidence.
+Windows source checkpoint `458144a` passed 258 frontend tests, 186 Rust tests
+with two intentional live probes ignored, SDK checks, formatting, Clippy and the
+normal desktop build. Final verification including the new opt-in file probe
+is pending. Current runtime evidence and each checkpoint's limits are indexed
+in the [acceptance audit](kernel-acceptance.md). Synthetic clipboard/provider
+fixtures remain distinct from the live Windows OS clipboard probes.
 
 [Mac validation](macos-validation.md) was performed on a 2012 Intel MacBook Air
 with Catalina 10.15.8. The exact `ddbb580` repository passed frontend and native
@@ -189,13 +197,10 @@ upstream WebKit/objc2 debug check. A scoped compatibility build opened the nativ
 window but hit a JavaScript syntax error before rendering the desktop.
 This does not enable installed UI packages or establish general Mac support.
 
-Before completion, map every in-scope objective and validation gate to current source,
-commands/tests and rendered/runtime evidence. Check independent installation
-without core rebuilds, preserved work during updates/switches, denied/foreign/stale
-operations, partial capabilities and cleanup. Missing or indirect evidence leaves
-a requirement open. Preserve all eight delivery areas: system UI, app services,
-runtime apps, extension boundary, adapters/providers, composition, developer
-experience and AI skills. BASE-11 remains active until all requirements are proven.
+The acceptance audit covers independent installation without core rebuilds,
+preserved work during updates/switches, denied/foreign/stale operations, partial
+capabilities and cleanup across all eight delivery areas. Final clean-source
+verification is the remaining closure step; the follow-ups below do not expand it.
 
 ## Product work beyond this core goal
 

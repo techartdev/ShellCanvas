@@ -98,7 +98,7 @@ projects/packages, unknown templates, tampering, bad metadata and password defau
 validation nor packaging executes the device; building intentionally compiles
 the chosen source and its dependencies.
 
-The 68-check Windows desktop fixture installs this generated package through its
+The retained 68-check Windows desktop checkpoint installs this generated package through its
 review UI, creates a custom-service-only workspace, calls the generated process,
 and verifies that removing its package preserves the live connection. The native
 file chooser is replaced with the verified fixture path. This is runtime package
