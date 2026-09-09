@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 import { parseAppPackage, type AppPackage } from "./package";
 import { RpcError } from "./rpc";
+import { catalogNotifications, holdCatalogLock } from "./catalog-coordination";
 
 export interface InstalledApp {
   readonly package: AppPackage;
@@ -15,6 +16,10 @@ export interface CatalogSnapshot {
 }
 export interface CatalogStorage {
   read(): Promise<unknown>;
+  /** Hold a per-app shared running lease or exclusive removal lease. */
+  hold?(id: string, mode: "shared" | "exclusive"): Promise<() => void>;
+  /** Invalidation only: callers re-read and validate authoritative storage. */
+  subscribe?(changed: () => void): () => void;
   /** Commit atomically only if storage still holds this revision. */
   compareAndSet(expected: string | null, next: CatalogSnapshot): Promise<void>;
 }
@@ -127,7 +132,6 @@ export class AppLease {
 export class AppCatalog {
   private state: CatalogSnapshot | null = null;
   private loaded = false;
-  private writing = false;
   private queue: Promise<unknown> = Promise.resolve();
   private reviews = new WeakSet<InstallReview>();
   private leases = new Map<string, AppLease>();
@@ -142,28 +146,60 @@ export class AppCatalog {
     };
   };
   private publish() {
-    for (const listener of this.listeners) listener();
+    for (const listener of this.listeners) {
+      try {
+        listener();
+      } catch {
+        /* Observers cannot undo a committed catalog. */
+      }
+    }
   }
   private serial<T>(work: () => Promise<T>): Promise<T> {
-    const result = this.queue.then(async () => {
-      this.writing = true;
-      try {
-        return await work();
-      } finally {
-        this.writing = false;
-      }
-    });
+    const result = this.queue.then(work);
     this.queue = result.catch(() => {});
     return result;
   }
   load() {
-    return this.serial(async () => {
-      // A failed/corrupt read never replaces the previously loaded state or writes an empty catalog.
-      const next = parseCatalog(await this.storage.read());
+    return this.serial(() => this.refresh());
+  }
+  private async refresh() {
+    // A failed/corrupt read never replaces the previous state or writes an empty catalog.
+    const next = parseCatalog(await this.storage.read());
+    if (!this.loaded || next?.revision !== this.state?.revision) {
       this.state = next;
       this.loaded = true;
       this.publish();
+    }
+  }
+  watch(onError: (error: unknown) => void): () => void {
+    let stopped = false;
+    let requested = false;
+    let running = false;
+    const refresh = async () => {
+      requested = true;
+      if (running) return;
+      running = true;
+      try {
+        while (requested && !stopped) {
+          requested = false;
+          try {
+            await this.load();
+          } catch (error) {
+            if (!stopped) onError(error);
+          }
+        }
+      } finally {
+        running = false;
+      }
+    };
+    const stop = this.storage.subscribe?.(() => {
+      void refresh();
     });
+    void refresh();
+    return () => {
+      stopped = true;
+      stop?.();
+    };
   }
   private check() {
     if (!this.loaded)
@@ -255,9 +291,14 @@ export class AppCatalog {
           "busy",
           "Close this app's running windows before removing it. Disable it to stop new launches while keeping those windows.",
         );
-      await this.commit(
-        this.snapshot().filter((entry) => entry.package.id !== id),
-      );
+      const release = await this.storage.hold?.(id, "exclusive");
+      try {
+        await this.commit(
+          this.snapshot().filter((entry) => entry.package.id !== id),
+        );
+      } finally {
+        release?.();
+      }
     });
   }
   private async commit(apps: readonly InstalledApp[]) {
@@ -270,25 +311,34 @@ export class AppCatalog {
     this.state = next;
     this.publish();
   }
-  launch(id: string): AppLease {
-    this.check();
-    if (this.writing)
-      throw new RpcError(
-        "busy",
-        "An app catalog change is being saved. Try again shortly.",
-      );
-    const installed = this.snapshot().find((entry) => entry.package.id === id);
-    if (!installed?.enabled)
-      throw new RpcError(
-        "unavailable",
-        "This app is disabled or no longer installed.",
-      );
-    const identity = crypto.randomUUID();
-    const lease = new AppLease(identity, installed, () => {
-      this.leases.delete(identity);
+  launch(id: string): Promise<AppLease> {
+    return this.serial(async () => {
+      this.check();
+      const release = await this.storage.hold?.(id, "shared");
+      try {
+        // Read while holding the removal lock: stale launchers cannot resurrect
+        // removed/disabled packages or silently launch an outdated generation.
+        await this.refresh();
+        const installed = this.snapshot().find(
+          (entry) => entry.package.id === id,
+        );
+        if (!installed?.enabled)
+          throw new RpcError(
+            "unavailable",
+            "This app is disabled or no longer installed.",
+          );
+        const identity = crypto.randomUUID();
+        const lease = new AppLease(identity, installed, () => {
+          this.leases.delete(identity);
+          release?.();
+        });
+        this.leases.set(identity, lease);
+        return lease;
+      } catch (error) {
+        release?.();
+        throw error;
+      }
     });
-    this.leases.set(identity, lease);
-    return lease;
   }
 }
 
@@ -296,6 +346,7 @@ export class AppCatalog {
 export function indexedCatalogStorage(
   name = "shellcanvas-runtime-apps",
 ): CatalogStorage {
+  const notifications = catalogNotifications(name);
   let opening: Promise<IDBDatabase> | undefined;
   const database = () =>
     (opening ??= new Promise<IDBDatabase>((resolve, reject) => {
@@ -332,6 +383,8 @@ export function indexedCatalogStorage(
       };
     }));
   return {
+    hold: (id, mode) => holdCatalogLock(name, id, mode),
+    subscribe: notifications.subscribe,
     async read() {
       const db = await database();
       return new Promise((resolve, reject) => {
@@ -365,7 +418,15 @@ export function indexedCatalogStorage(
           }
           store.put(next, "installed");
         };
-        transaction.oncomplete = () => resolve();
+        transaction.oncomplete = () => {
+          // Notification failure cannot turn a committed write into a failure.
+          try {
+            notifications.changed();
+          } catch {
+            /* Focus/polling will refresh. */
+          }
+          resolve();
+        };
         transaction.onabort = () =>
           reject(
             conflict

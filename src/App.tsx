@@ -174,13 +174,26 @@ export default function App({
       (item) => item.key === key,
     );
     if (!target) return;
-    try {
-      const prepared = runtime.prepare(action, target.desktop);
+    const apply = (prepared: DesktopAction) => {
+      const current = workspaceState.current.items.find(
+        (item) => item.key === key,
+      );
+      if (!current) {
+        if (prepared.type === "new" && prepared.extension)
+          runtime.close(prepared.extension);
+        return;
+      }
       if (action.type === "close") {
-        const lease = target.desktop.instances[action.id]?.extension;
+        const lease = current.desktop.instances[action.id]?.extension;
         if (lease) runtime.close(lease);
       }
       update({ type: "desktop", key, action: prepared });
+    };
+    try {
+      const prepared = runtime.prepare(action, target.desktop);
+      if (prepared instanceof Promise)
+        void prepared.then(apply).catch((error) => setToast(String(error)));
+      else apply(prepared);
     } catch (error) {
       setToast(String(error));
     }
@@ -232,8 +245,11 @@ export default function App({
   const [error, setError] = useState("");
   const [toast, setToast] = useState("");
   useEffect(() => {
-    void runtime.catalog.load().catch((error) => setToast(String(error)));
-    return () => runtime.closeAll();
+    const stop = runtime.catalog.watch((error) => setToast(String(error)));
+    return () => {
+      stop();
+      runtime.closeAll();
+    };
   }, [runtime]);
   const launcherApps = apps.filter(
     (app) =>

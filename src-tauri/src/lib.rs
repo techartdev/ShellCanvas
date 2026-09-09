@@ -709,6 +709,12 @@ pub fn run() {
                 return handler(invoke);
             }
             #[cfg(debug_assertions)]
+            if invoke.message.command() == "catalog_probe_context" {
+                let handler: fn(tauri::ipc::Invoke<tauri::Wry>) -> bool =
+                    tauri::generate_handler![extension_probe::catalog_probe_context];
+                return handler(invoke);
+            }
+            #[cfg(debug_assertions)]
             if invoke.message.command() == "channel_roundtrip" {
                 let handler: fn(tauri::ipc::Invoke<tauri::Wry>) -> bool =
                     tauri::generate_handler![extension_probe::channel_roundtrip];

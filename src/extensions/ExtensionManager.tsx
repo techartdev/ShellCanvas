@@ -252,12 +252,17 @@ export function ExtensionManager({
             <div className="extension-actions">
               <button
                 disabled={busy || loading || !entry.enabled}
-                onClick={() => {
+                onClick={async () => {
                   let lease: AppLease | undefined;
                   try {
                     if (open) open(entry.package.id);
                     else if (launch) {
-                      lease = catalog.launch(entry.package.id);
+                      const opening = sequence.current;
+                      lease = await catalog.launch(entry.package.id);
+                      if (opening !== sequence.current) {
+                        lease.close();
+                        return;
+                      }
                       launch(lease);
                     } else throw new Error("The desktop cannot open this app.");
                     setError("");

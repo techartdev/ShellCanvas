@@ -116,11 +116,10 @@ function Workbench() {
                 connect: () => {},
                 reportError: setError,
                 openApp: (id) => {
-                  try {
-                    launch(catalog.launch(id));
-                  } catch (failure) {
-                    setError(String(failure));
-                  }
+                  void catalog
+                    .launch(id)
+                    .then(launch)
+                    .catch((failure) => setError(String(failure)));
                 },
               }}
               order={stack.indexOf(lease.id)}

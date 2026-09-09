@@ -12,6 +12,12 @@ Public console checkpoint: `client.console` supports byte reads/writes, optional
 
 ## Immediate delivery focus — everyday basics
 
+Catalog coordination checkpoint (2026-09-09): installed app changes refresh other
+desktop instances, and removal checks running leases across processes/generations.
+New launches reread authoritative storage; existing windows retain code/grants.
+Eleven Windows two-process checks pass, including termination releasing the test
+peer's lease. Other platform evidence and remaining kernel roadmap gates stay open.
+
 Shared file clipboard checkpoint (2026-09-09): installed apps and bundled Files
 now exchange remote Copy selections through the original workspace/provider.
 Clipboard snapshots distinguish local uploads from remote copies with separate

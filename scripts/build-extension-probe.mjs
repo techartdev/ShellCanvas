@@ -76,6 +76,7 @@ await build({
       input: [
         resolve("tests/fixtures/native-frame-probe.html"),
         resolve("tests/fixtures/native-desktop-probe.html"),
+        resolve("tests/fixtures/catalog-coordination-probe.html"),
         resolve("tests/fixtures/adapter-desktop-probe.html"),
         resolve("tests/fixtures/source-switch-probe.html"),
         ...(process.env.SHELLCANVAS_SDK_PROBE === "1"

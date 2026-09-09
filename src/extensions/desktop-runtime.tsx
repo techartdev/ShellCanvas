@@ -294,7 +294,11 @@ export class DesktopRuntime {
       ? undefined
       : "This app is disabled or no longer installed.";
   }
-  prepare(action: DesktopAction, state: DesktopState): DesktopAction {
+  private launchEpoch = 0;
+  prepare(
+    action: DesktopAction,
+    state: DesktopState,
+  ): DesktopAction | Promise<DesktopAction> {
     if (action.type !== "open" && action.type !== "new") return action;
     if (
       this.bundled.some((app) => app.id === action.id) ||
@@ -307,7 +311,18 @@ export class DesktopRuntime {
         .at(-1);
       if (existing) return { type: "focus", id: existing };
     }
-    const lease = this.catalog.launch(action.id);
+    return this.launch(action.id);
+  }
+  private async launch(id: string): Promise<DesktopAction> {
+    const epoch = this.launchEpoch;
+    const lease = await this.catalog.launch(id);
+    if (epoch !== this.launchEpoch) {
+      lease.close();
+      throw new RpcError(
+        "closed",
+        "The desktop closed while this app was opening.",
+      );
+    }
     const retain = () => {
       const record = this.live.get(lease.id)!;
       record.mounts++;
@@ -329,7 +344,7 @@ export class DesktopRuntime {
       />
     ));
     this.live.set(lease.id, { lease, app, mounts: 0 });
-    return { type: "new", id: action.id, extension: lease.id };
+    return { type: "new", id, extension: lease.id };
   }
   resolve(instance: DesktopState["instances"][string]): DesktopApp | undefined {
     return instance.extension
@@ -343,6 +358,7 @@ export class DesktopRuntime {
     record.lease.close();
   }
   closeAll() {
+    this.launchEpoch++;
     for (const id of this.live.keys()) this.close(id);
   }
 }

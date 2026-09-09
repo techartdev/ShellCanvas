@@ -1,0 +1,20 @@
+{
+  "productName": "ShellCanvas Catalog Probe",
+  "identifier": "dev.shellcanvas.extensionprobe",
+  "build": {
+    "beforeBuildCommand": "node scripts/build-extension-probe.mjs",
+    "frontendDist": "../.local/native-extension-probe/dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "ShellCanvas catalog coordination probe",
+        "url": "tests/fixtures/catalog-coordination-probe.html",
+        "width": 800,
+        "height": 600,
+        "visible": false
+      }
+    ]
+  }
+}

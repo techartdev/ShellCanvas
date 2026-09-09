@@ -17,6 +17,15 @@ Objective: provide a small, coherent virtual-desktop API for bundled and communi
 
 ## Direction
 
+Catalog coordination checkpoint (2026-09-09): desktop instances now refresh app
+catalog changes through invalidation plus focus/periodic recovery. Asynchronous
+launch checks current storage under a shared app lease; removal requires an
+exclusive lease across all generations. Running windows retain their original
+code/grants. Eleven real two-process Windows checks pass, including removal after
+terminating the fixture peer. Native macOS/Linux evidence, public Cut/custom
+clipboard formats, adapter lifecycle hardening and other delivery gates remain.
+See [runtime coordination](runtime-apps.md#multiple-desktop-instances).
+
 Shared file clipboard checkpoint (2026-09-09): installed apps and bundled Files
 can paste each other's remote Copy selections within the original workspace and
 file-service instance. Paste captures the clipboard version, uses copy permission

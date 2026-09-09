@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
-import { expect, it } from "vitest";
+import { expect, it, vi } from "vitest";
 import { initialDesktop, updateDesktop } from "../desktop";
 import { AppCatalog, type CatalogSnapshot } from "./catalog";
 import { DesktopRuntime } from "./desktop-runtime";
@@ -37,6 +37,29 @@ async function setup() {
     );
   return { catalog, runtime, install };
 }
+it("releases a late app lease when the desktop closes during asynchronous launch", async () => {
+  const { runtime, catalog, install } = await setup();
+  const entry = await install("1.0.0");
+  const launch = catalog.launch.bind(catalog);
+  let resume!: () => void;
+  vi.spyOn(catalog, "launch").mockImplementationOnce(async (id) => {
+    const lease = await launch(id);
+    await new Promise<void>((resolve) => {
+      resume = resolve;
+    });
+    return lease;
+  });
+  const preparing = runtime.prepare(
+    { type: "new", id: entry.package.id },
+    initialDesktop(runtime.snapshot()),
+  );
+  const rejected = expect(preparing).rejects.toMatchObject({ code: "closed" });
+  await vi.waitFor(() => expect(resume).toBeTypeOf("function"));
+  runtime.closeAll();
+  resume();
+  await rejected;
+  await catalog.remove(entry.package.id, entry.generation);
+});
 it("maps the namespaced console permission to a host capability without granting unrelated services", async () => {
   const { runtime, install } = await setup();
   await install("1.0.0", ["system.console"]);
@@ -66,7 +89,7 @@ it("pins running descriptors and grants while new desktop windows use the instal
   let state = initialDesktop(runtime.snapshot());
   state = updateDesktop(
     state,
-    runtime.prepare({ type: "new", id: "org.example.notes" }, state),
+    await runtime.prepare({ type: "new", id: "org.example.notes" }, state),
     runtime.snapshot(),
   );
   const old = state.instances[state.open[0]];
@@ -74,7 +97,7 @@ it("pins running descriptors and grants while new desktop windows use the instal
   await install("2.0.0");
   state = updateDesktop(
     state,
-    runtime.prepare({ type: "new", id: "org.example.notes" }, state),
+    await runtime.prepare({ type: "new", id: "org.example.notes" }, state),
     runtime.snapshot(),
   );
   expect(runtime.resolve(old)).toBe(original);
@@ -93,7 +116,7 @@ it("restores disabled app windows, rejects new launches, and releases ownership 
   let state = initialDesktop(runtime.snapshot());
   state = updateDesktop(
     state,
-    runtime.prepare({ type: "new", id: entry.package.id }, state),
+    await runtime.prepare({ type: "new", id: entry.package.id }, state),
     runtime.snapshot(),
   );
   const id = state.open[0];
@@ -101,9 +124,9 @@ it("restores disabled app windows, rejects new launches, and releases ownership 
   expect(
     runtime.prepare({ type: "open", id: entry.package.id }, state),
   ).toEqual({ type: "focus", id });
-  expect(() =>
+  await expect(
     runtime.prepare({ type: "new", id: entry.package.id }, state),
-  ).toThrow("disabled");
+  ).rejects.toThrow("disabled");
   await expect(
     catalog.remove(entry.package.id, entry.generation),
   ).rejects.toThrow("running windows");
@@ -121,7 +144,7 @@ it("keeps runtime lease identity through focus, minimize and document-state chan
   let state = initialDesktop(runtime.snapshot());
   state = updateDesktop(
     state,
-    runtime.prepare({ type: "new", id: "org.example.notes" }, state),
+    await runtime.prepare({ type: "new", id: "org.example.notes" }, state),
     runtime.snapshot(),
   );
   const id = state.open[0],
@@ -133,7 +156,7 @@ it("keeps runtime lease identity through focus, minimize and document-state chan
   ]) {
     state = updateDesktop(
       state,
-      runtime.prepare(action, state),
+      await runtime.prepare(action, state),
       runtime.snapshot(),
     );
   }

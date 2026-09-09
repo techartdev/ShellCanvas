@@ -34,6 +34,76 @@ function storage() {
     },
   };
 }
+
+it("revalidates stale launchers and retains leases across another catalog's update and disable", async () => {
+  const saved = storage();
+  const locks = new Map<string, number>();
+  saved.api.hold = async (id, mode) => {
+    const count = locks.get(id) ?? 0;
+    if (count < 0 || (mode === "exclusive" && count > 0))
+      throw new Error("running windows in another desktop");
+    locks.set(id, mode === "shared" ? count + 1 : -1);
+    return () => {
+      locks.set(id, mode === "shared" ? locks.get(id)! - 1 : 0);
+    };
+  };
+  const one = new AppCatalog(saved.api),
+    two = new AppCatalog(saved.api);
+  await Promise.all([one.load(), two.load()]);
+  const first = await one.install(await one.review(raw()), ["system.dialogs"]);
+  const old = await two.launch(first.package.id); // Its loaded catalog was empty.
+  const second = await one.install(await one.review(raw("2.0.0")), []);
+  const current = await two.launch(first.package.id);
+  expect(old.installed.package.version).toBe("1.0.0");
+  expect(old.installed.grants).toEqual(["system.dialogs"]);
+  expect(current.installed.package.version).toBe("2.0.0");
+  await one.setEnabled(second.package.id, second.generation, false);
+  await expect(two.launch(second.package.id)).rejects.toThrow("disabled");
+  expect(locks.get(second.package.id)).toBe(2); // Rejected launch released its lock.
+  await expect(
+    one.remove(second.package.id, second.generation),
+  ).rejects.toThrow("another desktop");
+  expect(old.closed).toBe(false);
+  old.close();
+  current.close();
+  await one.remove(second.package.id, second.generation);
+  await expect(two.launch(second.package.id)).rejects.toThrow(
+    "no longer installed",
+  );
+  expect(locks.get(second.package.id)).toBe(0);
+});
+
+it("refreshes from invalidations without replacing unchanged snapshots or losing state on corruption", async () => {
+  const saved = storage();
+  const changes = new Set<() => void>();
+  saved.api.subscribe = (fn) => {
+    changes.add(fn);
+    return () => {
+      changes.delete(fn);
+    };
+  };
+  const catalog = new AppCatalog(saved.api),
+    writer = new AppCatalog(saved.api);
+  await writer.load();
+  const errors = vi.fn();
+  const stop = catalog.watch(errors);
+  await catalog.load();
+  const publish = vi.fn();
+  catalog.subscribe(publish);
+  const first = await writer.install(await writer.review(raw()), []);
+  for (const fn of changes) fn();
+  await vi.waitFor(() => expect(catalog.snapshot()[0]).toEqual(first));
+  const snapshot = catalog.snapshot();
+  await catalog.load();
+  expect(catalog.snapshot()).toBe(snapshot);
+  expect(publish).toHaveBeenCalledOnce();
+  saved.corrupt();
+  for (const fn of changes) fn();
+  await vi.waitFor(() => expect(errors).toHaveBeenCalledOnce());
+  expect(catalog.snapshot()).toBe(snapshot);
+  stop();
+  expect(changes.size).toBe(0);
+});
 it("persists installed packages and grants, and pins existing windows across updates", async () => {
   const saved = storage();
   const catalog = new AppCatalog(saved.api);
@@ -41,7 +111,7 @@ it("persists installed packages and grants, and pins existing windows across upd
   const review = await catalog.review(raw());
   expect(review.digest).toMatch(/^[a-f0-9]{64}$/);
   const first = await catalog.install(review, ["system.dialogs"]);
-  const window = catalog.launch(first.package.id);
+  const window = await catalog.launch(first.package.id);
   const updated = await catalog.install(
     await catalog.review(raw("2.0.0", ["system.dialogs", "files.read"])),
     [],
@@ -50,7 +120,7 @@ it("persists installed packages and grants, and pins existing windows across upd
   expect(window.installed.package.version).toBe("1.0.0");
   expect(window.installed.grants).toEqual(["system.dialogs"]);
   expect(window.closed).toBe(false);
-  const next = catalog.launch(first.package.id);
+  const next = await catalog.launch(first.package.id);
   expect(next.installed.package.version).toBe("2.0.0");
   expect(next.installed.grants).toEqual([]);
   const reopened = new AppCatalog(saved.api);
@@ -64,10 +134,10 @@ it("disables new launches without destroying existing work and refuses removal u
   const catalog = new AppCatalog(storage().api);
   await catalog.load();
   const first = await catalog.install(await catalog.review(raw()), []);
-  const old = catalog.launch(first.package.id);
+  const old = await catalog.launch(first.package.id);
   const current = await catalog.install(await catalog.review(raw("2.0.0")), []);
   await catalog.setEnabled(current.package.id, current.generation, false);
-  expect(() => catalog.launch(current.package.id)).toThrow("disabled");
+  await expect(catalog.launch(current.package.id)).rejects.toThrow("disabled");
   expect(old.closed).toBe(false);
   await expect(
     catalog.remove(current.package.id, current.generation),
@@ -146,18 +216,21 @@ it("blocks launch while a remove transaction is pending, avoiding an untracked l
   await catalog.load();
   const installed = await catalog.install(await catalog.review(raw()), []);
   let finish!: () => void;
+  const commit = vi.mocked(saved.api.compareAndSet).getMockImplementation()!;
   vi.mocked(saved.api.compareAndSet).mockImplementationOnce(
-    () =>
-      new Promise<void>((resolve) => {
+    async (expected, next) => {
+      await new Promise<void>((resolve) => {
         finish = resolve;
-      }),
+      });
+      await commit(expected, next);
+    },
   );
   const removing = catalog.remove(installed.package.id, installed.generation);
   await Promise.resolve();
-  expect(() => catalog.launch(installed.package.id)).toThrow("being saved");
+  const opening = catalog.launch(installed.package.id);
+  const rejected = expect(opening).rejects.toThrow("no longer installed");
+  await vi.waitFor(() => expect(finish).toBeTypeOf("function"));
   finish();
   await removing;
-  expect(() => catalog.launch(installed.package.id)).toThrow(
-    "no longer installed",
-  );
+  await rejected;
 });

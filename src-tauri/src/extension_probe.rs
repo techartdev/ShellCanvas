@@ -7,6 +7,21 @@ use std::sync::{
 use tauri::{Listener, Runtime};
 
 #[tauri::command]
+pub fn catalog_probe_context(app: tauri::AppHandle) -> Result<serde_json::Value, String> {
+    if app.config().identifier != "dev.shellcanvas.extensionprobe"
+        || std::env::var("SHELLCANVAS_EXTENSION_PROBE").as_deref() != Ok("1")
+    {
+        return Err("This command is available only to the native probe.".into());
+    }
+    let role = std::env::var("SHELLCANVAS_CATALOG_ROLE").unwrap_or_default();
+    let run = std::env::var("SHELLCANVAS_CATALOG_RUN").unwrap_or_default();
+    if !matches!(role.as_str(), "owner" | "peer") || uuid::Uuid::parse_str(&run).is_err() {
+        return Err("Invalid catalog probe context".into());
+    }
+    Ok(serde_json::json!({"role": role, "run": run, "pid": std::process::id()}))
+}
+
+#[tauri::command]
 pub fn channel_roundtrip(
     app: tauri::AppHandle,
     channel: tauri::ipc::Channel<Vec<u8>>,
@@ -30,8 +45,13 @@ pub fn setup<R: Runtime>(app: &mut tauri::App<R>) -> Result<(), Box<dyn std::err
     }
     let directory = std::env::current_dir()?.join(".local/native-extension-probe");
     std::fs::create_dir_all(&directory)?;
-    let result = directory.join("result.json");
-    let progress = directory.join("progress.jsonl");
+    let prefix = match std::env::var("SHELLCANVAS_CATALOG_ROLE").as_deref() {
+        Ok("owner") => "catalog-owner-",
+        Ok("peer") => "catalog-peer-",
+        _ => "",
+    };
+    let result = directory.join(format!("{prefix}result.json"));
+    let progress = directory.join(format!("{prefix}progress.jsonl"));
     std::fs::write(&progress, "")?;
     app.listen("shellcanvas-native-extension-progress", move |event| {
         use std::io::Write;

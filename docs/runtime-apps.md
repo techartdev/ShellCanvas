@@ -10,7 +10,7 @@ Runtime apps use the same desktop stacking, minimize, maximize, window menu, dir
 
 A host reconnect leaves the app's document and draft mounted. The previous session API is retired. The app's window then offers **Use reconnected host**: accepting explicitly directs subsequent requests to the new connection. Requests already dispatched retain their original scope and cannot silently change targets. Hiding/switching a workspace preserves windows while its shared dialogs are canceled. App-reported dirty/busy state participates in workspace-close and native-quit reviews.
 
-The catalog persists in WebView IndexedDB, separate from host profiles. The normal browser preview uses a different database name. This is a per-desktop runtime; cross-process invalidation and active-window coordination are still pending. No crash recovery for unsaved app documents is claimed.
+The catalog persists in WebView IndexedDB, separate from host profiles. Desktop instances sharing the same WebView profile and catalog coordinate installation changes and running windows. The normal browser preview uses a different database name. No crash recovery for unsaved app documents is claimed.
 
 ## Build and load a separate app
 
@@ -45,7 +45,25 @@ The client exposes `client.window.setDocumentState({ dirty, busy, title? })`, wi
 
 Render windows in stable mount order and change CSS stacking order when focusing them. Moving an iframe's DOM node can reload its browsing context. The catalog workbench maintains separate mount order and stacking order, so switching between versions does not reload either app.
 
-Storage writes are serialized and commit before publishing a new in-memory state. Storage failure or a corrupt/unsupported catalog is reported without replacing it with an empty catalog. Running leases remain independent of storage refresh. Cross-desktop catalog changes currently require **Refresh installed apps**; automatic cross-process invalidation and global active-window coordination are not implemented.
+Storage writes are serialized and commit before publishing a new in-memory state. Storage failure or a corrupt/unsupported catalog is reported without replacing it with an empty catalog. Running leases remain independent of storage refresh.
+
+### Multiple desktop instances
+
+Committed changes broadcast an invalidation to other instances. Each instance rereads and validates IndexedDB; notification messages cannot supply executable packages or grants. Focus, visibility restoration and a 30-second fallback also refresh the catalog. Unchanged revisions preserve snapshot identity and do not recreate running windows. A stale management decision still fails the atomic revision check and requires a fresh review.
+
+Opening an installed app is asynchronous. It holds a shared per-app [Web Lock](https://www.w3.org/TR/web-locks/) and rereads the catalog before choosing the enabled package generation. Removing an app requires an exclusive lock with the same catalog/app identity, so running windows from any generation and any participating desktop instance prevent removal. Disable remains available and preserves existing work. Closing a window releases its lease; terminating its owning browser context also releases it, without timestamps or expiration that could mistake a paused desktop for a dead one. If coordination is unavailable, launch/removal fails explicitly. Separate browser/WebView profiles have separate storage and locks.
+
+An asynchronous launch completing after desktop teardown releases its lease instead of creating an orphan window. A workspace removed while an app is opening similarly retires the prepared instance. Existing windows keep their original package and grant snapshot after an update, including when another process installs it.
+
+The Windows two-process fixture passes 11 checks covering remote install/update/disable/removal, preserved generations/grants, refusal to remove while another process has running windows, and successful removal after the runner terminates that fixture process. It uses a unique synthetic catalog and no real host or clipboard. The full desktop regression fixture also passes all 80 checks after asynchronous launch integration. This establishes Windows/WebView2 coordination; other native webviews still require equivalent evidence.
+
+```powershell
+$env:SHELLCANVAS_SDK_PROBE = '1'
+npm run tauri -- build --debug --no-bundle --config src-tauri/tauri.catalog-probe.conf.json
+node scripts/run-catalog-probe.mjs
+```
+
+The runner starts two hidden fixture processes, verifies their distinct IDs and terminates only its known test peer. Results are saved under `.local/native-extension-probe/catalog-coordination-result.json`. The fixture overwrites the debug executable; rebuild the normal desktop with `npm run tauri -- build --debug --no-bundle` afterward.
 
 ## Contract and lifetime
 
