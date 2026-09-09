@@ -12,6 +12,8 @@ Public console checkpoint: `client.console` supports byte reads/writes, optional
 
 ## Immediate delivery focus — everyday basics
 
+Saved workspace checkpoint: persistent adapter profiles now have Save/Open/Update/Remove controls, native credential filtering, explicit service assignments and revision checks. The Windows adapter fixture passes 60 checks, including reopening a saved profile and preserving a live workspace after profile removal. Built-in SSH/installed-adapter composition remains next; adapter tooling, AI skills and other BASE-11 gates stay open. See [saved workspace profiles](docs/workspace-profiles.md).
+
 Process transfer checkpoint: installed native adapters can supply streaming uploads/downloads/copies and incremental folder traversal to the existing desktop queue. Eight process tests cover binary data, large directories, cancellation, cleanup capacity and publication failures; 54 Windows adapter checks include confirmed queued file/folder copies. This completes the initial standard process service bridges. Persistent mixed profiles, SSH/adapter composition, standalone adapter tooling and AI skills remain BASE-11 work.
 
 Standard adapter services checkpoint: native process adapters now expose optional text, file changes/moves and remote settings through production workspace bindings. Nine process service tests and 51 Windows adapter checks pass, including revision conflicts and real process calls from the desktop. The process transfer bridge and remaining BASE-11 deliverables are still pending; see [the process contract](docs/adapter-process.md).

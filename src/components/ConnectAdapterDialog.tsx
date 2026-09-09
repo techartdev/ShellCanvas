@@ -3,6 +3,8 @@ import { useEffect, useRef, useState } from "react";
 import { ArrowUpRight, Cable, Plus, X } from "lucide-react";
 import {
   adapterProfile,
+  restoredConfiguration,
+  type SavedWorkspaceProfile,
   type AdapterConnectionOptions,
   type AdapterInfo,
   type AdapterProfile,
@@ -50,7 +52,12 @@ export function ConnectAdapterDialog({
     [loading, setLoading] = useState(true),
     [failure, setFailure] = useState(""),
     [name, setName] = useState(initial?.name ?? ""),
-    [sources, setSources] = useState<SourceForm[]>([]);
+    [sources, setSources] = useState<SourceForm[]>([]),
+    [savedProfiles, setSavedProfiles] = useState<SavedWorkspaceProfile[]>([]),
+    [saved, setSaved] = useState<SavedWorkspaceProfile>(),
+    [saving, setSaving] = useState(false),
+    [profileMessage, setProfileMessage] = useState(""),
+    [confirmRemove, setConfirmRemove] = useState(false);
   const dialog = useRef<HTMLDialogElement>(null);
   function defaults(item: AdapterInfo) {
     return Object.fromEntries(
@@ -65,11 +72,17 @@ export function ConnectAdapterDialog({
   }
   useEffect(() => {
     let active = true;
-    void services
-      .list()
-      .then((items) => {
+    void Promise.all([
+      services.list(),
+      services.profiles?.list().catch((error) => {
+        if (active) setFailure(String(error));
+        return [];
+      }) ?? Promise.resolve([]),
+    ])
+      .then(([items, profiles]) => {
         if (!active) return;
         setInstalled(items);
+        setSavedProfiles(profiles);
         setSources(
           initial
             ? initial.sources.map((source) => ({
@@ -115,7 +128,134 @@ export function ConnectAdapterDialog({
         source.key === key ? { ...source, ...patch } : source,
       ),
     );
-  const locked = busy || loading;
+  const locked = busy || loading || saving;
+  function chooseSaved(id: string) {
+    const selected = savedProfiles.find((item) => item.id === id);
+    setSaved(selected);
+    setConfirmRemove(false);
+    setFailure("");
+    setName(selected?.profile.name ?? "");
+    if (!selected) {
+      const adapter = installed.find((item) => item.enabled);
+      setSources(
+        adapter
+          ? [
+              {
+                key: crypto.randomUUID(),
+                id: adapter.id,
+                configuration: defaults(adapter),
+                roles: ["files", "console"],
+              },
+            ]
+          : [],
+      );
+      setProfileMessage("");
+      return;
+    }
+    setSources(
+      selected.profile.sources.map((source) => ({
+        key: source.key,
+        id: source.id,
+        configuration: restoredConfiguration(
+          source,
+          installed.find((item) => item.id === source.id),
+        ),
+        roles: Object.entries(selected.profile.bindings)
+          .filter(([, key]) => key === source.key)
+          .map(([role]) => role),
+      })),
+    );
+    const changed = selected.profile.sources.some(
+      (source) =>
+        !installed.some(
+          (item) =>
+            item.id === source.id &&
+            item.revision === source.revision &&
+            item.enabled,
+        ),
+    );
+    setProfileMessage(
+      changed
+        ? "An adapter changed, is disabled, or is missing. Review each connection and its settings before opening this workspace."
+        : "Saved connections loaded. Enter any required passwords before connecting.",
+    );
+  }
+  function connectionOptions(): AdapterConnectionOptions {
+    const bindings: AdapterConnectionOptions["bindings"] = {};
+    const options: AdapterConnectionOptions = {
+      name: name.trim(),
+      sources: sources.map((source) => {
+        const item = installed.find(
+          (item) => item.id === source.id && item.enabled,
+        );
+        if (!item)
+          throw new Error("Select an enabled adapter for each connection.");
+        if (!source.roles.length)
+          throw new Error("Choose at least one service for each connection.");
+        for (const role of source.roles) {
+          if (bindings[role])
+            throw new Error(
+              "Each service needs one explicit connection source.",
+            );
+          bindings[role] = source.key;
+        }
+        return {
+          key: source.key,
+          id: item.id,
+          revision: item.revision,
+          configuration: source.configuration,
+        };
+      }),
+      bindings,
+    };
+    if (!options.name || !options.sources.length)
+      throw new Error("Choose a workspace name and at least one connection.");
+    return options;
+  }
+  async function saveProfile() {
+    if (!services.profiles || locked) return;
+    setSaving(true);
+    setFailure("");
+    setProfileMessage("");
+    setConfirmRemove(false);
+    try {
+      const result = await services.profiles.save(connectionOptions(), saved);
+      setSaved(result);
+      setSavedProfiles((profiles) => [
+        ...profiles.filter((item) => item.id !== result.id),
+        result,
+      ]);
+      setProfileMessage("Workspace profile saved. Passwords were not stored.");
+    } catch (error) {
+      setFailure(String(error));
+    } finally {
+      setSaving(false);
+    }
+  }
+  async function removeProfile() {
+    if (!services.profiles || !saved || locked) return;
+    if (!confirmRemove) {
+      setConfirmRemove(true);
+      return;
+    }
+    setSaving(true);
+    setFailure("");
+    try {
+      await services.profiles.remove(saved.id, saved.revision);
+      setSavedProfiles((profiles) =>
+        profiles.filter((item) => item.id !== saved.id),
+      );
+      setSaved(undefined);
+      setConfirmRemove(false);
+      setProfileMessage(
+        "Saved profile removed. The current connection form is still available.",
+      );
+    } catch (error) {
+      setFailure(String(error));
+    } finally {
+      setSaving(false);
+    }
+  }
   return (
     <div className="modal-backdrop">
       <dialog
@@ -186,37 +326,7 @@ export function ConnectAdapterDialog({
             setFailure("");
             void (async () => {
               try {
-                const bindings: AdapterConnectionOptions["bindings"] = {};
-                const options: AdapterConnectionOptions = {
-                  name: name.trim(),
-                  sources: sources.map((source) => {
-                    const item = installed.find(
-                      (item) => item.id === source.id && item.enabled,
-                    );
-                    if (!item)
-                      throw new Error(
-                        "Select an enabled adapter for each connection.",
-                      );
-                    if (!source.roles.length)
-                      throw new Error(
-                        "Choose at least one service for each connection.",
-                      );
-                    for (const role of source.roles) {
-                      if (bindings[role])
-                        throw new Error(
-                          "Each service needs one explicit connection source.",
-                        );
-                      bindings[role] = source.key;
-                    }
-                    return {
-                      key: source.key,
-                      id: item.id,
-                      revision: item.revision,
-                      configuration: source.configuration,
-                    };
-                  }),
-                  bindings,
-                };
+                const options = connectionOptions();
                 await submit(options, adapterProfile(options, installed));
               } catch (error) {
                 setFailure(String(error));
@@ -225,6 +335,66 @@ export function ConnectAdapterDialog({
           }}
         >
           <fieldset disabled={locked}>
+            {!initial && services.profiles && (
+              <div className="workspace-profile-picker">
+                <label className="form-field">
+                  Saved workspace
+                  <select
+                    value={saved?.id ?? ""}
+                    onChange={(event) => chooseSaved(event.target.value)}
+                  >
+                    <option value="">New workspace</option>
+                    {[...savedProfiles]
+                      .sort((a, b) =>
+                        a.profile.name.localeCompare(b.profile.name),
+                      )
+                      .map((item) => (
+                        <option key={item.id} value={item.id}>
+                          {item.profile.name}
+                        </option>
+                      ))}
+                  </select>
+                </label>
+                <div className="workspace-profile-actions">
+                  <button
+                    type="button"
+                    className="adapter-add"
+                    onClick={() => void saveProfile()}
+                  >
+                    {saving
+                      ? "Saving…"
+                      : saved
+                        ? "Save profile changes"
+                        : "Save workspace profile"}
+                  </button>
+                  {saved && (
+                    <button
+                      type="button"
+                      className="adapter-add"
+                      onClick={() => void removeProfile()}
+                    >
+                      {confirmRemove
+                        ? "Confirm remove profile"
+                        : "Remove saved profile"}
+                    </button>
+                  )}
+                  {confirmRemove && (
+                    <button
+                      type="button"
+                      className="adapter-add"
+                      onClick={() => setConfirmRemove(false)}
+                    >
+                      Keep profile
+                    </button>
+                  )}
+                </div>
+                {profileMessage && (
+                  <p className="workspace-profile-message" role="status">
+                    {profileMessage}
+                  </p>
+                )}
+              </div>
+            )}
             {!replacing && (
               <label className="form-field">
                 Workspace name

@@ -885,7 +885,7 @@ async function run() {
         ?.state === "unsupported";
     await named("Open Apps");
     await click("Connection adapters");
-    const extendedForm = await openConnections();
+    let extendedForm = await openConnections();
     input(await label("Workspace name", extendedForm), "Extended device");
     const extendedSource = await until(
       () =>
@@ -900,6 +900,74 @@ async function run() {
     );
     input(await label("Sample file count", extendedSource), "3");
     (await label("Folder transfers", extendedSource)).click();
+    input(
+      await label("Example private token", extendedSource),
+      "profile-secret-must-not-persist",
+    );
+    const previousProfiles = await nativeAdapterServices.profiles!.list();
+    await click("Save workspace profile", extendedForm);
+    await until(
+      () => extendedForm.textContent?.includes("Workspace profile saved."),
+      "profile saved",
+    );
+    const savedWorkspace = (await nativeAdapterServices.profiles!.list()).find(
+      (item) => !previousProfiles.some((previous) => previous.id === item.id),
+    )!;
+    checks.workspaceProfileSaved =
+      !!savedWorkspace &&
+      !JSON.stringify(savedWorkspace).includes(
+        "profile-secret-must-not-persist",
+      ) &&
+      savedWorkspace.profile.bindings["host.settings"] ===
+        savedWorkspace.profile.sources[0].key;
+    await named("Close adapter connection");
+    await named("Open Apps");
+    await click("Connection adapters");
+    extendedForm = await openConnections();
+    const savedPicker = await until(
+      () =>
+        extendedForm.querySelector<HTMLSelectElement>(
+          ".workspace-profile-picker select",
+        ),
+      "saved workspace picker",
+    );
+    await until(
+      () =>
+        Array.from(savedPicker.options).some(
+          (option) => option.value === savedWorkspace.id,
+        ),
+      "saved workspace option",
+    );
+    savedPicker.value = savedWorkspace.id;
+    savedPicker.dispatchEvent(new Event("change", { bubbles: true }));
+    await until(
+      () => extendedForm.textContent?.includes("Saved connections loaded."),
+      "restored profile",
+    );
+    checks.workspaceProfileRestored =
+      (await label("Workspace name", extendedForm)).value ===
+        "Extended device" &&
+      (await label("Example private token", extendedForm)).value === "" &&
+      (await label("Folder transfers", extendedForm)).checked &&
+      (await label("Remote settings", extendedForm)).checked;
+    input(await label("Workspace name", extendedForm), "Extended renamed");
+    await click("Save profile changes", extendedForm);
+    await until(
+      () => extendedForm.textContent?.includes("Workspace profile saved."),
+      "profile update",
+    );
+    const updatedWorkspace = (
+      await nativeAdapterServices.profiles!.list()
+    ).find((item) => item.id === savedWorkspace.id)!;
+    checks.workspaceProfileUpdated =
+      updatedWorkspace.revision !== savedWorkspace.revision &&
+      updatedWorkspace.profile.name === "Extended renamed";
+    checks.workspaceProfileStaleRejected = await nativeAdapterServices
+      .profiles!.remove(savedWorkspace.id, savedWorkspace.revision)
+      .then(
+        () => false,
+        () => true,
+      );
     const before = sessions.length;
     await click("Open workspace", extendedForm);
     await until(
@@ -1031,6 +1099,38 @@ async function run() {
         () => true,
       );
     await stage("adapter-transfers");
+    await named("Open Apps");
+    await click("Connection adapters");
+    const removeForm = await openConnections();
+    const removePicker = await until(
+      () =>
+        removeForm.querySelector<HTMLSelectElement>(
+          ".workspace-profile-picker select",
+        ),
+      "remove profile picker",
+    );
+    await until(
+      () =>
+        Array.from(removePicker.options).some(
+          (option) => option.value === updatedWorkspace.id,
+        ),
+      "remove profile option",
+    );
+    removePicker.value = updatedWorkspace.id;
+    removePicker.dispatchEvent(new Event("change", { bubbles: true }));
+    await click("Remove saved profile", removeForm);
+    await click("Confirm remove profile", removeForm);
+    await until(
+      () => removeForm.textContent?.includes("Saved profile removed."),
+      "profile removed",
+    );
+    checks.workspaceProfileRemoved = !(
+      await nativeAdapterServices.profiles!.list()
+    ).some((item) => item.id === updatedWorkspace.id);
+    await named("Close adapter connection");
+    checks.workspaceProfileRemovalKeepsWorkspace =
+      (await bound.readText(extended.id, original.path)).text === saved.text;
+    await stage("workspace-profiles");
   }
   await named("Open Apps");
   await click("Connection adapters");

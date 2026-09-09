@@ -42,7 +42,42 @@ export interface AdapterConnectionOptions {
 export interface AdapterProfile extends AdapterConnectionOptions {
   kind: "adapters";
 }
+export interface SavedWorkspaceProfile {
+  id: string;
+  revision: string;
+  profile: AdapterProfile;
+}
+export interface WorkspaceProfileStore {
+  list(): Promise<SavedWorkspaceProfile[]>;
+  save(
+    options: AdapterConnectionOptions,
+    previous?: Pick<SavedWorkspaceProfile, "id" | "revision">,
+  ): Promise<SavedWorkspaceProfile>;
+  remove(id: string, revision: string): Promise<void>;
+}
+/** Reopening uses only current public fields; a field reclassified as a password is never prefilled. */
+export function restoredConfiguration(
+  source: AdapterSource,
+  adapter?: AdapterInfo,
+): Configuration {
+  if (!adapter) return {};
+  return Object.fromEntries(
+    adapter.configuration
+      .filter((field) => field.kind !== "password")
+      .flatMap((field) => {
+        const value = source.configuration[field.id] ?? field.default;
+        const valid =
+          field.kind === "text"
+            ? typeof value === "string"
+            : field.kind === "number"
+              ? typeof value === "number"
+              : typeof value === "boolean";
+        return valid ? [[field.id, value]] : [];
+      }),
+  ) as Configuration;
+}
 export interface AdapterServices {
+  profiles?: WorkspaceProfileStore;
   replaceSource?(
     sessionId: number,
     expected: ConnectionIdentity,
@@ -102,6 +137,17 @@ export function adapterProfile(
   };
 }
 export const nativeAdapterServices: AdapterServices = {
+  profiles: {
+    list: () => invoke("list_workspace_profiles"),
+    save: (options, previous) =>
+      invoke("save_workspace_profile", {
+        options,
+        id: previous?.id ?? null,
+        revision: previous?.revision ?? null,
+      }),
+    remove: (id, revision) =>
+      invoke("remove_workspace_profile", { id, revision }),
+  },
   async replaceSource(sessionId, expected, options, signal) {
     if (signal?.aborted) throw new Error("Connection canceled");
     const requestId = await invoke<number>("begin_connect");

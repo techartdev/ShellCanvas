@@ -29,6 +29,7 @@ mod transfers;
 mod windows_clipboard;
 #[cfg(windows)]
 mod windows_file_input;
+mod workspace_profiles;
 mod workspace_services;
 use connection_resource::ConnectionResource;
 use session_registry::SessionRegistry;
@@ -705,6 +706,9 @@ pub fn run() {
             }
             let handler: fn(tauri::ipc::Invoke<tauri::Wry>) -> bool = tauri::generate_handler![
                 adapters::list_adapters,
+                workspace_profiles::list_workspace_profiles,
+                workspace_profiles::save_workspace_profile,
+                workspace_profiles::remove_workspace_profile,
                 custom_services::list_custom_services,
                 custom_services::begin_custom_call,
                 custom_services::cancel_custom_call,

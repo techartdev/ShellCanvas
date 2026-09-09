@@ -4,6 +4,7 @@ const invoke = vi.hoisted(() => vi.fn());
 vi.mock("@tauri-apps/api/core", () => ({ invoke, isTauri: () => false }));
 import {
   adapterProfile,
+  restoredConfiguration,
   nativeAdapterServices,
   type AdapterInfo,
 } from "./adapters";
@@ -37,6 +38,55 @@ const options = {
   ],
   bindings: { files: "files" },
 };
+it("restores only currently declared public fields and never prefills reclassified passwords", () => {
+  const source = {
+    ...options.sources[0],
+    configuration: { device: "opaque://one", token: "secret", removed: "old" },
+  };
+  expect(restoredConfiguration(source, installed)).toEqual({
+    device: "opaque://one",
+  });
+  expect(
+    restoredConfiguration(source, {
+      ...installed,
+      configuration: [
+        { id: "device", label: "Device", kind: "password", required: true },
+      ],
+    }),
+  ).toEqual({});
+  expect(restoredConfiguration(source)).toEqual({});
+  expect(
+    restoredConfiguration(source, {
+      ...installed,
+      configuration: [
+        { id: "device", label: "Device", kind: "number", required: false },
+      ],
+    }),
+  ).toEqual({});
+});
+it("sends saved workspace revisions for updates and removal", async () => {
+  invoke
+    .mockReset()
+    .mockResolvedValue({
+      id: "saved",
+      revision: "new",
+      profile: { kind: "adapters", ...options },
+    });
+  await nativeAdapterServices.profiles!.save(options, {
+    id: "saved",
+    revision: "old",
+  });
+  expect(invoke).toHaveBeenCalledWith("save_workspace_profile", {
+    options,
+    id: "saved",
+    revision: "old",
+  });
+  await nativeAdapterServices.profiles!.remove("saved", "new");
+  expect(invoke).toHaveBeenCalledWith("remove_workspace_profile", {
+    id: "saved",
+    revision: "new",
+  });
+});
 it("keeps credentials out of reconnect profiles and preserves explicit source identity", () => {
   const profile = adapterProfile(options, [installed]);
   expect(JSON.stringify(profile)).not.toContain("secret");

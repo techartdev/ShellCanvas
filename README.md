@@ -4,7 +4,7 @@ A desktop canvas for remote devices. Built with **Tauri 2, Rust, and TypeScript/
 
 This is an early working prototype, not a complete file manager or a hardened public release.
 
-The architecture is evolving toward a connection-neutral desktop: SSH is the first/default adapter. [Installed native adapters](docs/adapter-packages.md) can provide files, consoles, optional text/file changes and remote settings through independently assigned connections in one workspace. Combining those with built-in SSH and adding production device APIs remain in progress. See [the composition design](docs/connections.md). Serial, Telnet, FTP and API adapters are not implemented yet.
+The architecture is evolving toward a connection-neutral desktop: SSH is the first/default adapter. [Installed native adapters](docs/adapter-packages.md) can provide files, consoles, optional text/file changes and remote settings through independently assigned connections in one workspace. These assignments can be stored in [saved workspace profiles](docs/workspace-profiles.md), with credentials omitted and revision-checked updates. Combining those with built-in SSH and adding production device APIs remain in progress. See [the composition design](docs/connections.md). Serial, Telnet, FTP and API adapters are not implemented yet.
 
 ## Run
 

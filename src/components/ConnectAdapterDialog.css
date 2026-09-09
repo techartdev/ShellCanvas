@@ -7,6 +7,22 @@
   padding: 0;
   border: 0;
 }
+.workspace-profile-picker {
+  padding-bottom: 12px;
+  margin-bottom: 18px;
+  border-bottom: 1px solid #3c535e;
+}
+.workspace-profile-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 20px;
+}
+.workspace-profile-message {
+  color: #adc4cd;
+  font-size: 12px;
+  line-height: 1.5;
+  margin: 6px 0 0;
+}
 .adapter-source {
   border: 1px solid #3c535e;
   background: #21353f;

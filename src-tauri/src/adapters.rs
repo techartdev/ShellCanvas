@@ -12,7 +12,7 @@ use std::{
 use tauri::{Manager, State, WebviewWindow};
 use tauri_plugin_dialog::DialogExt;
 
-#[derive(serde::Deserialize)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct AdapterSource {
     pub key: String,
@@ -20,7 +20,7 @@ pub struct AdapterSource {
     pub revision: String,
     pub configuration: serde_json::Value,
 }
-#[derive(serde::Deserialize)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct AdapterConnectionOptions {
     pub name: String,
@@ -28,7 +28,7 @@ pub struct AdapterConnectionOptions {
     pub bindings: HashMap<String, String>,
 }
 impl AdapterConnectionOptions {
-    fn validate(&self) -> Result<(), String> {
+    pub(crate) fn validate(&self) -> Result<(), String> {
         if self.name.trim().is_empty()
             || self.name.len() > 200
             || self.sources.is_empty()
