@@ -942,13 +942,13 @@ pub async fn paste_system_files(
 pub async fn cut_system_file(
     session_id: u64,
     binding: Option<ConnectionIdentity>,
-    path: String,
-    revision: String,
+    entry: DownloadSource,
     operation: Option<String>,
     export_contents: Option<bool>,
     on_event: Channel<Progress>,
     state: State<'_, DesktopState>,
 ) -> Result<u32, String> {
+    let DownloadSource { path, revision } = entry;
     #[cfg(not(windows))]
     {
         let _ = (

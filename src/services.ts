@@ -113,8 +113,7 @@ function createNativeServices(pins?: SourcePins): HostServices {
       onEvent.onmessage = preparation?.onProgress ?? (() => {});
       return invoke("cut_system_file", {
         sessionId,
-        path,
-        revision,
+        entry: { path, revision },
         operation: preparation?.id,
         exportContents,
         onEvent,
