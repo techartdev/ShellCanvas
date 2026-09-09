@@ -52,6 +52,8 @@ import { selectFiles } from "../file-selection";
 import { DeleteFilesDialog } from "../components/DeleteFilesDialog";
 import { fileSourceKey } from "../workspace-bindings";
 import { capabilityOperationReason } from "../sdk";
+import { scanDirectory } from "../directory-scan";
+import { useVirtualRows } from "../components/useVirtualRows";
 function size(bytes: number) {
   return bytes >= 1024 * 1024
     ? `${(bytes / 1048576).toFixed(1)} MB`
@@ -104,6 +106,7 @@ export function Files({
     sessionId: number;
   } | null>(null);
   const [reading, setLoading] = useState(true);
+  const [scanReady, setScanReady] = useState(false);
   const [relocating, setRelocating] = useState(false);
   const relocatingRef = useRef(false);
   const loading = reading || relocating;
@@ -320,6 +323,7 @@ export function Files({
   } | null>(null);
   const [history, setHistory] = useState<string[]>([]);
   const request = useRef(0);
+  const directoryScan = useRef<AbortController | null>(null);
   const initialLocation = useRef<string | undefined>(undefined);
   const previewRequest = useRef(0);
   const previewPending = useRef(false);
@@ -376,6 +380,7 @@ export function Files({
         relocatingRef.current = value;
         setRelocating(value);
         if (value) {
+          directoryScan.current?.abort();
           ++request.current;
           ++previewRequest.current;
           setLoading(false);
@@ -415,7 +420,7 @@ export function Files({
   }, [active, closeMenu]);
   function back() {
     const previous = history.at(-1);
-    if (previous && !loading && connected) {
+    if (previous && !relocating && connected) {
       void navigate(previous, false, { back: true });
     }
   }
@@ -665,61 +670,89 @@ export function Files({
     } = {},
   ) {
     if (!session || !connected || relocatingRef.current) return;
+    directoryScan.current?.abort();
+    const scan = new AbortController();
+    directoryScan.current = scan;
     const current = ++request.current;
     ++previewRequest.current;
     previewPending.current = false;
     setLoading(true);
+    setScanReady(false);
     setError("");
     if (!options.preservePreview) {
       view.current.document = null;
       setDocument(null);
     }
+    const previous = view.current;
+    let first = true;
     try {
-      const result = await services.list(path === "" ? undefined : path);
-      if (current !== request.current) return;
-      const previous = view.current;
-      const nextHistory = options.back
-        ? previous.history.slice(0, -1)
-        : remember &&
-            previous.directory.path &&
-            previous.directory.path !== result.path
-          ? [...previous.history.slice(-49), previous.directory.path]
-          : previous.history;
-      const nextInput =
-        options.background && previous.pathInput !== previous.directory.path
-          ? previous.pathInput
-          : result.path;
-      const preserveSelection =
-        previous.directory.path === result.path &&
-        (options.background || !remember);
-      const nextSelected =
-        preserveSelection &&
-        result.entries.some((entry) => entry.path === previous.selected)
-          ? previous.selected
-          : null;
-      const nextSelection = preserveSelection
-        ? previous.selection.filter((path) =>
-            result.entries.some((entry) => entry.path === path),
-          )
-        : [];
-      view.current = {
-        ...previous,
-        directory: result,
-        history: nextHistory,
-        pathInput: nextInput,
-        selected: nextSelected,
-        selection: nextSelection,
-      };
-      setHistory(nextHistory);
-      setDirectory(result);
-      setPathInput(nextInput);
-      setSelected(nextSelected);
-      setSelection(nextSelection);
-      if (!options.background) selectionAnchor.current = null;
+      await scanDirectory(
+        services,
+        path === "" ? undefined : path,
+        scan.signal,
+        (result, done) => {
+          if (current !== request.current || scan.signal.aborted) return;
+          const nextHistory = options.back
+            ? previous.history.slice(0, -1)
+            : remember &&
+                previous.directory.path &&
+                previous.directory.path !== result.path
+              ? [...previous.history.slice(-49), previous.directory.path]
+              : previous.history;
+          const nextInput =
+            options.background && previous.pathInput !== previous.directory.path
+              ? previous.pathInput
+              : result.path;
+          const preserveSelection =
+            previous.directory.path === result.path &&
+            (options.background || !remember);
+          // Keep selections that may occur on later pages until discovery completes.
+          const selectedNow = first
+            ? preserveSelection
+              ? previous.selected
+              : null
+            : view.current.selected;
+          const selectionNow = first
+            ? preserveSelection
+              ? previous.selection
+              : []
+            : view.current.selection;
+          const discovered = done
+            ? new Set(result.entries.map((entry) => entry.path))
+            : null;
+          const nextSelected =
+            discovered && selectedNow && !discovered.has(selectedNow)
+              ? null
+              : selectedNow;
+          const nextSelection = discovered
+            ? selectionNow.filter((path) => discovered.has(path))
+            : selectionNow;
+          view.current = {
+            ...view.current,
+            directory: result,
+            history: nextHistory,
+            pathInput: first ? nextInput : view.current.pathInput,
+            selected: nextSelected,
+            selection: nextSelection,
+          };
+          if (first) {
+            setScanReady(true);
+            setHistory(nextHistory);
+            setPathInput(nextInput);
+            if (!options.background) selectionAnchor.current = null;
+          }
+          setDirectory(result);
+          setSelected(nextSelected);
+          setSelection(nextSelection);
+          first = false;
+        },
+      );
     } catch (e) {
-      if (current === request.current) setError(String(e));
+      if (current === request.current && !scan.signal.aborted)
+        setError(String(e));
     } finally {
       if (current === request.current) setLoading(false);
+      if (directoryScan.current === scan) directoryScan.current = null;
     }
   }
   useLayoutEffect(() => {
@@ -762,6 +795,7 @@ export function Files({
       : directory.path || launch?.path;
     if (!connected) setLoading(false);
     return () => {
+      directoryScan.current?.abort();
       ++request.current;
       ++previewRequest.current;
     };
@@ -817,8 +851,10 @@ export function Files({
       preferences.filesFoldersFirst,
     ],
   );
+  const rows = useVirtualRows(entries.length);
+  const selectedPaths = useMemo(() => new Set(selection), [selection]);
   const selectedEntries = entries.filter((entry) =>
-    selection.includes(entry.path),
+    selectedPaths.has(entry.path),
   );
   const singleEntry =
     selectedEntries.length === 1 ? selectedEntries[0] : undefined;
@@ -1106,21 +1142,21 @@ export function Files({
         label: "Back",
         shortcut: "Alt+←",
         separatorBefore: true,
-        disabled: !connected || !history.length || loading,
+        disabled: !connected || !history.length || relocating,
         run: back,
       },
       {
         id: "parent",
         label: "Parent folder",
         shortcut: "Alt+↑",
-        disabled: !connected || loading || directory.parent === null,
+        disabled: !connected || relocating || directory.parent === null,
         run: parent,
       },
       {
         id: "refresh",
         label: "Refresh",
         shortcut: "F5",
-        disabled: !connected || loading,
+        disabled: !connected || relocating,
         run: () => void navigate(directory.path, false),
       },
       {
@@ -1308,13 +1344,13 @@ export function Files({
           }
         } else if (event.key === "F5") {
           event.preventDefault();
-          if (!loading) void navigate(directory.path, false);
+          if (!relocating) void navigate(directory.path, false);
         } else if (event.altKey && event.key === "ArrowLeft") {
           event.preventDefault();
           back();
         } else if (event.altKey && event.key === "ArrowUp") {
           event.preventDefault();
-          if (!loading) parent();
+          if (!relocating) parent();
         } else if (
           event.key === "ContextMenu" ||
           (event.shiftKey && event.key === "F10")
@@ -1407,7 +1443,7 @@ export function Files({
             className="icon-button"
             title="Back"
             aria-label="Back"
-            disabled={!connected || !history.length || loading}
+            disabled={!connected || !history.length || relocating}
             onClick={back}
           >
             <ArrowLeft size={17} />
@@ -1416,7 +1452,7 @@ export function Files({
             className="icon-button"
             title="Parent folder"
             aria-label="Parent folder"
-            disabled={!connected || loading || directory.parent === null}
+            disabled={!connected || relocating || directory.parent === null}
             onClick={parent}
           >
             <ArrowUp size={17} />
@@ -1441,7 +1477,7 @@ export function Files({
             className="icon-button"
             title="Refresh"
             aria-label="Refresh directory"
-            disabled={!connected || loading}
+            disabled={!connected || relocating}
             onClick={() => void navigate(directory.path, false)}
           >
             <RefreshCw size={16} className={loading ? "spin" : ""} />
@@ -1593,6 +1629,7 @@ export function Files({
         ) : (
           <div
             className="file-table"
+            ref={rows.attach}
             aria-busy={loading}
             onClick={(event) => {
               if (!(event.target as HTMLElement).closest("button"))
@@ -1638,7 +1675,7 @@ export function Files({
                 );
               })}
             </div>
-            {loading ? (
+            {relocating || (reading && (!scanReady || !entries.length)) ? (
               <div className="file-message">
                 <LoaderCircle className="spin" size={22} />
                 Reading directory…
@@ -1653,98 +1690,101 @@ export function Files({
                     : "This folder is empty"}
               </div>
             ) : (
-              entries.map((entry) => {
-                const Icon =
-                  entry.kind === "directory"
-                    ? Folder
-                    : /\.(yaml|json|toml|sh)$/.test(entry.name)
-                      ? FileCode2
-                      : FileText;
-                return (
-                  <button
-                    className={`file-row ${selection.includes(entry.path) ? "active" : ""} ${cutState.item?.entry.path === entry.path ? "cut-entry" : ""}`}
-                    key={entry.path}
-                    onClick={(event) =>
-                      choose(
-                        entry,
-                        event.ctrlKey || event.metaKey,
-                        event.shiftKey,
-                      )
-                    }
-                    onFocus={() => setSelected(entry.path)}
-                    aria-pressed={selection.includes(entry.path)}
-                    onContextMenu={(event) => {
-                      event.preventDefault();
-                      event.stopPropagation();
-                      setSelected(entry.path);
-                      if (!selection.includes(entry.path)) choose(entry);
-                      event.currentTarget.focus();
-                      setMenu({ x: event.clientX, y: event.clientY, entry });
-                    }}
-                    onDoubleClick={() => void open(entry)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") {
-                        e.preventDefault();
-                        void open(entry);
+              <>
+                <div aria-hidden="true" style={{ height: rows.before }} />
+                {entries.slice(rows.start, rows.end).map((entry, rowOffset) => {
+                  const Icon =
+                    entry.kind === "directory"
+                      ? Folder
+                      : /\.(yaml|json|toml|sh)$/.test(entry.name)
+                        ? FileCode2
+                        : FileText;
+                  return (
+                    <button
+                      className={`file-row ${selectedPaths.has(entry.path) ? "active" : ""} ${cutState.item?.entry.path === entry.path ? "cut-entry" : ""}`}
+                      data-virtual-index={rows.start + rowOffset}
+                      key={entry.path}
+                      onClick={(event) =>
+                        choose(
+                          entry,
+                          event.ctrlKey || event.metaKey,
+                          event.shiftKey,
+                        )
                       }
-                      if (e.key === " ") {
-                        e.preventDefault();
-                        choose(entry, e.ctrlKey || e.metaKey, e.shiftKey);
-                      }
-                      const index = entries.indexOf(entry);
-                      const next =
-                        e.key === "ArrowDown"
-                          ? Math.min(entries.length - 1, index + 1)
-                          : e.key === "ArrowUp" && !e.altKey
-                            ? Math.max(0, index - 1)
-                            : e.key === "Home"
-                              ? 0
-                              : e.key === "End"
-                                ? entries.length - 1
-                                : -1;
-                      if (next >= 0) {
-                        e.preventDefault();
-                        if (!(e.ctrlKey || e.metaKey) || e.shiftKey)
-                          choose(
-                            entries[next],
-                            e.ctrlKey || e.metaKey,
-                            e.shiftKey,
-                          );
-                        root.current
-                          ?.querySelectorAll<HTMLButtonElement>(".file-row")
-                          [next]?.focus();
-                      }
-                    }}
-                  >
-                    <span>
-                      <Icon
-                        size={20}
-                        className={
-                          entry.kind === "directory"
-                            ? "folder-icon"
-                            : "file-icon"
+                      onFocus={() => setSelected(entry.path)}
+                      aria-pressed={selection.includes(entry.path)}
+                      onContextMenu={(event) => {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        setSelected(entry.path);
+                        if (!selection.includes(entry.path)) choose(entry);
+                        event.currentTarget.focus();
+                        setMenu({ x: event.clientX, y: event.clientY, entry });
+                      }}
+                      onDoubleClick={() => void open(entry)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          e.preventDefault();
+                          void open(entry);
                         }
-                      />
-                      <span>{entry.name}</span>
-                      {cutState.item?.entry.path === entry.path && (
-                        <small>cut</small>
-                      )}
-                      {entry.kind === "symlink" && <small>link</small>}
-                    </span>
-                    <span>
-                      {entry.modified
-                        ? new Date(entry.modified * 1000).toLocaleDateString(
-                            undefined,
-                            { month: "short", day: "numeric" },
-                          )
-                        : "—"}
-                    </span>
-                    <span>
-                      {entry.kind === "directory" ? "—" : size(entry.size)}
-                    </span>
-                  </button>
-                );
-              })
+                        if (e.key === " ") {
+                          e.preventDefault();
+                          choose(entry, e.ctrlKey || e.metaKey, e.shiftKey);
+                        }
+                        const index = rows.start + rowOffset;
+                        const next =
+                          e.key === "ArrowDown"
+                            ? Math.min(entries.length - 1, index + 1)
+                            : e.key === "ArrowUp" && !e.altKey
+                              ? Math.max(0, index - 1)
+                              : e.key === "Home"
+                                ? 0
+                                : e.key === "End"
+                                  ? entries.length - 1
+                                  : -1;
+                        if (next >= 0) {
+                          e.preventDefault();
+                          if (!(e.ctrlKey || e.metaKey) || e.shiftKey)
+                            choose(
+                              entries[next],
+                              e.ctrlKey || e.metaKey,
+                              e.shiftKey,
+                            );
+                          rows.focus(next);
+                        }
+                      }}
+                    >
+                      <span>
+                        <Icon
+                          size={20}
+                          className={
+                            entry.kind === "directory"
+                              ? "folder-icon"
+                              : "file-icon"
+                          }
+                        />
+                        <span>{entry.name}</span>
+                        {cutState.item?.entry.path === entry.path && (
+                          <small>cut</small>
+                        )}
+                        {entry.kind === "symlink" && <small>link</small>}
+                      </span>
+                      <span>
+                        {entry.modified
+                          ? new Date(entry.modified * 1000).toLocaleDateString(
+                              undefined,
+                              { month: "short", day: "numeric" },
+                            )
+                          : "—"}
+                      </span>
+                      <span>
+                        {entry.kind === "directory" ? "—" : size(entry.size)}
+                      </span>
+                    </button>
+                  );
+                })}
+                <div aria-hidden="true" style={{ height: rows.after }} />
+              </>
             )}
           </div>
         )}
@@ -1754,6 +1794,7 @@ export function Files({
         <footer className="files-footer">
           <span aria-live="polite">
             {entries.length} items
+            {reading ? " · discovering…" : ""}
             {selectedEntries.length
               ? ` · ${selectedEntries.length} selected`
               : ""}

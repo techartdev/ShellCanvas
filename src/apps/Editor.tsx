@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
+import { directoryLocation } from "../directory-scan";
 import {
   useCallback,
   useEffect,
@@ -387,7 +388,7 @@ export function Editor({
     setBusy(true);
     setError("");
     try {
-      const location = await services.list();
+      const location = await directoryLocation(services);
       if (current === request.current) setSaveAs(location.path);
     } catch (error) {
       if (current === request.current) setError(String(error));

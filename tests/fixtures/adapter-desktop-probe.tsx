@@ -523,6 +523,18 @@ async function run() {
     listing.entries.length > 0 &&
     (native ? listing.path === "device://inventory?root=main" : true);
   if (native) {
+    await until(
+      () =>
+        directoryObservations.some(
+          (reader) => reader.pages === 3 && reader.closed,
+        ),
+      "bundled Files directory reader",
+    );
+    checks.bundledDirectoryPaging =
+      document
+        .querySelector(".files-footer")
+        ?.textContent?.includes("350 items") === true &&
+      document.querySelectorAll(".file-row").length < 80;
     await named("Open Text editor");
     const editor = await until(
       () => document.querySelector<HTMLElement>(".editor-app"),

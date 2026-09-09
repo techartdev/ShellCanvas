@@ -15,6 +15,8 @@ import type {
   TransferTicket,
 } from "../sdk";
 import "./FileActionDialog.css";
+import { scanDirectory } from "../directory-scan";
+import { useVirtualRows } from "./useVirtualRows";
 
 export function MoveFileDialog({
   entry,
@@ -39,6 +41,7 @@ export function MoveFileDialog({
   const addressId = useId();
   const address = useRef<HTMLInputElement>(null);
   const request = useRef(0);
+  const directoryScan = useRef<AbortController | null>(null);
   const [directory, setDirectory] = useState<Directory | null>(null);
   const [path, setPath] = useState(initialParent);
   const [loading, setLoading] = useState(true);
@@ -47,20 +50,28 @@ export function MoveFileDialog({
 
   async function navigate(location: string) {
     if (disabled || working) return;
+    directoryScan.current?.abort();
+    const scan = new AbortController();
+    directoryScan.current = scan;
     const current = ++request.current;
     setLoading(true);
     setError("");
     setDirectory(null);
     setPath(location);
+    let first = true;
     try {
-      const result = await services.list(location);
-      if (current !== request.current) return;
-      setDirectory(result);
-      setPath(result.path);
+      await scanDirectory(services, location, scan.signal, (result) => {
+        if (current !== request.current || scan.signal.aborted) return;
+        setDirectory(result);
+        if (first) setPath(result.path);
+        first = false;
+      });
     } catch (error) {
-      if (current === request.current) setError(String(error));
+      if (current === request.current && !scan.signal.aborted)
+        setError(String(error));
     } finally {
       if (current === request.current) setLoading(false);
+      if (directoryScan.current === scan) directoryScan.current = null;
     }
   }
   useEffect(() => {
@@ -69,17 +80,24 @@ export function MoveFileDialog({
     address.current?.focus();
     void navigate(initialParent);
     return () => {
+      directoryScan.current?.abort();
       ++request.current;
       if (previous?.isConnected) previous.focus({ preventScroll: true });
     };
   }, []);
   useEffect(() => {
     if (disabled) {
+      directoryScan.current?.abort();
       ++request.current;
       setLoading(false);
     }
   }, [disabled]);
   const sameFolder = directory?.path === initialParent;
+  const folders =
+    directory?.entries.filter(
+      (item) => item.kind === "directory" && item.path !== entry.path,
+    ) ?? [];
+  const rows = useVirtualRows(folders.length);
   const canMove =
     !disabled &&
     !working &&
@@ -142,7 +160,7 @@ export function MoveFileDialog({
         <button
           type="button"
           aria-label="Parent folder"
-          disabled={disabled || working || loading || !directory?.parent}
+          disabled={disabled || working || !directory?.parent}
           onClick={() => directory?.parent && void navigate(directory.parent)}
         >
           <ArrowUp size={16} />
@@ -193,36 +211,55 @@ export function MoveFileDialog({
       )}
       <div
         className="move-folder-list"
+        ref={rows.attach}
         aria-label="Destination folders"
         aria-busy={loading}
       >
-        {loading ? (
+        {loading && !directory?.entries.length ? (
           <p>
             <LoaderCircle size={16} className="spin" /> Loading folders…
           </p>
         ) : (
           directory && (
             <>
-              {directory.entries
-                .filter(
+              <div aria-hidden="true" style={{ height: rows.before }} />
+              {folders.slice(rows.start, rows.end).map((item, rowOffset) => (
+                <button
+                  type="button"
+                  key={item.path}
+                  data-virtual-index={rows.start + rowOffset}
+                  title={item.name}
+                  onKeyDown={(event) => {
+                    const index = rows.start + rowOffset;
+                    const next =
+                      event.key === "ArrowDown"
+                        ? Math.min(folders.length - 1, index + 1)
+                        : event.key === "ArrowUp"
+                          ? Math.max(0, index - 1)
+                          : event.key === "Home"
+                            ? 0
+                            : event.key === "End"
+                              ? folders.length - 1
+                              : -1;
+                    if (next >= 0) {
+                      event.preventDefault();
+                      rows.focus(next);
+                    }
+                  }}
+                  disabled={disabled || working}
+                  onClick={() => void navigate(item.path)}
+                >
+                  <Folder size={17} />
+                  <span>{item.name}</span>
+                  <ChevronRight size={14} />
+                </button>
+              ))}
+              <div aria-hidden="true" style={{ height: rows.after }} />
+              {!loading &&
+                !directory.entries.some(
                   (item) =>
                     item.kind === "directory" && item.path !== entry.path,
-                )
-                .map((item) => (
-                  <button
-                    type="button"
-                    key={item.path}
-                    disabled={disabled || working}
-                    onClick={() => void navigate(item.path)}
-                  >
-                    <Folder size={17} />
-                    <span>{item.name}</span>
-                    <ChevronRight size={14} />
-                  </button>
-                ))}
-              {!directory.entries.some(
-                (item) => item.kind === "directory" && item.path !== entry.path,
-              ) && <p>No subfolders here</p>}
+                ) && <p>No subfolders here</p>}
             </>
           )
         )}
@@ -247,6 +284,11 @@ export function MoveFileDialog({
         </div>
       )}
       <div className="file-action-buttons">
+        {loading && (
+          <span role="status">
+            {directory?.entries.length ?? 0} items · discovering…
+          </span>
+        )}
         <button type="button" disabled={working} onClick={close}>
           Cancel
         </button>

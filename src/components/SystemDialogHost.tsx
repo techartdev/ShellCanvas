@@ -14,6 +14,8 @@ import {
   X,
 } from "lucide-react";
 import type { Directory, FileEntry } from "../sdk";
+import { scanDirectory } from "../directory-scan";
+import { useVirtualRows } from "./useVirtualRows";
 import {
   desktopDialogs,
   type DialogQueue,
@@ -152,24 +154,36 @@ function FilePicker({
     request.kind === "open" && request.options.kind === "directory";
   useEffect(() => {
     const current = ++epoch.current;
+    const scan = new AbortController();
     setLoading(true);
     setError("");
     setSelection([]);
+    setDirectory(null);
+    let first = true;
     void (async () => {
       request.owner.require("files.read");
-      const result = await request.owner.services.list(location);
-      request.owner.require("files.read");
-      if (epoch.current !== current) return;
-      setDirectory(result);
-      setAddress(result.path);
+      await scanDirectory(
+        request.owner.services,
+        location,
+        scan.signal,
+        (result) => {
+          request.owner.require("files.read");
+          if (epoch.current !== current || scan.signal.aborted) return;
+          setDirectory(result);
+          if (first) setAddress(result.path);
+          first = false;
+        },
+      );
     })()
       .catch((error) => {
-        if (epoch.current === current) setError(String(error));
+        if (epoch.current === current && !scan.signal.aborted)
+          setError(String(error));
       })
       .finally(() => {
         if (epoch.current === current) setLoading(false);
       });
     return () => {
+      scan.abort();
       ++epoch.current;
     };
   }, [request, location, refresh]);
@@ -198,6 +212,7 @@ function FilePicker({
         entry.name.toLowerCase().includes(query.toLowerCase()),
     ) ?? [];
   const selected = entries.filter((entry) => selection.includes(entry.path));
+  const rows = useVirtualRows(entries.length);
   function choose(entry: FileEntry) {
     if (request.kind === "save") {
       setSelection([entry.path]);
@@ -270,7 +285,7 @@ function FilePicker({
       <div className="system-picker-toolbar">
         <button
           aria-label="Back"
-          disabled={loading || !history.length}
+          disabled={!history.length}
           onClick={() => {
             const path = history.at(-1)!;
             setHistory((old) => old.slice(0, -1));
@@ -281,7 +296,7 @@ function FilePicker({
         </button>
         <button
           aria-label="Parent folder"
-          disabled={loading || !directory?.parent}
+          disabled={!directory?.parent}
           onClick={() => navigate(directory!.parent!)}
         >
           <ArrowUp size={16} />
@@ -302,7 +317,6 @@ function FilePicker({
         </form>
         <button
           aria-label="Refresh folder"
-          disabled={loading}
           onClick={() => setRefresh((old) => old + 1)}
         >
           <RefreshCw size={16} />
@@ -312,20 +326,13 @@ function FilePicker({
         <nav aria-label="Places">
           <span className="eyebrow">PLACES</span>
           {directory?.home && (
-            <button
-              disabled={loading}
-              onClick={() => navigate(directory.home!.path)}
-            >
+            <button onClick={() => navigate(directory.home!.path)}>
               <Folder size={16} />
               {directory.home.name}
             </button>
           )}
           {directory?.roots.map((root) => (
-            <button
-              key={root.path}
-              disabled={loading}
-              onClick={() => navigate(root.path)}
-            >
+            <button key={root.path} onClick={() => navigate(root.path)}>
               <Folder size={16} />
               {root.name}
             </button>
@@ -348,38 +355,65 @@ function FilePicker({
               />
             </label>
           </div>
-          <div className="system-picker-list" aria-busy={loading}>
-            {loading ? (
+          <div
+            className="system-picker-list"
+            ref={rows.attach}
+            aria-busy={loading}
+          >
+            {loading && !entries.length ? (
               <p className="system-picker-empty">
                 <LoaderCircle className="spin" size={20} />
                 Loading folder…
               </p>
             ) : (
-              entries.map((entry) => (
-                <button
-                  type="button"
-                  key={entry.path}
-                  role="checkbox"
-                  aria-checked={selection.includes(entry.path)}
-                  className={selection.includes(entry.path) ? "selected" : ""}
-                  onClick={() => choose(entry)}
-                  onDoubleClick={() => {
-                    if (entry.kind === "directory") navigate(entry.path);
-                  }}
-                >
-                  {entry.kind === "directory" ? (
-                    <Folder size={19} className="system-folder-icon" />
-                  ) : (
-                    <File size={18} />
-                  )}
-                  <span>{entry.name}</span>
-                  <small>
-                    {entry.kind === "directory"
-                      ? "Folder"
-                      : `${entry.size.toLocaleString()} B`}
-                  </small>
-                </button>
-              ))
+              <>
+                <div aria-hidden="true" style={{ height: rows.before }} />
+                {entries.slice(rows.start, rows.end).map((entry, rowOffset) => (
+                  <button
+                    type="button"
+                    key={entry.path}
+                    data-virtual-index={rows.start + rowOffset}
+                    title={entry.name}
+                    onKeyDown={(event) => {
+                      const index = rows.start + rowOffset;
+                      const next =
+                        event.key === "ArrowDown"
+                          ? Math.min(entries.length - 1, index + 1)
+                          : event.key === "ArrowUp"
+                            ? Math.max(0, index - 1)
+                            : event.key === "Home"
+                              ? 0
+                              : event.key === "End"
+                                ? entries.length - 1
+                                : -1;
+                      if (next >= 0) {
+                        event.preventDefault();
+                        rows.focus(next);
+                      }
+                    }}
+                    role="checkbox"
+                    aria-checked={selection.includes(entry.path)}
+                    className={selection.includes(entry.path) ? "selected" : ""}
+                    onClick={() => choose(entry)}
+                    onDoubleClick={() => {
+                      if (entry.kind === "directory") navigate(entry.path);
+                    }}
+                  >
+                    {entry.kind === "directory" ? (
+                      <Folder size={19} className="system-folder-icon" />
+                    ) : (
+                      <File size={18} />
+                    )}
+                    <span>{entry.name}</span>
+                    <small>
+                      {entry.kind === "directory"
+                        ? "Folder"
+                        : `${entry.size.toLocaleString()} B`}
+                    </small>
+                  </button>
+                ))}
+                <div aria-hidden="true" style={{ height: rows.after }} />
+              </>
             )}
             {!loading && !entries.length && !error && (
               <p className="system-picker-empty">
@@ -416,11 +450,13 @@ function FilePicker({
       )}
       <footer className="system-dialog-actions">
         <span>
-          {request.kind === "save"
-            ? "Choose a destination; saving happens next."
-            : folderMode
-              ? "Select a folder or use the current folder."
-              : `${selected.length} selected`}
+          {loading
+            ? `${directory?.entries.length ?? 0} items · discovering…`
+            : request.kind === "save"
+              ? "Choose a destination; saving happens next."
+              : folderMode
+                ? "Select a folder or use the current folder."
+                : `${selected.length} selected`}
         </span>
         <button onClick={cancel}>Cancel</button>
         <button

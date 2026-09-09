@@ -67,10 +67,23 @@ The broker buffers at most one provider page and splits replies to fit its
 return, abort, source retirement and frame disposal close the original reader.
 Legacy and preview services without a reader use a materialized snapshot fallback.
 
-Bundled Files and system file pickers still use `list_directory` and materialize
-their listings. Keep the [incremental browsing gate](kernel-roadmap.md) open
-until those consumers are migrated and exercised. Transfers already have their
-own incremental readers.
+Bundled Files, the system Open/Save pickers and the Copy/Move destination dialog
+now use `scanDirectory`. They publish the first page immediately, then coalesce
+updates while continuing discovery. Navigating away or closing the owner cancels
+its reader; late replies cannot replace the new location. File actions and final
+picker submission remain guarded during discovery. Files retains selections
+across refresh until the complete inventory can reconcile them. Editor resolves
+its default save location from a single page and closes without collecting entries.
+
+These views retain the discovered directory's metadata for sorting, filtering and
+selection; their memory is proportional to that directory, not the remote tree.
+They render only the viewport plus overscan rows, measuring actual row height
+across layout changes. Keyboard navigation can focus entries outside the current
+DOM window. Names in fixed-height picker rows truncate visually with the full
+name available as a tooltip; provider paths and returned metadata are unchanged.
+No directory-entry or depth limit is introduced. The old `list_directory` IPC
+remains as an explicit compatibility collector for callers that still need it.
+Transfers have their own incremental readers and disk-backed traversal catalog.
 
 ## Evidence
 
@@ -97,6 +110,19 @@ late-open cancellation, pending reads, cached cleanup failures, capacity recover
 after physical disconnect and worker panic. Frontend tests cover native IPC
 cancellation, app permission routing, one-page demand, UTF-8 envelope splitting,
 source changes, early return and cleanup failure delivery.
+
+`src/directory-scan.test.ts` verifies first-page delivery before a delayed next
+page, cancellation and late replies, cleanup before completion, changing metadata,
+duplicate identities, 50,000 entries and single-page default-location lookup.
+The browser fixture at `/tests/fixtures/directory-desktop-probe.html` uses the
+actual Files, system picker and Copy/Move dialog with synthetic paged services.
+Its first verified run passed 12 checks: visible first-page delivery, navigation
+while the next page is pending, late-reply refusal, 50,000-entry discovery with
+bounded DOM rows, End/Home and scroll access to the final entry, original opaque
+picker results and owner cleanup. A subsequent refresh-selection check and compact
+800x900 rerun await browser-origin approval. This fixture uses no remote host or
+system clipboard; native adapter integration is recorded separately in
+[adapter packages](adapter-packages.md).
 
 The authorized read-only `root@evtinsait` probe on 2026-09-09 also passed the new
 SFTP reader's first page and early close, complete home/root/parent browsing,

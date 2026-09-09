@@ -168,6 +168,7 @@
   background: #12242f;
 }
 .move-folder-list button {
+  height: 38px;
   display: flex;
   width: 100%;
   gap: 10px;
@@ -185,7 +186,9 @@
 }
 .move-folder-list button span {
   flex: 1;
-  overflow-wrap: anywhere;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
   min-width: 0;
 }
 .move-folder-list p {
