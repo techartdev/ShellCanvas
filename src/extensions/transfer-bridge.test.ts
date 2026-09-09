@@ -38,6 +38,9 @@ function setup(grants = ["files.upload", "files.download", "files.copy"]) {
     pasteCopiedFiles: vi.fn(async (_parent: string, _sequence: number) => [
       ticket("copy"),
     ]),
+    pasteMovedFiles: vi.fn(async (_parent: string, _sequence: number) => [
+      ticket("move"),
+    ]),
     systemFileClipboard: true,
     pasteSystemFiles: vi.fn(
       async (_parent: string): Promise<TransferTicket[]> => [ticket("upload")],
@@ -126,6 +129,77 @@ function setup(grants = ["files.upload", "files.download", "files.copy"]) {
     },
   };
 }
+it("preserves cut intent through the SDK and requires move permission without falling back to copy", async () => {
+  const allowed = setup(["files.move", "system.clipboard.files.read"]);
+  const denied = setup([
+    "files.copy",
+    "files.upload",
+    "system.clipboard.files.read",
+  ]);
+  try {
+    for (const t of [allowed, denied])
+      t.services.inspectSystemFiles = async () => ({
+        kind: "remote",
+        sequence: 91,
+        intent: "move",
+      });
+    const [job] = await allowed.api.pasteClipboard(destination);
+    expect(job.direction).toBe("move");
+    expect(allowed.services.pasteMovedFiles).toHaveBeenCalledWith(
+      destination.path,
+      91,
+    );
+    expect(allowed.services.pasteCopiedFiles).not.toHaveBeenCalled();
+    const abort = new AbortController();
+    const running = job.run(abort.signal);
+    await vi.waitFor(() => expect(allowed.results.size).toBe(1));
+    abort.abort();
+    await vi.waitFor(() =>
+      expect(allowed.services.cancelTransfer).toHaveBeenCalledOnce(),
+    );
+    allowed.finish([...allowed.results.keys()][0]);
+    expect(await running).toMatchObject({
+      status: "completed",
+      destination: { binding: "first", path: "device:result" },
+    });
+    await job.close();
+    await expect(denied.api.pasteClipboard(destination)).rejects.toMatchObject({
+      code: "denied",
+    });
+    expect(denied.services.pasteMovedFiles).not.toHaveBeenCalled();
+    expect(denied.services.pasteCopiedFiles).not.toHaveBeenCalled();
+    expect(denied.services.pasteSystemFiles).not.toHaveBeenCalled();
+  } finally {
+    allowed.close();
+    denied.close();
+  }
+});
+it("releases a move prepared for a stale binding before it can run", async () => {
+  const t = setup(["files.move", "system.clipboard.files.read"]);
+  try {
+    t.services.inspectSystemFiles = async () => ({
+      kind: "remote",
+      sequence: 92,
+      intent: "move",
+    });
+    const pending = deferred<TransferTicket[]>();
+    t.services.pasteMovedFiles.mockReturnValueOnce(pending.promise);
+    const paste = t.api.pasteClipboard(destination);
+    const rejected = expect(paste).rejects.toMatchObject({ code: "aborted" });
+    await vi.waitFor(() =>
+      expect(t.services.pasteMovedFiles).toHaveBeenCalledOnce(),
+    );
+    t.replace();
+    pending.resolve([{ id: 42, name: "cut", size: 0, direction: "move" }]);
+    await rejected;
+    await vi.waitFor(() =>
+      expect(t.services.cancelTransfer).toHaveBeenCalledWith(42),
+    );
+    expect(t.services.runTransfer).not.toHaveBeenCalled();
+  } finally {
+    t.close();
+  }
+});
 it("prepares without starting, keeps native tickets private, coalesces progress and starts each job once", async () => {
   const t = setup();
   try {

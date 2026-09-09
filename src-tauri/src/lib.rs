@@ -10,6 +10,8 @@ use tokio::sync::{mpsc, Mutex};
 mod adapter_diagnostics;
 mod adapters;
 mod builtin_ssh;
+#[cfg(any(windows, test))]
+mod clipboard_move;
 #[cfg(windows)]
 mod clipboard_stream;
 mod connection_attempts;
@@ -772,6 +774,8 @@ pub fn run() {
                 transfers::paste_system_files,
                 transfers::inspect_system_files,
                 transfers::paste_copied_files,
+                transfers::paste_moved_files,
+                transfers::cancel_system_cut,
                 transfers::prepare_file_copy_selection,
                 transfers::system_clipboard_sequence,
                 transfers::prepare_file_copy,

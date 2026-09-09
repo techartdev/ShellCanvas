@@ -21,6 +21,7 @@ type SourcePins = {
 const commandRoles: Record<string, "files" | "console" | "settings"> = {
   paste_system_files: "files",
   paste_copied_files: "files",
+  paste_moved_files: "files",
   cut_system_file: "files",
   copy_system_files: "files",
   choose_download_files: "files",
@@ -89,6 +90,10 @@ function createNativeServices(pins?: SourcePins): HostServices {
       invoke("cancel_clipboard_preparation", { sessionId, operation }),
     systemClipboardSequence: () => invoke("system_clipboard_sequence"),
     inspectSystemFiles: () => invoke("inspect_system_files"),
+    cancelSystemCut: (sessionId, sequence) =>
+      invoke("cancel_system_cut", { sessionId, sequence }),
+    pasteMovedFiles: (sessionId, parent, sequence) =>
+      invoke("paste_moved_files", { sessionId, parent, sequence }),
     pasteCopiedFiles: (sessionId, parent, sequence) =>
       invoke("paste_copied_files", { sessionId, parent, sequence }),
     pasteSystemFiles: (sessionId, parent, sequence) =>
@@ -136,10 +141,15 @@ function createNativeServices(pins?: SourcePins): HostServices {
       invoke("choose_upload_files", { sessionId, parent, folder }),
     chooseDownload: (sessionId, path, revision) =>
       invoke("choose_download_file", { sessionId, path, revision }),
-    runTransfer: (sessionId, transferId, onProgress) => {
+    runTransfer: (sessionId, transferId, onProgress, tracked) => {
       const onEvent = new Channel<TransferProgress>();
       onEvent.onmessage = onProgress;
-      return invoke("run_transfer", { sessionId, transferId, onEvent });
+      return invoke("run_transfer", {
+        sessionId,
+        transferId,
+        onEvent,
+        tracked,
+      });
     },
     cancelTransfer: (sessionId, transferId) =>
       invoke("cancel_transfer", { sessionId, transferId }),

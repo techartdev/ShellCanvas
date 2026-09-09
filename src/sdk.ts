@@ -42,16 +42,18 @@ export interface TransferTicket {
   id: number;
   name: string;
   size: number;
-  direction: "upload" | "download" | "copy";
+  direction: "upload" | "download" | "copy" | "move";
 }
 export function transferCapability(
   direction: TransferTicket["direction"],
 ): Capability {
-  return direction === "copy"
-    ? "files.copy"
-    : direction === "upload"
-      ? "files.upload"
-      : "files.download";
+  return direction === "move"
+    ? "files.move"
+    : direction === "copy"
+      ? "files.copy"
+      : direction === "upload"
+        ? "files.upload"
+        : "files.download";
 }
 export interface TransferProgress {
   bytes: number;
@@ -65,6 +67,7 @@ export interface TransferOutcome {
   total: number;
   message?: string | null;
   path?: string | null;
+  relocation?: FileRelocation;
 }
 export type { TextDocument } from "../packages/app-sdk/src/files";
 export interface FileLocation {
@@ -209,8 +212,15 @@ export interface ClipboardPreparation {
 export interface ClipboardFileState {
   kind: "local" | "remote" | "empty";
   sequence: number;
+  intent?: "copy" | "move";
 }
 export interface HostServices {
+  cancelSystemCut?(sessionId: number, sequence: number): Promise<void>;
+  pasteMovedFiles?(
+    sessionId: number,
+    parent: string,
+    sequence: number,
+  ): Promise<TransferTicket[]>;
   inspectSystemFiles?(): Promise<ClipboardFileState>;
   pasteCopiedFiles?(
     sessionId: number,
@@ -278,6 +288,7 @@ export interface HostServices {
     sessionId: number,
     id: number,
     onProgress: (event: TransferProgress) => void,
+    tracked?: string[],
   ): Promise<TransferOutcome>;
   cancelTransfer(sessionId: number, id: number): Promise<void>;
   createText(
@@ -340,6 +351,8 @@ export interface HostServices {
 }
 /** Apps receive a fixed session handle, never connection administration. */
 export interface SessionServices {
+  cancelSystemCut?(sequence: number): Promise<void>;
+  pasteMovedFiles?(parent: string, sequence: number): Promise<TransferTicket[]>;
   inspectSystemFiles?(): Promise<ClipboardFileState>;
   pasteCopiedFiles?(
     parent: string,

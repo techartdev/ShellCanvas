@@ -80,6 +80,14 @@ export function scopeAppServices(
       base.systemClipboardSequence.bind(base),
     ),
     inspectSystemFiles: base.inspectSystemFiles?.bind(base),
+    cancelSystemCut: base.cancelSystemCut
+      ? guard("files.move", base.cancelSystemCut.bind(base))
+      : undefined,
+    pasteMovedFiles: base.pasteMovedFiles
+      ? guard("files.move", async (parent: string, sequence: number) =>
+          (await base.pasteMovedFiles!(parent, sequence)).map(adopt),
+        )
+      : undefined,
     pasteCopiedFiles: base.pasteCopiedFiles
       ? guard("files.copy", async (parent: string, sequence: number) =>
           (await base.pasteCopiedFiles!(parent, sequence)).map(adopt),

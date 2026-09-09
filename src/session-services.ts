@@ -120,6 +120,22 @@ export function bindSession(
     notifyFileChanges(session!.id, relocate ? "relocation" : "content");
   }
   const services: SessionServices = {
+    cancelSystemCut: backend.cancelSystemCut
+      ? async (sequence) => {
+          if (session) await backend.cancelSystemCut!(session.id, sequence);
+        }
+      : undefined,
+    pasteMovedFiles: backend.pasteMovedFiles
+      ? async (parent, sequence) => {
+          const expected = generation;
+          const result = await backend.pasteMovedFiles!(
+            check("files.move"),
+            parent,
+            sequence,
+          );
+          return adopt(result, expected, "files.move");
+        }
+      : undefined,
     inspectSystemFiles: backend.inspectSystemFiles
       ? async () => {
           const epoch = lifetimeEpoch;
@@ -340,14 +356,38 @@ export function bindSession(
       if (!owned) throw new Error("Transfer does not belong to this workspace");
       const expected = generation;
       const id = check(transferCapability(owned.direction));
+      let follow: ReturnType<typeof beginFileRelocation> | undefined;
+      let dispatched = false;
       try {
-        const result = await backend.runTransfer(id, ticket.id, (event) => {
-          if (valid(transferCapability(owned.direction), expected))
-            onProgress(event);
-        });
+        if (owned.direction === "move")
+          follow = beginFileRelocation(
+            id,
+            fileClipboard(services).trackedPaths(),
+          );
+        dispatched = true;
+        const result = await backend.runTransfer(
+          id,
+          ticket.id,
+          (event) => {
+            if (valid(transferCapability(owned.direction), expected))
+              onProgress(event);
+          },
+          follow?.tracked,
+        );
         // Interrupted folders can contain successfully completed children.
         if (owned.direction !== "download")
-          mutationCompleted(transferCapability(owned.direction), expected);
+          mutationCompleted(
+            transferCapability(owned.direction),
+            expected,
+            result.relocation && follow
+              ? () => {
+                  if (result.relocation && follow) {
+                    fileClipboard(services).relocated(result.relocation);
+                    follow.apply(result.relocation);
+                  }
+                }
+              : undefined,
+          );
         if (
           result.status === "completed" &&
           owned.direction === "download" &&
@@ -358,6 +398,11 @@ export function bindSession(
           );
         return result;
       } finally {
+        follow?.finish();
+        // Also releases a prepared native reservation if view guards rejected
+        // the move before dispatch. Running operations have already settled.
+        if (owned.direction === "move" && !dispatched)
+          await backend.cancelTransfer(id, ticket.id);
         tickets.delete(ticket.id);
       }
     },

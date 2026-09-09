@@ -354,9 +354,11 @@ fn explorer_clipboard_probe() {
     }
     let sources = Sources::catalogs(vec![catalog], memory.clone(), runtime.handle().clone());
     runtime
-        .block_on(publish(sources, unsafe {
-            windows::Win32::System::DataExchange::GetClipboardSequenceNumber()
-        }))
+        .block_on(publish_selection(
+            sources,
+            unsafe { windows::Win32::System::DataExchange::GetClipboardSequenceNumber() },
+            None,
+        ))
         .unwrap();
     eprintln!("EXPLORER_READY: two generated files; expected size 8388625 each. Ctrl+V into an owned test folder. Opens before Paste: {}", memory.opens.load(Ordering::SeqCst));
     for _ in 0..180 {

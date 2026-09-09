@@ -504,12 +504,6 @@ pub async fn current_sequence() -> std::result::Result<u32, String> {
         .await
         .map_err(|_| "Clipboard worker stopped".to_string())
 }
-pub async fn publish(
-    sources: impl Into<Sources>,
-    sequence: u32,
-) -> std::result::Result<u32, String> {
-    publish_selection(sources.into(), sequence, None).await
-}
 pub async fn snapshot() -> std::result::Result<ClipboardSnapshot, String> {
     let (reply, result) = tokio::sync::oneshot::channel();
     sender()?

@@ -34,7 +34,7 @@ export interface RemoteTransfer {
   readonly binding: string;
   readonly name: string;
   readonly size: number;
-  readonly direction: "upload" | "download" | "copy";
+  readonly direction: "upload" | "download" | "copy" | "move";
   /** Starts once. Cancellation requests cleanup and waits for the actual outcome. */
   run(signal?: AbortSignal): Promise<TransferResult>;
   status(): Promise<TransferSnapshot>;
@@ -45,7 +45,7 @@ export interface RemoteTransfer {
   close(): Promise<void>;
 }
 export interface AppTransfersAPI {
-  /** Prepare the current file clipboard as owned upload/copy work. Does not start copying. */
+  /** Prepare the file clipboard as owned upload/copy/move work. Does not start it. */
   pasteClipboard(
     destination: RemoteFileLocation,
     signal?: AbortSignal,
@@ -183,13 +183,19 @@ export function appTransferClient(
         "system.transfers.clipboardInspect",
         { binding: destination.binding },
         signal,
-      )) as { kind: "remote" | "local" | "empty"; sequence: number | null };
+      )) as {
+        kind: "remote" | "local" | "empty";
+        sequence: number | null;
+        intent?: "copy" | "move";
+      };
       if (snapshot.kind === "empty") return [];
       return prepare(
         snapshot.sequence === null
           ? "clipboardPaste"
           : snapshot.kind === "remote"
-            ? "clipboardCopySnapshot"
+            ? snapshot.intent === "move"
+              ? "clipboardMoveSnapshot"
+              : "clipboardCopySnapshot"
             : "clipboardPasteSnapshot",
         {
           binding: destination.binding,

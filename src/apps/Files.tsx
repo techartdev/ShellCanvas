@@ -599,7 +599,29 @@ export function Files({
         if (sequence !== cutClipboard.snapshot().systemSequence) {
           cutClipboard.clear();
           setSystemCopyNotice("");
+          if (snapshot?.kind === "empty")
+            throw new Error(
+              "The file clipboard is empty. Copy or cut an item first.",
+            );
           if (snapshot?.kind === "remote") {
+            if (snapshot.intent === "move") {
+              if (
+                !session?.info.capabilities.includes("files.move") ||
+                !services.pasteMovedFiles
+              )
+                throw new Error(
+                  "This host does not support moving the cut item.",
+                );
+              const tickets = await services.pasteMovedFiles(parent, sequence);
+              // Run directly: a queued transfer would mark this view busy and
+              // prevent the shared relocation guard from following its paths.
+              for (const ticket of tickets) {
+                const outcome = await services.runTransfer(ticket, () => {});
+                if (outcome.status !== "completed")
+                  throw new Error(outcome.message || "Move did not complete");
+              }
+              return;
+            }
             if (
               !session?.info.capabilities.includes("files.copy") ||
               !services.pasteCopiedFiles

@@ -1,6 +1,89 @@
 // SPDX-License-Identifier: MPL-2.0
 use super::*;
 
+#[tokio::test]
+async fn move_queue_requires_no_transfer_provider_and_releases_only_unstarted_claims() {
+    struct MoveOnly(std::sync::atomic::AtomicUsize);
+    #[async_trait::async_trait]
+    impl shellcanvas_services::FileMoveService for MoveOnly {
+        async fn move_tracked(
+            &self,
+            path: &str,
+            parent: &str,
+            revision: &str,
+            tracked: &[String],
+        ) -> Result<shellcanvas_services::FileRelocation> {
+            assert_eq!((path, parent, revision), ("object@1", "folder@2", "exact"));
+            self.0.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            Ok(shellcanvas_services::FileRelocation {
+                path: "object@new".into(),
+                locations: tracked
+                    .iter()
+                    .map(|previous| shellcanvas_services::RelocatedLocation {
+                        previous: previous.clone(),
+                        location: shellcanvas_services::FileLocation {
+                            path: "object@new".into(),
+                            name: "cut".into(),
+                            parent: Some(parent.into()),
+                        },
+                    })
+                    .collect(),
+            })
+        }
+    }
+    let probe = Arc::new(MoveOnly(std::sync::atomic::AtomicUsize::new(0)));
+    let service: Arc<dyn shellcanvas_services::FileMoveService> = probe.clone();
+    let cut = crate::clipboard_move::CutSelection::new(
+        10,
+        service.clone(),
+        "object@1".into(),
+        "exact".into(),
+        "cut".into(),
+    )
+    .unwrap();
+    let prepare = || cut.prepare(10, &service, "folder@2".into()).unwrap();
+    let mut registry = TransferRegistry::default();
+    let first = registry
+        .add_move(10, prepare(), cut.name.clone())
+        .unwrap()
+        .remove(0);
+    assert_eq!(first.direction, "move");
+    assert!(registry.claim(11, first.id).is_err());
+    assert!(registry.cancel(11, first.id).is_err());
+    registry.close_session(11);
+    assert!(cut.prepare(10, &service, "folder@2".into()).is_err());
+    registry.cancel(10, first.id).unwrap();
+    assert!(!cut.retired());
+    let second = registry
+        .add_move(10, prepare(), cut.name.clone())
+        .unwrap()
+        .remove(0);
+    let claimed = registry.claim(10, second.id).unwrap();
+    registry.cancel(10, second.id).unwrap();
+    let Work::Move(claim) = claimed.work else {
+        panic!("Expected move");
+    };
+    assert!(claim.run(&claimed.cancel, &[]).await.is_err());
+    assert_eq!(probe.0.load(std::sync::atomic::Ordering::SeqCst), 0);
+    let third = registry
+        .add_move(10, prepare(), cut.name.clone())
+        .unwrap()
+        .remove(0);
+    let claimed = registry.claim(10, third.id).unwrap();
+    let Work::Move(claim) = claimed.work else {
+        panic!("Expected move");
+    };
+    let result = claim
+        .run(&claimed.cancel, &["object@1".into()])
+        .await
+        .unwrap();
+    assert_eq!(result.locations[0].previous, "object@1");
+    assert_eq!(result.path, "object@new");
+    assert!(cut.retired());
+    assert!(cut.prepare(10, &service, "folder@2".into()).is_err());
+    assert_eq!(probe.0.load(std::sync::atomic::Ordering::SeqCst), 1);
+}
+
 #[cfg(windows)]
 #[tokio::test]
 async fn shared_clipboard_pastes_keep_the_original_provider_and_independent_catalogs() {
@@ -25,7 +108,7 @@ async fn shared_clipboard_pastes_keep_the_original_provider_and_independent_cata
             )
             .unwrap();
     }
-    let selection = RemoteClipboardSelection {
+    let selection = RemoteClipboardSelection::Copy {
         owner: 10,
         service: service.clone(),
         catalog: catalog.clone(),
@@ -242,15 +325,13 @@ async fn chooser_download_selection_uses_one_queue_slot_and_one_stream_for_many_
     let tickets = registry.add(1, memory.clone(), vec![job]).unwrap();
     assert_eq!(tickets.len(), 1);
     let claimed = registry.claim(1, tickets[0].id).unwrap();
+    let Work::Transfer { job, service } = claimed.work else {
+        panic!("Expected transfer");
+    };
     let mut last = (0, 0);
-    let result = execute(
-        claimed.job,
-        claimed.service,
-        &claimed.cancel,
-        &mut |event| {
-            last = (event.bytes, event.total);
-        },
-    )
+    let result = execute(job, service, &claimed.cancel, &mut |event| {
+        last = (event.bytes, event.total);
+    })
     .await
     .unwrap();
     assert_eq!(result, folder.to_string_lossy());
@@ -485,11 +566,12 @@ async fn queued_transfer_keeps_its_provider_and_cannot_follow_source_replacement
         .replace_source(old.identity(), replacement)
         .unwrap();
     let claimed = registry.claim(10, ticket.id).unwrap();
-    assert!(
-        execute(claimed.job, claimed.service, &claimed.cancel, &mut |_| {})
-            .await
-            .is_err()
-    );
+    let Work::Transfer { job, service } = claimed.work else {
+        panic!("Expected transfer");
+    };
+    assert!(execute(job, service, &claimed.cancel, &mut |_| {})
+        .await
+        .is_err());
     assert_eq!(old_memory.commits.load(Ordering::SeqCst), 0);
     assert_eq!(fresh_memory.commits.load(Ordering::SeqCst), 0);
     // A newly prepared ticket explicitly uses the replacement source.
@@ -502,7 +584,10 @@ async fn queued_transfer_keeps_its_provider_and_cannot_follow_source_replacement
         .unwrap()
         .remove(0);
     let claimed = registry.claim(10, fresh_ticket.id).unwrap();
-    execute(claimed.job, claimed.service, &claimed.cancel, &mut |_| {})
+    let Work::Transfer { job, service } = claimed.work else {
+        panic!("Expected transfer");
+    };
+    execute(job, service, &claimed.cancel, &mut |_| {})
         .await
         .unwrap();
     assert_eq!(fresh_memory.commits.load(Ordering::SeqCst), 1);

@@ -3,7 +3,37 @@ import { expect, it, vi } from "vitest";
 import { bindSession } from "./session-services";
 import { previewServices, previewSession } from "./preview";
 import type { Directory, TerminalSession, FileRelocation } from "./sdk";
-import { watchFileChanges } from "./file-events";
+import { watchFileChanges, watchFileLocations } from "./file-events";
+it("releases a prepared clipboard move if an open editor blocks relocation", async () => {
+  const ticket = { id: 719, direction: "move" as const, name: "cut", size: 0 };
+  const pasteMovedFiles = vi.fn(async () => [ticket]);
+  const runTransfer = vi.fn(),
+    cancelTransfer = vi.fn(async () => {});
+  const binding = bindSession(
+    { ...previewServices, pasteMovedFiles, runTransfer, cancelTransfer },
+    {
+      ...previewSession,
+      id: 719,
+      info: { ...previewSession.info, capabilities: ["files.move"] },
+    },
+  );
+  const unwatch = watchFileLocations(719, {
+    snapshot: () => ({ paths: ["draft"], busy: true }),
+    pending: vi.fn(),
+    relocated: vi.fn(),
+  });
+  try {
+    const [prepared] = await binding.services.pasteMovedFiles!("target", 71);
+    await expect(
+      binding.services.runTransfer(prepared, () => {}),
+    ).rejects.toThrow("editor operations");
+    expect(runTransfer).not.toHaveBeenCalled();
+    expect(cancelTransfer).toHaveBeenCalledWith(719, ticket.id);
+  } finally {
+    unwatch();
+    binding.dispose();
+  }
+});
 it("retires open and pending directory readers when their accepted source changes", async () => {
   let suppliedSignal: AbortSignal | undefined;
   let finish!: (reader: import("./sdk").DirectoryReader) => void;

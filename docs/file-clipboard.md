@@ -2,6 +2,11 @@
 
 Current Copy/Paste, multi-file downloads and Windows clipboard behavior are documented in [File clipboard and Windows transfers](system-clipboard.md). This supersedes the single-item clipboard limitations below.
 
+Windows Cut intent is now owned natively and shared with runtime-app Paste in the
+same workspace. Cancel cut retires the native reservation; dispatched moves cannot
+be replayed. See [current Cut ownership, tests and remaining integration work](app-clipboard.md).
+The earlier retry and in-memory-only behavior below describes its historical checkpoint.
+
 ## Earlier single-item Cut/Paste checkpoint
 
 Files supports one pending cut per connected workspace. Select a file, folder or symlink and use **Cut** (Ctrl+X). Browse to a destination in the same or another Files window, then use **Paste here** (Ctrl+V). A folder's context menu also offers **Paste into folder**. The banner shows the item and its original location; **Cancel cut** or Escape outside editable fields clears it without contacting the host.

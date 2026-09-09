@@ -46,18 +46,35 @@ services; it does not touch the user's clipboard or claim a new Explorer test.
 
 `client.clipboard.pasteFiles(destination, signal?)` prepares clipboard transfers
 to a `{ binding, path }` remote directory. Declare `system.clipboard.files.read`
-and the required transfer grant: `files.upload` for local file lists, `files.copy`
-for ShellCanvas remote selections, or both for a general-purpose file manager.
+and the required operation grant: `files.upload` for local file lists, `files.copy`
+for copied ShellCanvas selections, or `files.move` for a cut ShellCanvas item.
 The SDK inspects the clipboard kind/version without returning file paths, then
 uses the corresponding permission-checked preparation method. Missing grants
 never trigger a fallback to another transfer kind or source.
 
 Remote selections retain their original workspace and native file-service
 instance. Another workspace, a replaced source or a clipboard version change is
-refused. Repeated pastes create independent metadata catalogs and output paths;
+refused. Repeated Copy pastes create independent metadata catalogs and output paths;
 they do not mutate the published selection. A clipboard change after a paste has
 captured its selection does not redirect that transfer. Source revisions are
 checked through normal discovery and transfer operations.
+
+A bundled Cut now retains its move intent when an installed app pastes it in the
+same process and original workspace. Its handle has `direction: "move"` and needs
+only the provider's move service, not upload/download/copy services. One native
+reservation owns the cut: another paste is refused while it is pending. Canceling
+before dispatch releases that reservation; Cancel cut retires the selection and
+invalidates prepared reservations. Once dispatched, the operation waits for the
+provider's authoritative result even after cancellation. A failed, abandoned or
+unacknowledged dispatched move is never replayed; refresh and explicitly cut again
+after checking the destination. Confirmed relocations update tracked desktop
+folders and editor locations. A busy editor/transfer blocks the move before dispatch.
+
+Native unit tests cover reservation ownership, move-only providers, late cancellation,
+provider errors/panics and abandoned operations. SDK/broker/session tests cover grants,
+stale binding cleanup and relocation tracking. This change still needs a native GUI
+walkthrough; those tests do not establish new Explorer/Finder interoperability.
+Public Cut publication, multiple-item cuts and moves across processes remain open.
 
 ```ts
 const jobs = await client.clipboard.pasteFiles(destination, signal);

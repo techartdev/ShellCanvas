@@ -77,8 +77,8 @@ native publication; inspect uncertain outcomes before retrying. File/custom-form
 clipboard publication and mobile image support are not provided by this API.
 
 `clipboard.pasteFiles({ binding, path }, signal?)` prepares native clipboard files
-and folders for upload or same-workspace remote copy. It requires
-`system.clipboard.files.read` and the corresponding `files.upload` or `files.copy`
+and folders for upload, same-workspace remote copy, or a bundled Cut move. It requires
+`system.clipboard.files.read` and the corresponding `files.upload`, `files.copy` or `files.move`
 grant. The returned array contains owned transfer handles; preparation
 does not start them. Call `run`, inspect the result, and `close` each handle using
 the transfer API. Empty/non-file clipboard contents return an empty array.
@@ -88,6 +88,10 @@ A locally cut selection uploads a copy and keeps its
 source. Native file paths are not returned in ticket fields. Large selections
 share one job; contents stream natively and folders use disk-backed discovery.
 Pending native preparation remains busy until it returns, even after cancellation.
+A cut produces a `direction: "move"` job bound to its original workspace/provider.
+Only one paste may reserve it. Cancel before dispatch to release that reservation;
+after dispatch, await the authoritative outcome and never automatically retry an
+uncertain move. Public Cut publication and cross-process moves remain follow-ups.
 `clipboard.copyFiles(entries, signal?)` exports remote `{ binding, path, revision }`
 entries to the Windows clipboard. Declare `system.clipboard.files.write` and
 `files.download`. References must use one accepted binding and current revisions.

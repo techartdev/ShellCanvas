@@ -3,6 +3,7 @@ import { expect, it, vi } from "vitest";
 import { fileClipboard } from "./file-clipboard";
 import { bindSession } from "./session-services";
 import { previewServices, previewSession } from "./preview";
+import { watchFileLocations } from "./file-events";
 import type { FileEntry, FileRelocation } from "./sdk";
 
 const source: FileEntry = {
@@ -24,6 +25,123 @@ const session = (id: number) => ({
       "files.copy" as const,
     ],
   },
+});
+it("uses the shared native cut reservation and follows open locations only after confirmation", async () => {
+  let complete!: (value: import("./sdk").TransferOutcome) => void;
+  const ticket = {
+    id: 93,
+    name: source.name,
+    direction: "move" as const,
+    size: 0,
+  };
+  const pasteMovedFiles = vi.fn(async () => [ticket]);
+  const runTransfer = vi.fn(
+    () =>
+      new Promise<import("./sdk").TransferOutcome>((resolve) => {
+        complete = resolve;
+      }),
+  );
+  const moveEntry = vi.fn();
+  const binding = bindSession(
+    { ...previewServices, pasteMovedFiles, runTransfer, moveEntry },
+    session(1193),
+  );
+  const pending = vi.fn(),
+    relocated = vi.fn();
+  const unwatch = watchFileLocations(1193, {
+    snapshot: () => ({ paths: ["draft@child"], busy: false }),
+    pending,
+    relocated,
+  });
+  try {
+    const clipboard = fileClipboard(binding.services);
+    clipboard.cut(source, "folder@source");
+    clipboard.syncSystem(717);
+    const paste = clipboard.paste("folder@target");
+    await vi.waitFor(() => expect(runTransfer).toHaveBeenCalledOnce());
+    expect(pasteMovedFiles).toHaveBeenCalledWith(1193, "folder@target", 717);
+    expect(runTransfer).toHaveBeenCalledWith(
+      1193,
+      93,
+      expect.any(Function),
+      expect.arrayContaining(["draft@child", source.path, "folder@source"]),
+    );
+    expect(pending).toHaveBeenLastCalledWith(true);
+    expect(relocated).not.toHaveBeenCalled();
+    const relocation = {
+      path: "object@new",
+      locations: [
+        {
+          previous: "draft@child",
+          location: { path: "draft@new", name: "draft", parent: "object@new" },
+        },
+      ],
+    };
+    complete({
+      status: "completed",
+      bytes: 0,
+      total: 0,
+      path: relocation.path,
+      relocation,
+    });
+    expect(await paste).toBe("object@new");
+    expect(relocated).toHaveBeenCalledWith(relocation.locations);
+    expect(pending).toHaveBeenLastCalledWith(false);
+    expect(clipboard.snapshot().item).toBeNull();
+    expect(moveEntry).not.toHaveBeenCalled();
+  } finally {
+    unwatch();
+    binding.dispose();
+  }
+});
+it("does not replay a shared cut through direct move when native preparation rejects it", async () => {
+  const pasteMovedFiles = vi.fn(async () => {
+    throw new Error("Cut already dispatched in another app");
+  });
+  const moveEntry = vi.fn();
+  const binding = bindSession(
+    { ...previewServices, pasteMovedFiles, moveEntry },
+    session(1194),
+  );
+  try {
+    const clipboard = fileClipboard(binding.services);
+    clipboard.cut(source, "folder@source");
+    clipboard.syncSystem(718);
+    await expect(clipboard.paste("folder@target")).rejects.toThrow(
+      "already dispatched",
+    );
+    expect(moveEntry).not.toHaveBeenCalled();
+    expect(clipboard.snapshot().systemSequence).toBe(718);
+  } finally {
+    binding.dispose();
+  }
+});
+it("cancel cut retires the native intent and retains a failed cancellation for explicit retry", async () => {
+  const cancelSystemCut = vi
+    .fn()
+    .mockRejectedValueOnce(new Error("temporarily unavailable"))
+    .mockResolvedValue(undefined);
+  const binding = bindSession(
+    { ...previewServices, cancelSystemCut },
+    session(1195),
+  );
+  try {
+    const clipboard = fileClipboard(binding.services);
+    clipboard.cut(source, "folder@source");
+    clipboard.syncSystem(719);
+    clipboard.clear();
+    await vi.waitFor(() =>
+      expect(clipboard.snapshot().error).toContain("temporarily unavailable"),
+    );
+    expect(clipboard.snapshot().item?.entry.path).toBe(source.path);
+    expect(clipboard.snapshot().systemSequence).toBe(719);
+    clipboard.clear();
+    await vi.waitFor(() => expect(cancelSystemCut).toHaveBeenCalledTimes(2));
+    expect(cancelSystemCut).toHaveBeenLastCalledWith(1195, 719);
+    expect(clipboard.snapshot().item).toBeNull();
+  } finally {
+    binding.dispose();
+  }
 });
 it("prepares large immutable selections as one native job and releases a stale batch", async () => {
   const prepareCopySelection = vi.fn(

@@ -32,6 +32,7 @@ export interface AppTransferSource {
         | "cancelClipboardPreparation"
         | "inspectSystemFiles"
         | "pasteCopiedFiles"
+        | "pasteMovedFiles"
       >
     >;
 }
@@ -463,7 +464,7 @@ export class AppTransfers {
               throw new RpcError("aborted", "Clipboard inspection canceled.");
             const state = captured.services.inspectSystemFiles
               ? await captured.services.inspectSystemFiles()
-              : { kind: "local", sequence: null };
+              : { kind: "local", sequence: null, intent: "copy" as const };
             if (!this.same(captured) || signal.aborted)
               throw new RpcError(
                 "closed",
@@ -471,16 +472,37 @@ export class AppTransfers {
               );
             if (
               !["remote", "local", "empty"].includes(state.kind) ||
+              (state.intent !== undefined &&
+                !["copy", "move"].includes(state.intent)) ||
               (state.sequence !== null &&
                 (!Number.isInteger(state.sequence) ||
                   state.sequence < 0 ||
                   state.sequence > 0xffffffff))
             )
               throw new RpcError("failed", "Invalid clipboard snapshot.");
-            return { kind: state.kind, sequence: state.sequence };
+            return {
+              kind: state.kind,
+              sequence: state.sequence,
+              ...(state.intent ? { intent: state.intent } : {}),
+            };
           },
         },
       ],
+      prepare(
+        "clipboardMoveSnapshot",
+        "files.move",
+        ["parent", "sequence"],
+        (source, p) =>
+          source.services.pasteMovedFiles!(
+            p.parent as string,
+            p.sequence as number,
+          ),
+        false,
+        ["system.clipboard.files.read"],
+        () =>
+          this.source()?.services.systemFileClipboard === true &&
+          typeof this.source()?.services.pasteMovedFiles === "function",
+      ),
       prepare(
         "clipboardCopySnapshot",
         "files.copy",

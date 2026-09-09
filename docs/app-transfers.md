@@ -24,12 +24,18 @@ try {
 
 Preparing does not start copying bytes. Upload/download preparation invokes a native local chooser. A dismissed upload or multi-download chooser returns `[]`; a dismissed single download returns `null`. Remote copy needs no local chooser. Every request includes the app window's accepted binding; copy source and destination must share it. Entry revisions come from the directory service, not from text-document revisions.
 
-| Method                                              | Permission       | Result                                      |
-| --------------------------------------------------- | ---------------- | ------------------------------------------- |
-| `upload(destination, {folder?: boolean}?, signal?)` | `files.upload`   | Jobs for the selected local files or folder |
-| `download(entry, signal?)`                          | `files.download` | One job, or `null`                          |
-| `downloadMany(entries, signal?)`                    | `files.download` | Jobs sharing one chosen local destination   |
-| `copy(entry, destination, signal?)`                 | `files.copy`     | One remote copy job                         |
+| Method                                              | Permission                                                                      | Result                                      |
+| --------------------------------------------------- | ------------------------------------------------------------------------------- | ------------------------------------------- |
+| `upload(destination, {folder?: boolean}?, signal?)` | `files.upload`                                                                  | Jobs for the selected local files or folder |
+| `download(entry, signal?)`                          | `files.download`                                                                | One job, or `null`                          |
+| `downloadMany(entries, signal?)`                    | `files.download`                                                                | Jobs sharing one chosen local destination   |
+| `copy(entry, destination, signal?)`                 | `files.copy`                                                                    | One remote copy job                         |
+| `pasteClipboard(destination, signal?)`              | `system.clipboard.files.read` plus `files.upload`, `files.copy` or `files.move` | Owned jobs matching the clipboard intent    |
+
+Clipboard Cut paste returns one move job, using the original provider's move service.
+It does not require transfer capabilities. Canceling before dispatch releases its
+reservation; a dispatched move awaits the provider's result and cannot be replayed.
+See [clipboard ownership and remaining limitations](app-clipboard.md).
 
 Folder upload additionally requires the device's `files.folders` capability. Capability support does not grant additional permissions. Discover the preparation method's `granted` and `available` state before enabling it. Native multiple-selection uploads and downloads use one disk-backed catalog and one batch job, without a fixed root-count or tree-entry/depth cap. The returned array describes jobs, not individual selected files; do not zip it with the input entries. Files open sequentially within the batch, and progress aggregates their bytes. Root names and existing download destinations are checked before writing. A later failure or cancellation preserves completed items and reports the incomplete batch.
 

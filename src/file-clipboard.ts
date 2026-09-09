@@ -53,6 +53,7 @@ class FileClipboard {
     if (!this.active || this.state.working) return;
     if (!entry.path || !parent || !entry.revision)
       throw new Error("Refresh the folder before cutting this item.");
+    ++this.generation;
     this.publish({
       item: Object.freeze({ entry: Object.freeze({ ...entry }), parent }),
       working: false,
@@ -153,8 +154,21 @@ class FileClipboard {
     }
   }
   clear() {
-    if (!this.state.working)
+    if (!this.state.working) {
+      const { item, systemSequence } = this.state;
+      const generation = ++this.generation;
       this.publish({ item: null, working: false, error: "" });
+      if (item && systemSequence !== undefined && this.services.cancelSystemCut)
+        void this.services.cancelSystemCut(systemSequence).catch((error) => {
+          if (this.active && this.generation === generation)
+            this.publish({
+              ...this.state,
+              item,
+              systemSequence,
+              error: `Could not cancel the system cut: ${error}`,
+            });
+        });
+    }
   }
   removed(path: string) {
     if (this.state.copies?.some((item) => item.entry.path === path)) {
@@ -207,20 +221,41 @@ class FileClipboard {
     }
   }
   async paste(parent: string): Promise<string> {
-    const { item, working } = this.state;
+    const { item, working, systemSequence } = this.state;
     if (!this.active || !item)
       throw new Error("Cut an item in this workspace first.");
     if (working) throw new Error("A clipboard move is already running.");
     if (!parent || parent === item.parent || parent === item.entry.path)
       throw new Error("Choose a different destination folder.");
     const generation = this.generation;
-    this.publish({ item, working: true, error: "" });
+    this.publish({ item, working: true, error: "", systemSequence });
     try {
-      const result = await this.services.moveEntry(
-        item.entry.path,
-        parent,
-        item.entry.revision!,
-      );
+      let result: string;
+      if (systemSequence !== undefined && this.services.pasteMovedFiles) {
+        const tickets = await this.services.pasteMovedFiles(
+          parent,
+          systemSequence,
+        );
+        if (tickets.length !== 1 || tickets[0].direction !== "move") {
+          await Promise.all(
+            tickets.map((ticket) => this.services.cancelTransfer(ticket.id)),
+          );
+          throw new Error("Invalid clipboard move preparation");
+        }
+        const outcome = await this.services.runTransfer(tickets[0], () => {});
+        if (outcome.status !== "completed" || !outcome.path)
+          throw new Error(
+            outcome.message ||
+              "Move did not complete. Refresh before cutting again.",
+          );
+        result = outcome.path;
+      } else {
+        result = await this.services.moveEntry(
+          item.entry.path,
+          parent,
+          item.entry.revision!,
+        );
+      }
       if (!this.active || this.generation !== generation)
         throw new Error(
           "Connection changed before the move was confirmed. Verify the destination before retrying.",

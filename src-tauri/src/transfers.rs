@@ -31,10 +31,13 @@ mod tree;
 
 #[cfg(windows)]
 #[derive(Clone)]
-pub(crate) struct RemoteClipboardSelection {
-    owner: u64,
-    service: Arc<dyn FileTransferService>,
-    catalog: Arc<catalog::Catalog>,
+pub(crate) enum RemoteClipboardSelection {
+    Copy {
+        owner: u64,
+        service: Arc<dyn FileTransferService>,
+        catalog: Arc<catalog::Catalog>,
+    },
+    Cut(Arc<crate::clipboard_move::CutSelection>),
 }
 #[cfg(windows)]
 impl RemoteClipboardSelection {
@@ -44,12 +47,20 @@ impl RemoteClipboardSelection {
         service: &Arc<dyn FileTransferService>,
         parent: String,
     ) -> Result<(Job, String, u64, &'static str)> {
-        if self.owner != owner || !Arc::ptr_eq(&self.service, service) {
+        let Self::Copy {
+            owner: source_owner,
+            service: source_service,
+            catalog: source_catalog,
+        } = self
+        else {
+            bail!("This clipboard selection was cut. Use Move Paste instead of Copy Paste.");
+        };
+        if *source_owner != owner || !Arc::ptr_eq(source_service, service) {
             bail!("Copied files belong to another workspace or an earlier file connection. Copy them again on this connection.");
         }
         let catalog = Arc::new(catalog::Catalog::new(false)?);
         let mut after = 0;
-        while let Some(root) = self.catalog.root_after(after)? {
+        while let Some(root) = source_catalog.root_after(after)? {
             after = root.id;
             catalog.add(None, vec![(root.entry, root.local)])?;
         }
@@ -70,14 +81,19 @@ impl RemoteClipboardSelection {
 pub struct ClipboardFileState {
     kind: &'static str,
     sequence: u32,
+    intent: &'static str,
 }
 #[tauri::command]
 pub async fn inspect_system_files() -> Result<ClipboardFileState, String> {
     #[cfg(windows)]
     {
         let snapshot = crate::windows_clipboard::snapshot().await?;
+        let retired =
+            matches!(&snapshot.remote, Some(RemoteClipboardSelection::Cut(cut)) if cut.retired());
         Ok(ClipboardFileState {
-            kind: if snapshot.remote.is_some() {
+            kind: if retired {
+                "empty"
+            } else if snapshot.remote.is_some() {
                 "remote"
             } else if snapshot.local {
                 "local"
@@ -85,6 +101,11 @@ pub async fn inspect_system_files() -> Result<ClipboardFileState, String> {
                 "empty"
             },
             sequence: snapshot.sequence,
+            intent: if matches!(snapshot.remote, Some(RemoteClipboardSelection::Cut(_))) {
+                "move"
+            } else {
+                "copy"
+            },
         })
     }
     #[cfg(not(windows))]
@@ -138,6 +159,70 @@ pub async fn paste_copied_files(
     }
 }
 
+#[tauri::command]
+pub async fn paste_moved_files(
+    session_id: u64,
+    binding: Option<ConnectionIdentity>,
+    parent: String,
+    sequence: u32,
+    state: State<'_, DesktopState>,
+) -> Result<Vec<Ticket>, String> {
+    #[cfg(windows)]
+    {
+        let service = crate::session_service(
+            &state,
+            session_id,
+            binding.as_ref(),
+            ServiceRole::Files,
+            |s| s.moves.clone(),
+        )
+        .await?;
+        let snapshot = crate::windows_clipboard::snapshot().await?;
+        if snapshot.sequence != sequence {
+            return Err("The clipboard changed before Paste. Try again.".into());
+        }
+        let Some(RemoteClipboardSelection::Cut(cut)) = snapshot.remote else {
+            return Err("The clipboard no longer contains a cut item".into());
+        };
+        let claim = cut.prepare(session_id, &service, parent).map_err(error)?;
+        let registry = state.registry.lock().await;
+        registry
+            .sessions
+            .get(&session_id)
+            .ok_or("Host disconnected during preparation")?
+            .check_source(&ServiceRole::Files, binding.as_ref())?;
+        state
+            .transfers
+            .lock()
+            .await
+            .add_move(session_id, claim, cut.name.clone())
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = (session_id, binding, parent, sequence, state);
+        Err("Native file clipboard integration is unavailable on this platform".into())
+    }
+}
+
+#[tauri::command]
+pub async fn cancel_system_cut(session_id: u64, sequence: u32) -> Result<(), String> {
+    #[cfg(windows)]
+    {
+        let snapshot = crate::windows_clipboard::snapshot().await?;
+        if snapshot.sequence == sequence {
+            if let Some(RemoteClipboardSelection::Cut(cut)) = snapshot.remote {
+                cut.cancel(session_id).map_err(error)?;
+            }
+        }
+        Ok(())
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = (session_id, sequence);
+        Ok(())
+    }
+}
+
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Ticket {
@@ -163,6 +248,8 @@ pub struct Outcome {
     pub total: u64,
     pub message: Option<String>,
     pub path: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub relocation: Option<shellcanvas_services::FileRelocation>,
 }
 enum Job {
     DownloadSelection {
@@ -196,15 +283,21 @@ enum Job {
         revision: String,
     },
 }
+enum Work {
+    Transfer {
+        job: Job,
+        service: Arc<dyn FileTransferService>,
+    },
+    #[cfg(any(windows, test))]
+    Move(crate::clipboard_move::MoveClaim),
+}
 struct Pending {
     owner: u64,
-    service: Arc<dyn FileTransferService>,
-    job: Option<Job>,
+    work: Option<Work>,
     cancel: watch::Sender<bool>,
 }
 struct ClaimedTransfer {
-    job: Job,
-    service: Arc<dyn FileTransferService>,
+    work: Work,
     cancel: watch::Receiver<bool>,
     slots: Arc<Semaphore>,
 }
@@ -231,20 +324,50 @@ impl TransferRegistry {
         service: Arc<dyn FileTransferService>,
         jobs: Vec<(Job, String, u64, &'static str)>,
     ) -> Result<Vec<Ticket>, String> {
+        self.add_work(
+            owner,
+            jobs.into_iter()
+                .map(|(job, name, size, direction)| {
+                    (
+                        Work::Transfer {
+                            job,
+                            service: service.clone(),
+                        },
+                        name,
+                        size,
+                        direction,
+                    )
+                })
+                .collect(),
+        )
+    }
+    #[cfg(any(windows, test))]
+    fn add_move(
+        &mut self,
+        owner: u64,
+        claim: crate::clipboard_move::MoveClaim,
+        name: String,
+    ) -> Result<Vec<Ticket>, String> {
+        self.add_work(owner, vec![(Work::Move(claim), name, 0, "move")])
+    }
+    fn add_work(
+        &mut self,
+        owner: u64,
+        jobs: Vec<(Work, String, u64, &'static str)>,
+    ) -> Result<Vec<Ticket>, String> {
         if self.jobs.len() + jobs.len() > 32 {
             return Err("The transfer queue is full. Finish or cancel some files first.".into());
         }
         Ok(jobs
             .into_iter()
-            .map(|(job, name, size, direction)| {
+            .map(|(work, name, size, direction)| {
                 self.next += 1;
                 let id = self.next;
                 self.jobs.insert(
                     id,
                     Pending {
                         owner,
-                        service: service.clone(),
-                        job: Some(job),
+                        work: Some(work),
                         cancel: watch::channel(false).0,
                     },
                 );
@@ -263,10 +386,9 @@ impl TransferRegistry {
             .get_mut(&id)
             .filter(|p| p.owner == owner)
             .ok_or("Transfer is closed or belongs to another host")?;
-        let job = pending.job.take().ok_or("Transfer already started")?;
+        let work = pending.work.take().ok_or("Transfer already started")?;
         Ok(ClaimedTransfer {
-            job,
-            service: pending.service.clone(),
+            work,
             cancel: pending.cancel.subscribe(),
             slots: self.slots.clone(),
         })
@@ -276,7 +398,7 @@ impl TransferRegistry {
             if pending.owner != owner {
                 return Err("Transfer belongs to another host".into());
             }
-            if pending.job.is_some() {
+            if pending.work.is_some() {
                 self.jobs.remove(&id);
             } else {
                 pending.cancel.send_replace(true);
@@ -298,7 +420,7 @@ impl TransferRegistry {
                 return true;
             }
             p.cancel.send_replace(true);
-            p.job.is_none()
+            p.work.is_none()
         });
     }
 }
@@ -606,6 +728,7 @@ async fn prepare_clipboard(
     files: Vec<DownloadSource>,
     operation: String,
     on_event: Channel<Progress>,
+    cut: Option<Arc<crate::clipboard_move::CutSelection>>,
 ) -> Result<u32, String> {
     let sequence = crate::windows_file_input::sequence();
     let (stop, cancel) = watch::channel(false);
@@ -654,7 +777,10 @@ async fn prepare_clipboard(
         checkpoint(&cancel)?;
         state.registry.lock().await.sessions.get(&session).ok_or_else(|| anyhow::anyhow!("Host disconnected while preparing clipboard"))?
             .check_source(&ServiceRole::Files, binding.as_ref()).map_err(anyhow::Error::msg)?;
-        let remote = RemoteClipboardSelection { owner: session, service: service.clone(), catalog: catalog.clone() };
+        let remote = match cut {
+            Some(cut) => RemoteClipboardSelection::Cut(cut),
+            None => RemoteClipboardSelection::Copy { owner: session, service: service.clone(), catalog: catalog.clone() },
+        };
         let sources = crate::clipboard_stream::Sources::catalogs(vec![catalog], service, tokio::runtime::Handle::current());
         crate::windows_clipboard::publish_selection(sources, sequence, Some(remote)).await.map_err(anyhow::Error::msg)
     }.await;
@@ -686,6 +812,7 @@ pub async fn copy_system_files(
         files,
         operation.unwrap_or_else(|| uuid::Uuid::new_v4().to_string()),
         on_event,
+        None,
     )
     .await
 }
@@ -830,6 +957,25 @@ pub async fn cut_system_file(
     }
     #[cfg(windows)]
     {
+        let moves = crate::session_service(
+            &state,
+            session_id,
+            binding.as_ref(),
+            ServiceRole::Files,
+            |s| s.moves.clone(),
+        )
+        .await?;
+        let fs = crate::filesystem(&state, session_id, binding.as_ref()).await?;
+        let location = fs.locate(&path).await.map_err(error)?;
+        let parent = location.parent.ok_or("Cannot cut a filesystem root")?;
+        let cut = crate::clipboard_move::CutSelection::new(
+            session_id,
+            moves,
+            path.clone(),
+            revision.clone(),
+            location.name,
+        )
+        .map_err(error)?;
         if let Ok(service) = provider(&state, session_id, binding.as_ref()).await {
             let entry = service
                 .transfer_entry(&path, &revision)
@@ -843,14 +989,12 @@ pub async fn cut_system_file(
                     vec![DownloadSource { path, revision }],
                     operation.unwrap_or_else(|| uuid::Uuid::new_v4().to_string()),
                     on_event,
+                    Some(cut),
                 )
                 .await;
             }
         }
         let sequence = crate::windows_file_input::sequence();
-        let fs = crate::filesystem(&state, session_id, binding.as_ref()).await?;
-        let location = fs.locate(&path).await.map_err(error)?;
-        let parent = location.parent.ok_or("Cannot cut a filesystem root")?;
         if !fs
             .list(Some(&parent))
             .await
@@ -861,7 +1005,20 @@ pub async fn cut_system_file(
         {
             return Err("Selected item changed. Refresh and cut again".into());
         }
-        crate::windows_clipboard::publish(Vec::new(), sequence).await
+        state
+            .registry
+            .lock()
+            .await
+            .sessions
+            .get(&session_id)
+            .ok_or("Host disconnected while preparing clipboard")?
+            .check_source(&ServiceRole::Files, binding.as_ref())?;
+        crate::windows_clipboard::publish_selection(
+            Vec::new().into(),
+            sequence,
+            Some(RemoteClipboardSelection::Cut(cut)),
+        )
+        .await
     }
 }
 #[tauri::command]
@@ -1130,11 +1287,13 @@ pub async fn run_transfer(
     session_id: u64,
     transfer_id: u64,
     on_event: Channel<Progress>,
+    tracked: Option<Vec<String>>,
     state: State<'_, DesktopState>,
 ) -> Result<Outcome, String> {
+    #[cfg(not(any(windows, test)))]
+    let _ = tracked;
     let ClaimedTransfer {
-        job,
-        service,
+        work,
         mut cancel,
         slots,
     } = state
@@ -1155,27 +1314,36 @@ pub async fn run_transfer(
             permit = slots.acquire() => permit.context("Transfer scheduler closed")?,
             _ = cancel.changed() => bail!("Transfer canceled"),
         };
-        execute(job, service, &cancel, &mut |event| {
-            if event.phase != last.phase
-                || sent.elapsed().as_millis() >= 100
-                || event.bytes == event.total
-            {
-                let _ = on_event.send(event.clone());
-                sent = Instant::now();
+        match work {
+            #[cfg(any(windows, test))]
+            Work::Move(claim) => {
+                let relocation = claim.run(&cancel, &tracked.unwrap_or_default()).await?;
+                Ok((relocation.path.clone(), Some(relocation)))
             }
-            last = event;
-        })
-        .await
+            Work::Transfer { job, service } => execute(job, service, &cancel, &mut |event| {
+                if event.phase != last.phase
+                    || sent.elapsed().as_millis() >= 100
+                    || event.bytes == event.total
+                {
+                    let _ = on_event.send(event.clone());
+                    sent = Instant::now();
+                }
+                last = event;
+            })
+            .await
+            .map(|path| (path, None)),
+        }
     }
     .await;
     state.transfers.lock().await.jobs.remove(&transfer_id);
     Ok(match result {
-        Ok(path) => Outcome {
+        Ok((path, relocation)) => Outcome {
             status: "completed",
             bytes: last.bytes,
             total: last.total,
             message: None,
             path: Some(path),
+            relocation,
         },
         Err(error) => {
             let message = format!("{error:#}");
@@ -1189,6 +1357,7 @@ pub async fn run_transfer(
                 total: last.total,
                 message: Some(message),
                 path: None,
+                relocation: None,
             }
         }
     })

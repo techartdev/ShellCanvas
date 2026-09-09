@@ -53,7 +53,10 @@ Implemented means the stated behavior and platform, not completion of the goal.
 - [ ] **Public clipboard semantics:** Cut/move intent with authoritative outcomes,
       custom formats, cross-process exchange and interruptible native preparation.
       Preserve source identity, grants and cancellation ownership. A bundled Cut
-      pasted through the public API currently copies and retains the source. Verify
+      now pastes through the public API as a move with a native exclusive reservation,
+      provider identity checks and authoritative outcome handling. Native and SDK tests
+      cover cancellation, failed/abandoned dispatch and tracked relocation. Finish the
+      native GUI walkthrough, public Cut publication and multiple-item cuts. Verify
       live OS image/file interoperability separately from injected fixtures.
       Upload/Download chooser selections now use one catalog-backed batch without a
       fixed root-count limit; active jobs and streams remain bounded separately.

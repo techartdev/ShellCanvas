@@ -138,6 +138,8 @@ it("rejects every undeclared service before invoking a capable host", async () =
     scoped.renameEntry("file", "new", "rev"),
     scoped.removeEntry("file", "rev"),
     scoped.moveEntry("file", "target", "rev"),
+    scoped.pasteMovedFiles!("target", 1),
+    scoped.cancelSystemCut!(1),
     scoped.terminal(80, 24, () => {}),
     scoped.readHostSettings(),
     scoped.applyHostSetting("id", "value", "rev"),
@@ -291,6 +293,7 @@ it("owns transfer tickets per app and ignores caller-mutated ticket metadata", a
     1201,
     ticket.id,
     expect.any(Function),
+    undefined,
   );
   expect(ticket.direction).toBe("upload");
   expect(ticket.name).toBe("upload.bin");
