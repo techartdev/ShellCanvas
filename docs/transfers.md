@@ -10,7 +10,7 @@ Each Files window has a sequential queue with progress, cancellation, clearable 
 
 ## Service boundaries
 
-Native requests capture the original file-source identity. Returning from a picker revalidates it under the workspace lock before tickets are registered. Tickets retain that provider when queued, so starting a transfer cannot follow a later source replacement. A retired provider rejects I/O; the user must prepare a new transfer against the newly accepted source. Directory scans and Explorer's deferred streams likewise keep their captured provider. This does not yet expose independent source switching in the desktop UI.
+Native requests capture the original file-source identity. Returning from a picker revalidates it under the workspace lock before tickets are registered. Tickets retain that provider when queued, so starting a transfer cannot follow a later source replacement. A retired provider rejects I/O; the user must prepare a new transfer against the newly accepted source. Directory scans and Explorer's deferred streams likewise keep their captured provider. Independent file-source replacement is available in the desktop; the [connection UI checks](connection-ui-validation.md) verify that the console survives and committed cleanup warnings stay visible.
 
 ### Copy to folder
 
@@ -38,7 +38,7 @@ Native Rust owns local file dialogs, catalog metadata and active upload handles.
 - Cancellation is checked between bounded I/O operations. An outstanding SFTP request can delay cancellation until its result or timeout. Final publication is allowed to finish; a late cancellation cannot turn confirmed completion into a canceled result.
 - Failure/cancellation closes handles and removes owned temporary files. Cleanup errors report the relevant path. A lost publication acknowledgement is reported as uncertain: inspect the destination before retrying. Best-effort Drop cleanup helps with abandoned handles while the runtime is alive, but forced termination or loss of connectivity can leave a temporary file.
 
-Directories, recursive transfers, resume, automatic retry and overwrite confirmation are not implemented. The queue is in memory and does not survive app restart. Native pickers and filesystem behavior have been checked on Windows only; macOS/Linux/mobile remain separate validation gates. Permission-denied and physical-network interruption remain live integration gates.
+Folder upload, download and clipboard copy use the [incremental tree engine](system-clipboard.md#folder-transfers), preserving empty directories and streaming file contents. Resume, automatic retry and overwrite confirmation are not implemented. The queue is in memory and does not survive app restart. Native pickers and filesystem behavior have been checked on Windows only; macOS/Linux/mobile remain separate validation gates. The [unprivileged SFTP permission checks](permission-validation.md) pass; physical-network interruption and broader native GUI error paths remain separate gates.
 
 ## Verification
 
