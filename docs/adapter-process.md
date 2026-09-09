@@ -1,5 +1,9 @@
 # Native adapter process contract (provisional v1)
 
+Rust adapter authors can use the [standalone adapter SDK](adapter-sdk.md) for
+framing, concurrent request dispatch and cancellation instead of implementing
+the server loop themselves. Other languages can implement this same contract.
+
 `crates/adapter-runtime` can launch a separately compiled, trusted executable and consume its services without linking its protocol implementation into the host. It supplies version negotiation, service discovery, concurrent calls, cancellation, process teardown, and bridges to the existing `ConnectionLifecycle`, `FileSystemProvider` and `TerminalService` interfaces.
 
 The desktop provides [reviewed adapter installation and connection configuration](adapter-packages.md), independent file and console sources, custom-service routing into runtime app permissions and independent source replacement. The synthetic adapter implements neither FTP nor serial.

@@ -4202,10 +4202,21 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2 0.10.9",
+ "shellcanvas-adapter-sdk",
  "shellcanvas-services",
  "tempfile",
  "tokio",
  "uuid",
+]
+
+[[package]]
+name = "shellcanvas-adapter-sdk"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "serde",
+ "serde_json",
+ "tokio",
 ]
 
 [[package]]

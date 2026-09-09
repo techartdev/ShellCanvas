@@ -12,6 +12,7 @@
     "build:sdk": "npm run build --workspace @shellcanvas/app-sdk",
     "test:sdk": "npm run build:sdk && npm test --workspace @shellcanvas/app-sdk",
     "verify:sdk": "node scripts/verify-sdk.mjs",
+    "verify:adapter-sdk": "node scripts/verify-adapter-sdk.mjs",
     "dev": "vite --host 127.0.0.1",
     "build": "npm run build:sdk && tsc -b && vite build",
     "test": "vitest run",

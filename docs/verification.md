@@ -11,6 +11,11 @@ The default command runs the verification runner's failure-path checks, Rust for
 
 The separate `npm run verify:sdk` command packs and installs the SDK into fresh projects outside the repository and builds generated app fixtures. It may download build dependencies. See [the standalone SDK workflow and native fixture](app-sdk.md) for scope, retained temporary project locations and UI verification.
 
+`npm run verify:adapter-sdk` exports the Rust adapter SDK and builds/runs its
+example outside the checkout against the production host. It requires `tar` and
+cached Cargo dependencies. See [adapter SDK verification](adapter-sdk.md) for
+the report, scope and unfinished developer-kit deliverables.
+
 Commands run sequentially and stop on the first failure. Missing executables, signals and launch errors fail verification; later checks remain **not-run**. There is no automatic retry, format rewrite, dependency installation or live-host fallback. Fix the reported problem, then run the command again.
 
 Each invocation writes a unique JSON report under ignored `.local/verification/`, with tool versions, platform, command results, duration and source identity. Source fingerprints include HEAD, working-tree changes and untracked non-ignored files. A source change during the run makes the result fail. Avoid editing or committing during verification. A stopped run can leave a report marked running; that is incomplete evidence, never a pass. The report is a local diagnostic record, not a signed provenance attestation or a guarantee that ignored dependencies/build inputs were immutable.
