@@ -29,3 +29,18 @@ test = false
 name = "sdk-adapter"
 path = "../adapter-sdk/examples/echo.rs"
 test = false
+
+[[bin]]
+name = "sdk-files"
+path = "../adapter-sdk/examples/files.rs"
+test = false
+
+[[bin]]
+name = "sdk-console"
+path = "../adapter-sdk/examples/console.rs"
+test = false
+
+[[bin]]
+name = "sdk-settings"
+path = "../adapter-sdk/examples/settings.rs"
+test = false

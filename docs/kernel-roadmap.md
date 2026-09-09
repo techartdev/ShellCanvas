@@ -45,7 +45,7 @@ Implemented means the stated behavior and platform, not completion of the goal.
 | Adapter services         | Optional directory/text/file actions, streamed transfers, byte console, settings and custom services                                                       | [Process contract](adapter-process.md); production-host service/transfer tests                                                                           |
 | Composition              | Built-in SSH alongside installed adapters, explicit assignments, secret-free profiles, independent replacement and accepted app rebinding                  | [Bindings](workspace-bindings.md), [profiles](workspace-profiles.md); Windows fixture and loopback SSH test                                              |
 | Windows process lifetime | Suspended startup into an owned job, descendant termination and confirmed exits; retained assets after unconfirmed cleanup                                 | [Adapter lifecycle](adapter-process.md); real descendant and supervisor-termination tests                                                                |
-| Developer kit            | Independent TypeScript app and Rust adapter SDKs, schemas, app/custom-adapter generators, build/pack/validate commands and examples                        | [App SDK](app-sdk.md), [adapter SDK](adapter-sdk.md); exported packages built outside the checkout and installed through fixtures                        |
+| Developer kit            | Independent TypeScript app and Rust adapter SDKs, schemas, app/custom/standard-adapter generators, build/pack/validate commands and examples               | [App SDK](app-sdk.md), [adapter SDK](adapter-sdk.md); exported packages built outside the checkout and installed through fixtures                        |
 | AI skills                | Portable app, adapter and package lifecycle instructions with validated links and executed fresh-project workflows                                         | [AI development skills](ai-development-skills.md)                                                                                                        |
 
 ## Remaining implementation and integration gates
@@ -53,10 +53,10 @@ Implemented means the stated behavior and platform, not completion of the goal.
 - [ ] **Public clipboard semantics:** Cut/move intent with authoritative outcomes,
       custom formats, cross-process exchange and interruptible native preparation.
       Preserve source identity, grants and cancellation ownership. A bundled Cut
-  pasted through the public API currently copies and retains the source. Verify
-  live OS image/file interoperability separately from injected fixtures.
-  Upload/Download chooser selections now use one catalog-backed batch without a
-  fixed root-count limit; active jobs and streams remain bounded separately.
+      pasted through the public API currently copies and retains the source. Verify
+      live OS image/file interoperability separately from injected fixtures.
+      Upload/Download chooser selections now use one catalog-backed batch without a
+      fixed root-count limit; active jobs and streams remain bounded separately.
 - [ ] **Non-Windows adapter lifetime:** ordinary descendants on close,
       canceled/rejected startup, crash/protocol failure, dropped ownership and
       supervisor termination. Preserve unrelated processes and retain assets until
@@ -64,9 +64,13 @@ Implemented means the stated behavior and platform, not completion of the goal.
 - [ ] **Diagnostics and crash recovery:** bounded, useful adapter diagnostics
       without credentials/configuration leaks; recover stale staging resources
       without disturbing active generations.
-- [ ] **Standard-service starters:** independently buildable Files, Terminal and
+- [x] **Standard-service starters:** independently buildable Files, Terminal and
       Remote settings examples with discovery, cancellation, resource ownership and
-      production-host verification. The existing generator supplies custom services.
+      production-host verification. `init --template files|console|settings` selects
+      a synthetic service; omission retains custom echo/wait. The independent SDK
+      verifier builds and packages all four outside the checkout, checks source and
+      package schemas, and passes six standard-service tests against the production
+      host. See [starter behavior and evidence](adapter-sdk.md#standard-service-starters).
 - [ ] **Incremental native browsing:** the public API is paged, but its native
       browser listing still materializes a directory. Use provider cursors and
       cancellation without a total-tree/file cap. Transfers already use incremental

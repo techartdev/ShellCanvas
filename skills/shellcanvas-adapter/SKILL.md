@@ -36,7 +36,15 @@ shellcanvas-adapter build DEVICE_DIR NEW_PACKAGE_DIR --debug
 shellcanvas-adapter validate NEW_PACKAGE_DIR/adapter.json
 ```
 
-Replace the generated echo with the user's device implementation. Configuration
+For standard services append `--template files`, `--template console` or
+`--template settings` after `--sdk-source SDK_SOURCE_DIR`. The defaults remain
+custom echo/wait. Files demonstrates read-only paged inventory and opaque
+locations; console demonstrates cancelable byte loopback and independent
+session cleanup; settings demonstrates revision-checked updates and readback.
+Each generated README names the workspace role to assign. Do not claim these
+synthetic examples implement the user's actual protocol.
+
+Replace the generated service with the user's device implementation. Configuration
 belongs in the manifest's typed fields; use password fields for secrets and no
 secret defaults. Initialize from the configuration message, not process args.
 Rust adapters can implement `Adapter::initialize` and `Adapter::call`; other
@@ -65,7 +73,7 @@ sandbox adapter network/device access; keep that distinction in documentation.
 Test the implemented protocol with representative fixtures, including unsupported
 services, errors, cancellation and cleanup. `npm run verify:adapter-sdk` proves
 independent export, generation, packaging and production-host interoperability
-for the synthetic starter. The [adapter package guide](../../docs/adapter-packages.md)
+for all four synthetic starters. The [adapter package guide](../../docs/adapter-packages.md)
 documents the Windows install/connect/replacement fixture. Follow it for runtime
 integration; use a real device only within the user's authorized scope. Report
 which device/version, platform and failure paths were actually exercised.

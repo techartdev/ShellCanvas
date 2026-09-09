@@ -27,8 +27,25 @@ Omit `--debug` for a release build. Parent directories must already exist; the
 project and package output must be new directories. Builds reuse `Cargo.lock`
 once created. The generated project's SDK dependency points to the supplied
 source directory until an official registry release is available. Edit its
-`Cargo.toml` when moving that SDK. The starter exposes a custom echo service
-under your chosen ID; it does not claim Files or Terminal support.
+`Cargo.toml` when moving that SDK. By default the starter exposes a custom echo
+service under your chosen ID. Append `--template files`, `--template console` or
+`--template settings` after `--sdk-source SDK_DIR` for a standard service:
+
+- `files`: 300 read-only notes with opaque locations and stateless,
+  revision-bound pages. No writes or transfers are advertised.
+- `console`: concurrent byte loopback sessions with cancellation, bounded output
+  queues and idempotent retirement. No shell commands run; resize is unsupported.
+  Closed identities remain retired until process exit. When replacing synchronous
+  open with device setup, reserve before awaiting, then recheck retirement and
+  release late resources before returning.
+- `settings`: a synthetic mode field with revision-checked updates and verified
+  readback. State resets on reconnect. Real devices need their own comparison,
+  commit and confirmation semantics.
+
+These same runnable sources live in `examples/files.rs`, `examples/console.rs`
+and `examples/settings.rs`; `cargo build --examples` builds them with the SDK
+alone. The generated console project declares its Tokio dependency explicitly.
+Choose the generated role in workspace composition; missing roles stay disabled.
 
 Open ShellCanvas's Apps → Connection adapters → Install adapter and select the
 package's `adapter.json`. Review native-code trust. Add the installed source in
@@ -94,8 +111,9 @@ your implementation. Never put passwords in logs or public error messages.
 streams. `wire` is public for implementations in other languages and contract
 harnesses; this does not turn untrusted input into trusted device operations.
 
-The generated custom-service workflow and independent package installation are
-covered by the repository verification. Standard-service starter variants remain
-separate work. The repository distributes AI development skills for apps,
+The repository's `npm run verify:adapter-sdk` exports this SDK and builds,
+packages and validates all four generated variants outside the checkout, then
+exercises them through the production adapter host. The custom-service workflow
+also has Windows desktop installation evidence. The repository distributes AI development skills for apps,
 adapters and packaging. Actual device protocols and
 non-Windows native verification are not established by the synthetic examples.

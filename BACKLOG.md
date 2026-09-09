@@ -17,7 +17,7 @@ Prioritize a dependable working desktop over adding protocols or more bundled ap
 
 ## M1 — Extensible base (current)
 
-- [ ] **BASE-11 — System API and runtime extension core (active).** Shared dialogs and app services, runtime app/adapter packages, independent source replacement, public SDK/schema tooling and initial AI skills are implemented. Remaining clipboard semantics, platform/lifecycle work, standard-service starters, incremental browsing and integration gates are listed in [the kernel roadmap](docs/kernel-roadmap.md). Keep that complete checklist as the acceptance criteria.
+- [ ] **BASE-11 — System API and runtime extension core (active).** Shared dialogs and app services, runtime app/adapter packages, independent source replacement, public SDK/schema tooling and initial AI skills are implemented. Independent custom and standard-service starters are verified. Remaining clipboard semantics, platform/lifecycle work, incremental browsing and integration gates are listed in [the kernel roadmap](docs/kernel-roadmap.md). Keep that complete checklist as the acceptance criteria.
 
 - [x] **BASE-01 — Versioned bundled app registration.** Validate unique IDs, API version, scope, capabilities and layout. Derive initial apps from manifests. Gate: an app with a new ID can open without shell edits; invalid manifests fail clearly. Unit coverage and Host details provide the proof.
 - [x] **BASE-02 — Window lifecycle.** Keep minimized apps mounted; close unmounts them; dock reopens closed apps; maintain full focus order. Preserve toolbar/dock work area. Gate: three-app focus/minimize/close tests, browser walkthrough, frontend build. Files/Terminal now support multiple instances with unique identities and independent lifecycle.

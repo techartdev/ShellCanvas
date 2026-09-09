@@ -13,6 +13,20 @@ fn starter(root: &Path) -> std::path::PathBuf {
     project
 }
 #[test]
+fn unknown_template_does_not_create_a_project() {
+    let root = tempfile::tempdir().unwrap();
+    let project = root.path().join("unknown");
+    assert!(tools::create_template(
+        &project,
+        "example.device",
+        "Device",
+        Path::new(env!("CARGO_MANIFEST_DIR")),
+        "typo"
+    )
+    .is_err());
+    assert!(!project.exists());
+}
+#[test]
 fn generated_project_packages_binary_assets_and_preserves_existing_outputs() {
     let root = tempfile::tempdir().unwrap();
     let project = starter(root.path());

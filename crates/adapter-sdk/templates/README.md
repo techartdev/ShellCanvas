@@ -2,8 +2,9 @@
 
 This generated Rust project uses the separately supplied SDK source directory.
 Keep that directory available, or update the Cargo dependency when an official
-SDK release is published. The starting custom service echoes JSON and supports
-a cancelable wait. It does not contact a device.
+SDK release is published. This example does not contact a device.
+
+__TEMPLATE_INSTRUCTIONS__
 
 Implement your device connection in `src/main.rs`, add public configuration
 fields to `adapter.json`, and advertise only supported service methods. Password
@@ -24,9 +25,10 @@ directory; retry with a new destination. The manifest is written last.
 
 In ShellCanvas, open Apps → Connection adapters → Install adapter, choose the
 package's `adapter.json`, and review native-code trust. In the connection editor,
-add the installed adapter and assign its custom service ID under Additional
-services. It has no Files or Terminal capability until you implement those
-contracts. A compatible app requests `services.<your-service-id>` to call it.
+add the installed adapter and assign the role described above. Each example
+advertises only its implemented methods; unrelated desktop capabilities remain
+unavailable. You can combine it with other sources in one workspace. A custom
+service app requests `services.<your-service-id>` to call that service.
 
 For an update, change `version` in `adapter.json`, build a new package directory,
 and install it. Existing connections retain their original generation until

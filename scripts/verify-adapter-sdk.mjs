@@ -112,6 +112,52 @@ try {
     { SHELLCANVAS_SDK_ADAPTER_EXE: generatedExecutable },
   );
   report.checks.generatedHostInterop = true;
+  const standardEnvironment = {};
+  report.standardPackages = {};
+  for (const template of ["files", "console", "settings"]) {
+    const standardProject = join(root, `generated ${template}`);
+    const standardPackage = join(root, `packaged ${template}`);
+    run(root, cli, [
+      "init",
+      standardProject,
+      "--id",
+      `example.${template}`,
+      "--name",
+      `SDK ${template} device`,
+      "--sdk-source",
+      source,
+      "--template",
+      template,
+    ]);
+    run(root, cli, ["build", standardProject, standardPackage, "--debug"], {
+      CARGO_NET_OFFLINE: "true",
+    });
+    run(root, cli, ["validate", join(standardPackage, "adapter.json")]);
+    checkAdapterSchemas(source, standardProject, standardPackage);
+    const manifest = JSON.parse(
+      readFileSync(join(standardPackage, "adapter.json"), "utf8"),
+    );
+    standardEnvironment[`SHELLCANVAS_SDK_${template.toUpperCase()}_EXE`] = join(
+      standardPackage,
+      manifest.entrypoint,
+    );
+    report.standardPackages[template] = join(standardPackage, "adapter.json");
+  }
+  report.checks.standardProjectsPackaged = true;
+  run(
+    repo,
+    "cargo",
+    [
+      "test",
+      "-p",
+      "shellcanvas-adapter-runtime",
+      "--test",
+      "sdk_standard",
+      "--locked",
+    ],
+    standardEnvironment,
+  );
+  report.checks.standardHostInterop = true;
   report.success = true;
 } catch (error) {
   report.error = String(error);

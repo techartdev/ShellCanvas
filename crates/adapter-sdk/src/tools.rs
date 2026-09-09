@@ -208,6 +208,25 @@ pub fn validate(path: &Path) -> Result<Manifest> {
 
 /// Generate a new Rust adapter project which consumes an independently supplied SDK.
 pub fn create(directory: &Path, id: &str, name: &str, sdk_source: &Path) -> Result<()> {
+    create_template(directory, id, name, sdk_source, "custom")
+}
+
+/// Select a runnable, independently buildable service example. Unknown names
+/// fail before creating any project files.
+pub fn create_template(
+    directory: &Path,
+    id: &str,
+    name: &str,
+    sdk_source: &Path,
+    template: &str,
+) -> Result<()> {
+    let (source, extra_dependencies, instructions) = match template {
+        "custom" => (include_str!("../templates/main.rs.txt"), "", "Assign your adapter ID under Additional services. The custom service echoes JSON and has a cancelable wait."),
+        "files" => (include_str!("../examples/files.rs"), "", "Assign Files to this source. Browse 300 immutable notes and open them read-only. Cursors are stateless and revision-bound; locations are opaque. Writes and transfers are deliberately not advertised."),
+        "console" => (include_str!("../examples/console.rs"), "tokio = { version = \"1\", features = [\"sync\", \"time\", \"macros\"] }\n", "Assign Terminal to this source. Input is echoed as bytes; no shell commands are executed. Each session has a bounded output queue and independent cleanup. Resize is not advertised. Retired identities are retained until this process exits so late opens cannot revive a closed console. For asynchronous device setup, reserve the identity before awaiting and recheck retirement before publishing it."),
+        "settings" => (include_str!("../examples/settings.rs"), "", "Assign Remote settings to this source. Change Demo mode between normal and quiet. Compare-and-commit revisions and verified readback protect concurrent edits. State is synthetic and resets on reconnect; a real device must provide its own conflict and confirmation semantics."),
+        _ => bail!("Unknown template; choose custom, files, console or settings"),
+    };
     if !crate::wire::name(id)
         || !id.contains('.')
         || id.starts_with("system.")
@@ -222,8 +241,8 @@ pub fn create(directory: &Path, id: &str, name: &str, sdk_source: &Path) -> Resu
     }
     let sdk_path = sdk.to_str().context("SDK source path must be UTF-8")?;
     let cargo = format!("[package]\nname = \"shellcanvas-device\"\nversion = \"0.1.0\"\nedition = \"2021\"\nlicense = \"MPL-2.0\"\n\n[workspace]\n\n[dependencies]\nshellcanvas-adapter-sdk = {{ version = \"0.1.0\", path = {} }}\n", serde_json::to_string(sdk_path)?);
-    let code =
-        include_str!("../templates/main.rs.txt").replace("__SERVICE_LITERAL__", &format!("{id:?}"));
+    let cargo = format!("{cargo}{extra_dependencies}");
+    let code = source.replace("__SERVICE_LITERAL__", &format!("{id:?}"));
     let manifest = json!({"schemaVersion":1,"id":id,"name":name,"version":"0.1.0","description":"A generated synthetic adapter. Replace its services with your device implementation.","platform":"current","entrypoint":"bin/shellcanvas-device{exe}","files":[{"path":"bin/shellcanvas-device{exe}","executable":true}],"configuration":[]});
     fs::create_dir(directory).context("Starter generation requires a new directory")?;
     fs::create_dir(directory.join("src"))?;
@@ -235,7 +254,7 @@ pub fn create(directory: &Path, id: &str, name: &str, sdk_source: &Path) -> Resu
     )?;
     fs::write(
         directory.join("README.md"),
-        include_str!("../templates/README.md"),
+        include_str!("../templates/README.md").replace("__TEMPLATE_INSTRUCTIONS__", instructions),
     )?;
     fs::write(directory.join(".gitignore"), "/target/\n/packages/\n")?;
     Ok(())

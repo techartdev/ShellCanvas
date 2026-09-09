@@ -31,8 +31,11 @@ All three entrypoints pass the skill-creator validator, and their linked files
 exist. Their SDK commands were followed using fresh projects outside the checkout:
 the app tarball produced buildable/validated starter and lifecycle packages; the
 adapter archive produced a CLI, generated project and validated native package.
-Both adapter executables passed production-host process tests. The exported
-schemas accepted the artifacts and rejected invalid fields/defaults.
+The adapter workflow now also generates independent Files, console and Remote
+settings packages with the documented `--template` options. All four variants
+pass production-host process tests, including six standard-service checks for
+paging, revisions, cancellation and resource ownership. The exported schemas
+accept the artifacts and reject invalid fields/defaults.
 
 The generated app passed eight Windows interaction checks for installation,
 shared message/Open/Save dialogs, saved text, local storage and dirty-close/draft
