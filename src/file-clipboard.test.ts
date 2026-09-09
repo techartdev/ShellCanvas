@@ -143,6 +143,63 @@ it("cancel cut retires the native intent and retains a failed cancellation for e
     binding.dispose();
   }
 });
+it("late cancellation of an older cut cannot unlock or restore it over a newer native paste", async () => {
+  for (const fail of [false, true]) {
+    let finishCancel!: () => void;
+    let finishMove!: (result: import("./sdk").TransferOutcome) => void;
+    const cancelSystemCut = vi.fn(
+      () =>
+        new Promise<void>((resolve, reject) => {
+          finishCancel = () =>
+            fail ? reject(new Error("old cancellation failed")) : resolve();
+        }),
+    );
+    const runTransfer = vi.fn(
+      () =>
+        new Promise<import("./sdk").TransferOutcome>((resolve) => {
+          finishMove = resolve;
+        }),
+    );
+    const binding = bindSession(
+      {
+        ...previewServices,
+        cancelSystemCut,
+        runTransfer,
+        pasteMovedFiles: async () => [
+          { id: 94, direction: "move", name: "new cut", size: 0 },
+        ],
+      },
+      session(fail ? 1197 : 1196),
+    );
+    try {
+      const clipboard = fileClipboard(binding.services);
+      clipboard.cut(source, "folder@old");
+      clipboard.syncSystem(10);
+      clipboard.clear();
+      await vi.waitFor(() => expect(cancelSystemCut).toHaveBeenCalledOnce());
+      const paste = clipboard.pasteSystem("folder@target", 11);
+      await vi.waitFor(() => expect(runTransfer).toHaveBeenCalledOnce());
+      finishCancel();
+      // Drain both promise layers used by cancellation and its failure handler.
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(clipboard.snapshot()).toMatchObject({
+        item: null,
+        working: true,
+        error: "",
+      });
+      finishMove({
+        status: "completed",
+        bytes: 0,
+        total: 0,
+        path: "new@target",
+      });
+      expect(await paste).toBe("new@target");
+      expect(clipboard.snapshot().working).toBe(false);
+    } finally {
+      binding.dispose();
+    }
+  }
+});
 it("prepares large immutable selections as one native job and releases a stale batch", async () => {
   const prepareCopySelection = vi.fn(
     async (
@@ -376,6 +433,7 @@ it("keeps a failed cut available for an explicit retry, with the original revisi
     item: null,
     working: false,
     error: "",
+    cleanupPending: false,
   });
   binding.dispose();
 });

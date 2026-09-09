@@ -70,10 +70,22 @@ unacknowledged dispatched move is never replayed; refresh and explicitly cut aga
 after checking the destination. Confirmed relocations update tracked desktop
 folders and editor locations. A busy editor/transfer blocks the move before dispatch.
 
+If that blocked start cannot release its native reservation, the ticket remains
+owned for cleanup only. The SDK's `run()` reports the failed operation, while
+`status()` remains `cancel-failed` without a terminal `result` until cleanup is
+confirmed. `cancel()` or `close()` retries release without running the move again.
+The desktop keeps its busy/close guard and host cleanup retry action, including
+after the app disappears. Bundled Files shows **Retry cleanup** for the same case.
+Late cancellation responses from an older cut cannot unlock or restore it over
+a newer clipboard operation.
+
 Native unit tests cover reservation ownership, move-only providers, late cancellation,
 provider errors/panics and abandoned operations. SDK/broker/session tests cover grants,
-stale binding cleanup and relocation tracking. This change still needs a native GUI
-walkthrough; those tests do not establish new Explorer/Finder interoperability.
+stale binding cleanup and relocation tracking. The Windows native desktop fixture
+passes 88 checks at both 1360×900 and 800×900, including bundled Cut into an installed app, move-grant
+denial, failed reservation cleanup, retry controls and close guards. It runs the
+real app frame/SDK/broker/UI with synthetic host and clipboard services. This does
+not establish new Explorer/Finder interoperability.
 Public Cut publication, multiple-item cuts and moves across processes remain open.
 
 ```ts

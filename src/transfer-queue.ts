@@ -5,6 +5,7 @@ import type {
   TransferProgress,
   TransferTicket,
 } from "./sdk";
+import { TransferCleanupError } from "./transfer-errors";
 export interface TransferRow extends TransferTicket {
   status:
     | "queued"
@@ -85,7 +86,11 @@ export class TransferQueue {
       );
       this.update(row.id, result);
     } catch (error) {
-      this.update(row.id, { status: "failed", message: String(error) });
+      this.update(row.id, {
+        status:
+          error instanceof TransferCleanupError ? "cancel-failed" : "failed",
+        message: String(error),
+      });
     } finally {
       this.running = null;
       void this.pump();

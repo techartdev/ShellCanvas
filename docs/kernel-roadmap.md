@@ -55,8 +55,10 @@ Implemented means the stated behavior and platform, not completion of the goal.
       Preserve source identity, grants and cancellation ownership. A bundled Cut
       now pastes through the public API as a move with a native exclusive reservation,
       provider identity checks and authoritative outcome handling. Native and SDK tests
-      cover cancellation, failed/abandoned dispatch and tracked relocation. Finish the
-      native GUI walkthrough, public Cut publication and multiple-item cuts. Verify
+      cover cancellation, failed/abandoned dispatch and tracked relocation. The 88-check
+      Windows desktop fixture covers bundled Cut into installed apps, move-grant denial
+      and cleanup failure/retry with retained close guards. Finish public Cut publication
+      and multiple-item cuts. Verify
       live OS image/file interoperability separately from injected fixtures.
       Upload/Download chooser selections now use one catalog-backed batch without a
       fixed root-count limit; active jobs and streams remain bounded separately.
@@ -124,7 +126,7 @@ are in [runtime apps](runtime-apps.md) and [adapter packages](adapter-packages.m
 
 Windows code checkpoint `ddbb580` passed 225 frontend tests, 146 Rust tests with
 two intentional live probes ignored, SDK checks, formatting, Clippy and the normal
-desktop build. Current Windows integration records cover 80 installed-app checks,
+desktop build. Current Windows integration records cover 88 installed-app checks,
 71 adapter checks, 11 two-process catalog checks and eight generated-SDK app
 checks. Their individual scopes and revisions matter; synthetic clipboard and
 provider fixtures are not live-device evidence.

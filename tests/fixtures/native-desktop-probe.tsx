@@ -19,6 +19,7 @@ import type {
   ServiceMethodInfo,
 } from "../../src/extensions/environment-api";
 import { previewServices, previewSession } from "../../src/preview";
+import { watchFileLocations } from "../../src/file-events";
 import type {
   Session,
   FileEntry,
@@ -49,6 +50,10 @@ let fileClipboardState: import("../../src/sdk").ClipboardFileState = {
 };
 let remoteClipboardOwner: number | undefined;
 let sharedClipboardPastes = 0;
+let sharedClipboardMoves = 0;
+let cutPublications = 0;
+let cutPath = "";
+let cutReservation: number | undefined;
 const sharedClipboardJobs = new Set<number>();
 let fileClipboardWrites = 0;
 let heldFileExport: (() => void) | undefined;
@@ -227,6 +232,41 @@ const services = {
   },
   systemFileClipboard: true,
   inspectSystemFiles: async () => ({ ...fileClipboardState }),
+  cutToSystem: async (id: number, path: string, revision: string) => {
+    if (!path.endsWith("/welcome.md") || revision !== "fixture-preview")
+      throw new Error("Invalid synthetic Cut source");
+    remoteClipboardOwner = id;
+    cutPath = path;
+    cutPublications++;
+    cutReservation = undefined;
+    fileClipboardState = {
+      kind: "remote",
+      intent: "move",
+      sequence: fileClipboardState.sequence + 1,
+    };
+    return fileClipboardState.sequence;
+  },
+  cancelSystemCut: async (id: number, sequence: number) => {
+    if (id !== remoteClipboardOwner || sequence !== fileClipboardState.sequence)
+      throw new Error("Wrong Cut owner");
+    if (cutReservation !== undefined)
+      throw new Error("Release the reservation first");
+    fileClipboardState = { ...fileClipboardState, kind: "empty" };
+  },
+  pasteMovedFiles: async (id: number, parent: string, sequence: number) => {
+    if (
+      !parent ||
+      id !== remoteClipboardOwner ||
+      fileClipboardState.kind !== "remote" ||
+      fileClipboardState.intent !== "move" ||
+      sequence !== fileClipboardState.sequence ||
+      cutReservation !== undefined
+    )
+      throw new Error("Cut selection is changed or already reserved");
+    const ticket = transferTicket("move");
+    cutReservation = ticket.id;
+    return [ticket];
+  },
   pasteCopiedFiles: async (id: number, parent: string, sequence: number) => {
     if (
       !parent ||
@@ -327,6 +367,30 @@ const services = {
     transferRuns++;
     onProgress({ bytes: 60, total: 100, phase: "running" });
     try {
+      if (ticket.direction === "move") {
+        sharedClipboardMoves++;
+        cutReservation = undefined;
+        fileClipboardState = { ...fileClipboardState, kind: "empty" };
+        return {
+          status: "completed",
+          bytes: 0,
+          total: 0,
+          path: "fixture:shared-moved",
+          relocation: {
+            path: "fixture:shared-moved",
+            locations: [
+              {
+                previous: cutPath,
+                location: {
+                  path: "fixture:shared-moved",
+                  parent: "fixture:shared-target",
+                  name: "welcome.md",
+                },
+              },
+            ],
+          },
+        };
+      }
       return ticket.direction === "copy" && !sharedClipboardJobs.has(id)
         ? await new Promise<TransferOutcome>((resolve) => {
             heldTransfer = resolve;
@@ -352,6 +416,7 @@ const services = {
     transferCancellations++;
     // Acknowledging a running cancellation does not undo completed publication.
     transferTickets.delete(id);
+    if (id === cutReservation) cutReservation = undefined;
   },
   makeDirectory: async (_id: number, parent: string, name: string) => {
     if (actionEntries.has("fixture:folder"))
@@ -1206,6 +1271,111 @@ async function run() {
   checks.bundledToSdkFileClipboard =
     (await ask(first, "file-shared-paste")).fileClipboard?.completed === true &&
     sharedClipboardPastes === 3;
+  const publishCut = async () => {
+    const before = cutPublications;
+    const row = await until(
+      () =>
+        [...bundledFiles.querySelectorAll<HTMLElement>(".file-row")].find(
+          (item) => item.textContent?.includes("welcome.md"),
+        ),
+      "Cut source row",
+    );
+    row.click();
+    await until(() => row.classList.contains("active"), "Cut selection");
+    bundledFiles.dispatchEvent(
+      new Event("cut", { bubbles: true, cancelable: true }),
+    );
+    await until(
+      () =>
+        cutPublications > before &&
+        !!bundledFiles.querySelector<HTMLButtonElement>(
+          'button[aria-label="Cancel cut"]',
+        ) &&
+        !bundledFiles.querySelector<HTMLButtonElement>(
+          'button[aria-label="Cancel cut"]',
+        )?.disabled,
+      "Cut publication",
+    );
+  };
+  await publishCut();
+  const unblockMove = watchFileLocations(remoteClipboardOwner!, {
+    snapshot: () => ({ paths: ["fixture:busy-draft"], busy: true }),
+    pending() {},
+    relocated() {},
+  });
+  failTransferCleanup = true;
+  const blockedMove = (await ask(first, "file-move-blocked")).fileClipboard;
+  checks.sdkCutCleanupOwned =
+    blockedMove?.cleanupPending === true &&
+    cutReservation !== undefined &&
+    sharedClipboardMoves === 0;
+  checks.sdkCutCleanupCloseGuard =
+    closeTransferWindow().disabled &&
+    (await ask(first, "window-close")).windowError === "busy";
+  checks.sdkCutCleanupRetryFailure =
+    (await ask(first, "file-move-close-failed")).fileClipboard?.retained ===
+      true && closeTransferWindow().disabled;
+  failTransferCleanup = false;
+  checks.sdkCutCleanupRetry =
+    (await ask(first, "file-move-close")).fileClipboard?.released === true;
+  await until(
+    () => !closeTransferWindow().disabled && transferTickets.size === 0,
+    "Cut cleanup releases app guard",
+  );
+  failTransferCleanup = true;
+  const destinationFolder = await until(
+    () =>
+      [...bundledFiles.querySelectorAll<HTMLElement>(".file-row")].find((row) =>
+        row.textContent?.includes("Documents"),
+      ),
+    "move destination folder",
+  );
+  destinationFolder.dispatchEvent(
+    new MouseEvent("dblclick", { bubbles: true }),
+  );
+  await until(
+    () =>
+      bundledFiles.querySelector<HTMLHeadingElement>("h2")?.textContent ===
+      "Documents",
+    "move destination opened",
+  );
+  bundledFiles.dispatchEvent(
+    new Event("paste", { bubbles: true, cancelable: true }),
+  );
+  const retryMoveCleanup = await until(
+    () =>
+      bundledFiles.querySelector<HTMLButtonElement>(
+        'button[aria-label="Retry clipboard cleanup"]',
+      ),
+    "bundled Cut cleanup retry action",
+  );
+  checks.bundledCutCleanupVisible =
+    bundledFiles.textContent!.includes("Clipboard cleanup required") &&
+    !retryMoveCleanup.disabled &&
+    cutReservation !== undefined;
+  failTransferCleanup = false;
+  retryMoveCleanup.click();
+  await until(
+    () =>
+      transferTickets.size === 0 &&
+      !bundledFiles.querySelector('[aria-label="Retry clipboard cleanup"]'),
+    "bundled Cut cleanup confirmed",
+  );
+  checks.bundledCutCleanupRetry =
+    cutReservation === undefined && sharedClipboardMoves === 0;
+  unblockMove();
+  await publishCut();
+  checks.sdkCutMoveGrantDenied =
+    (await ask(second, "file-move-denied")).fileClipboard?.denied === true &&
+    sharedClipboardMoves === 0;
+  checks.bundledCutToSdkMove =
+    (await ask(first, "file-shared-move")).fileClipboard?.completed === true &&
+    sharedClipboardMoves === 1 &&
+    transferTickets.size === 0;
+  await until(
+    () => !bundledFiles.querySelector(".file-cut-bar"),
+    "confirmed move clears bundled Cut indicator",
+  );
   const secondEnvironment = await ask(second, "environment");
   const deniedFiles = (await ask(second, "files-denied")).files;
   checks.sdkFileGrantDenied = deniedFiles?.rejected === true;

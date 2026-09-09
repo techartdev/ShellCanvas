@@ -5,6 +5,7 @@ import { RpcPeer, type RpcTransport } from "./rpc";
 import { appTransferClient } from "../../packages/app-sdk/src/transfer-client";
 import { appClipboardClient } from "../../packages/app-sdk/src/clipboard-client";
 import type { TransferOutcome, TransferProgress, TransferTicket } from "../sdk";
+import { TransferCleanupError } from "../transfer-errors";
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
@@ -129,6 +130,40 @@ function setup(grants = ["files.upload", "files.download", "files.copy"]) {
     },
   };
 }
+it("rechecks retained cleanup when a blocked start settles after close requested cancellation", async () => {
+  const t = setup(["files.move", "system.clipboard.files.read"]);
+  let rejectRun!: (error: Error) => void;
+  try {
+    t.services.inspectSystemFiles = async () => ({
+      kind: "remote",
+      intent: "move",
+      sequence: 93,
+    });
+    t.services.runTransfer.mockImplementationOnce(
+      () =>
+        new Promise((_resolve, reject) => {
+          rejectRun = reject;
+        }),
+    );
+    const [job] = await t.api.pasteClipboard(destination);
+    const running = job.run();
+    await vi.waitFor(() =>
+      expect(t.services.runTransfer).toHaveBeenCalledOnce(),
+    );
+    const closing = job.close();
+    await vi.waitFor(() =>
+      expect(t.services.cancelTransfer).toHaveBeenCalledOnce(),
+    );
+    rejectRun(new TransferCleanupError("Blocked move cleanup still pending"));
+    expect(await running).toMatchObject({ status: "failed" });
+    await closing;
+    expect(t.services.cancelTransfer).toHaveBeenCalledTimes(2);
+    expect(t.services.runTransfer).toHaveBeenCalledOnce();
+    expect(t.busy).toHaveBeenLastCalledWith(false);
+  } finally {
+    t.close();
+  }
+});
 it("preserves cut intent through the SDK and requires move permission without falling back to copy", async () => {
   const allowed = setup(["files.move", "system.clipboard.files.read"]);
   const denied = setup([

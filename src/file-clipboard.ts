@@ -5,6 +5,7 @@ import type {
   SessionServices,
   TransferTicket,
 } from "./sdk";
+import { TransferCleanupError } from "./transfer-errors";
 
 export interface CutItem {
   readonly entry: Readonly<FileEntry>;
@@ -15,6 +16,7 @@ interface Snapshot {
   readonly copies?: readonly CutItem[];
   readonly item: CutItem | null;
   readonly working: boolean;
+  readonly cleanupPending?: boolean;
   readonly error: string;
 }
 
@@ -25,6 +27,7 @@ class FileClipboard {
   private generation = 0;
   private preparation = 0;
   private active = true;
+  private pendingMoveCleanup = new Set<number>();
   constructor(private services: SessionServices) {}
   snapshot = () => this.state;
   syncSystem(sequence: number) {
@@ -37,7 +40,7 @@ class FileClipboard {
     };
   };
   private publish(state: Snapshot) {
-    this.state = state;
+    this.state = { ...state, cleanupPending: this.pendingMoveCleanup.size > 0 };
     this.listeners.forEach((listener) => listener());
   }
   activate() {
@@ -157,17 +160,59 @@ class FileClipboard {
     if (!this.state.working) {
       const { item, systemSequence } = this.state;
       const generation = ++this.generation;
-      this.publish({ item: null, working: false, error: "" });
-      if (item && systemSequence !== undefined && this.services.cancelSystemCut)
-        void this.services.cancelSystemCut(systemSequence).catch((error) => {
+      const cleanup = this.pendingMoveCleanup.size > 0;
+      this.publish({ item: null, working: cleanup, error: "" });
+      if (
+        cleanup ||
+        (item && systemSequence !== undefined && this.services.cancelSystemCut)
+      )
+        void (async () => {
+          await this.releaseMoves();
+          if (item && systemSequence !== undefined)
+            await this.services.cancelSystemCut?.(systemSequence);
+          if (cleanup && this.active && this.generation === generation)
+            this.publish({ ...this.state, working: false });
+        })().catch((error) => {
           if (this.active && this.generation === generation)
             this.publish({
               ...this.state,
               item,
               systemSequence,
+              working: false,
               error: `Could not cancel the system cut: ${error}`,
             });
         });
+    }
+  }
+  private async releaseMoves() {
+    for (const id of this.pendingMoveCleanup) {
+      await this.services.cancelTransfer(id);
+      this.pendingMoveCleanup.delete(id);
+    }
+  }
+  private async nativeMove(parent: string, sequence: number): Promise<string> {
+    await this.releaseMoves();
+    const tickets = await this.services.pasteMovedFiles!(parent, sequence);
+    for (const ticket of tickets) this.pendingMoveCleanup.add(ticket.id);
+    if (tickets.length !== 1 || tickets[0].direction !== "move") {
+      await this.releaseMoves();
+      throw new Error("Invalid clipboard move preparation");
+    }
+    const ticket = tickets[0];
+    let keepForCleanup = false;
+    try {
+      const outcome = await this.services.runTransfer(ticket, () => {});
+      if (outcome.status !== "completed" || !outcome.path)
+        throw new Error(
+          outcome.message ||
+            "Move did not complete. Refresh before cutting again.",
+        );
+      return outcome.path;
+    } catch (error) {
+      keepForCleanup = error instanceof TransferCleanupError;
+      throw error;
+    } finally {
+      if (!keepForCleanup) this.pendingMoveCleanup.delete(ticket.id);
     }
   }
   removed(path: string) {
@@ -227,35 +272,29 @@ class FileClipboard {
     if (working) throw new Error("A clipboard move is already running.");
     if (!parent || parent === item.parent || parent === item.entry.path)
       throw new Error("Choose a different destination folder.");
-    const generation = this.generation;
-    this.publish({ item, working: true, error: "", systemSequence });
+    return this.performMove(() =>
+      systemSequence !== undefined && this.services.pasteMovedFiles
+        ? this.nativeMove(parent, systemSequence)
+        : this.services.moveEntry(
+            item.entry.path,
+            parent,
+            item.entry.revision!,
+          ),
+    );
+  }
+  async pasteSystem(parent: string, sequence: number): Promise<string> {
+    if (!this.services.pasteMovedFiles)
+      throw new Error("Native clipboard moves are unavailable");
+    return this.performMove(() => this.nativeMove(parent, sequence));
+  }
+  private async performMove(run: () => Promise<string>): Promise<string> {
+    if (!this.active) throw new Error("Workspace clipboard is closed");
+    if (this.state.working)
+      throw new Error("A clipboard operation is already running");
+    const generation = ++this.generation;
+    this.publish({ ...this.state, working: true, error: "" });
     try {
-      let result: string;
-      if (systemSequence !== undefined && this.services.pasteMovedFiles) {
-        const tickets = await this.services.pasteMovedFiles(
-          parent,
-          systemSequence,
-        );
-        if (tickets.length !== 1 || tickets[0].direction !== "move") {
-          await Promise.all(
-            tickets.map((ticket) => this.services.cancelTransfer(ticket.id)),
-          );
-          throw new Error("Invalid clipboard move preparation");
-        }
-        const outcome = await this.services.runTransfer(tickets[0], () => {});
-        if (outcome.status !== "completed" || !outcome.path)
-          throw new Error(
-            outcome.message ||
-              "Move did not complete. Refresh before cutting again.",
-          );
-        result = outcome.path;
-      } else {
-        result = await this.services.moveEntry(
-          item.entry.path,
-          parent,
-          item.entry.revision!,
-        );
-      }
+      const result = await run();
       if (!this.active || this.generation !== generation)
         throw new Error(
           "Connection changed before the move was confirmed. Verify the destination before retrying.",

@@ -312,9 +312,20 @@ export function Files({
   useEffect(() => {
     setDocumentState?.({
       dirty: false,
-      busy: busy || transferBusy || relocating || cutState.working,
+      busy:
+        busy ||
+        transferBusy ||
+        relocating ||
+        cutState.working ||
+        cutState.cleanupPending === true,
     });
-  }, [busy, transferBusy, relocating, cutState.working]);
+  }, [
+    busy,
+    transferBusy,
+    relocating,
+    cutState.working,
+    cutState.cleanupPending,
+  ]);
   const [error, setError] = useState("");
   const [document, setDocument] = useState<{
     name: string;
@@ -612,14 +623,9 @@ export function Files({
                 throw new Error(
                   "This host does not support moving the cut item.",
                 );
-              const tickets = await services.pasteMovedFiles(parent, sequence);
               // Run directly: a queued transfer would mark this view busy and
               // prevent the shared relocation guard from following its paths.
-              for (const ticket of tickets) {
-                const outcome = await services.runTransfer(ticket, () => {});
-                if (outcome.status !== "completed")
-                  throw new Error(outcome.message || "Move did not complete");
-              }
+              await cutClipboard.pasteSystem(parent, sequence);
               return;
             }
             if (
@@ -1560,7 +1566,10 @@ export function Files({
             />
           </label>
         </div>
-        {(cutState.item || cutState.copies?.length || cutState.working) && (
+        {(cutState.item ||
+          cutState.copies?.length ||
+          cutState.working ||
+          cutState.cleanupPending) && (
           <div className="file-cut-bar" role="status">
             {cutState.working || preparingClipboard ? (
               <LoaderCircle size={15} className="spin" />
@@ -1571,15 +1580,19 @@ export function Files({
             )}
             <div className="file-cut-description">
               <strong>
-                {preparingClipboard
-                  ? "Preparing clipboard…"
-                  : cutState.working
-                    ? cutState.copies?.length
-                      ? "Preparing copies…"
-                      : "Moving item…"
-                    : cutState.copies?.length
-                      ? `Ready to copy · ${cutState.copies.length} ${cutState.copies.length === 1 ? "file" : "files"}`
-                      : `Ready to move · ${cutState.item!.entry.name}`}
+                {cutState.cleanupPending
+                  ? cutState.working
+                    ? "Releasing clipboard…"
+                    : "Clipboard cleanup required"
+                  : preparingClipboard
+                    ? "Preparing clipboard…"
+                    : cutState.working
+                      ? cutState.copies?.length
+                        ? "Preparing copies…"
+                        : "Moving item…"
+                      : cutState.copies?.length
+                        ? `Ready to copy · ${cutState.copies.length} ${cutState.copies.length === 1 ? "file" : "files"}`
+                        : `Ready to move · ${cutState.item!.entry.name}`}
               </strong>
               {cutState.item && (
                 <span title={cutState.item.entry.path}>
@@ -1594,21 +1607,31 @@ export function Files({
               </button>
             )}
             <button
-              disabled={!canPasteInto(directory.path)}
+              disabled={
+                cutState.cleanupPending || !canPasteInto(directory.path)
+              }
               onClick={() => void pasteInto(directory.path)}
             >
               <ClipboardPaste size={14} /> Paste here
             </button>
             <button
-              className="icon-button"
+              className={cutState.cleanupPending ? undefined : "icon-button"}
               aria-label={
-                cutState.copies?.length ? "Clear copied files" : "Cancel cut"
+                cutState.cleanupPending
+                  ? "Retry clipboard cleanup"
+                  : cutState.copies?.length
+                    ? "Clear copied files"
+                    : "Cancel cut"
               }
-              title="Clear file clipboard · Esc"
+              title={
+                cutState.cleanupPending
+                  ? "Retry releasing the clipboard reservation"
+                  : "Clear file clipboard · Esc"
+              }
               disabled={cutState.working || preparingClipboard}
               onClick={() => cutClipboard.clear()}
             >
-              <X size={15} />
+              {cutState.cleanupPending ? "Retry cleanup" : <X size={15} />}
             </button>
           </div>
         )}

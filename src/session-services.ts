@@ -17,6 +17,7 @@ import { notifyFileChanges, beginFileRelocation } from "./file-events";
 import { fileClipboard } from "./file-clipboard";
 import { RpcError } from "./extensions/rpc";
 import { directoryCanceled, snapshotDirectory } from "./directory-reader";
+import { TransferCleanupError } from "./transfer-errors";
 
 /** Lifetime and capability checks complement native ownership checks; not a sandbox. */
 export function bindSession(
@@ -41,6 +42,7 @@ export function bindSession(
   );
   const changedAt = new Map<Capability, number>();
   const tickets = new Map<number, TransferTicket>();
+  const cleanupTickets = new Set<number>();
   const customCalls = new Set<AbortController>();
   const directoryCalls = new Set<AbortController>();
   const clipboardPreparations = new Map<string, number>();
@@ -354,10 +356,15 @@ export function bindSession(
     runTransfer: async (ticket, onProgress) => {
       const owned = tickets.get(ticket.id);
       if (!owned) throw new Error("Transfer does not belong to this workspace");
+      if (cleanupTickets.has(ticket.id))
+        throw new TransferCleanupError(
+          "This prepared transfer is awaiting cancellation. Retry cancellation instead of running it.",
+        );
       const expected = generation;
       const id = check(transferCapability(owned.direction));
       let follow: ReturnType<typeof beginFileRelocation> | undefined;
       let dispatched = false;
+      let runError: unknown;
       try {
         if (owned.direction === "move")
           follow = beginFileRelocation(
@@ -397,18 +404,30 @@ export function bindSession(
             "The file service changed before the download was confirmed. Check the local destination before retrying.",
           );
         return result;
+      } catch (error) {
+        runError = error;
+        throw error;
       } finally {
         follow?.finish();
         // Also releases a prepared native reservation if view guards rejected
         // the move before dispatch. Running operations have already settled.
-        if (owned.direction === "move" && !dispatched)
-          await backend.cancelTransfer(id, ticket.id);
+        if (owned.direction === "move" && !dispatched) {
+          try {
+            await backend.cancelTransfer(id, ticket.id);
+          } catch (error) {
+            cleanupTickets.add(ticket.id);
+            throw new TransferCleanupError(
+              `${runError}. Could not release the prepared move: ${error}. Retry cancellation.`,
+            );
+          }
+        }
         tickets.delete(ticket.id);
       }
     },
     cancelTransfer: async (id) => {
       if (!tickets.has(id) || !session) return;
       await backend.cancelTransfer(session.id, id);
+      cleanupTickets.delete(id);
       tickets.delete(id);
     },
     createText: async (parent, name, text) => {

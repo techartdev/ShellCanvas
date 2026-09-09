@@ -47,6 +47,14 @@ A handle exposes `binding`, `name`, `size`, `direction`, `run`, `status`, `watch
 
 `cancel()` acknowledges a cancellation request. It is not proof that a running operation stopped before publication. `run(signal)` requests cancellation when the signal aborts and waits for the authoritative outcome. If publication wins the race, completion is preserved. `close()` cancels unfinished work, waits for the running result, then releases ownership. A cancellation failure remains visible as `cancel-failed`; retry cancellation or close explicitly. The host will not start an unwanted queued job after cancellation failure or retry uncertain writes automatically.
 
+A move blocked before dispatch can fail to release its prepared native reservation.
+In that case `run()` returns the failed operation, but `status()` stays `cancel-failed`
+without a terminal `result` and the desktop remains busy. The ticket permits cleanup
+only. Retry `cancel()` or `close()`; a successful cleanup publishes the failed result
+to watchers and releases the guard. Closing an app does not discard this retained
+ownership: the host can retry cleanup. An earlier concurrent cancellation does not
+let Close skip a cleanup failure discovered later by the blocked start.
+
 Prepare signals cancel pending selection ownership. A native chooser can finish later; its returned tickets are canceled without starting. If releasing those unseen tickets fails, the desktop displays **Retry transfer cleanup** and retains the busy guard until cleanup succeeds. Retrying cleanup never starts the transfer. One chooser may be pending per window. Up to 32 retained jobs/preparation groups are allowed per window; the native engine also limits queued/running tickets and concurrent streams. Release finished handles promptly. These bounds limit simultaneous resources, not total file bytes or tree size.
 
 The desktop marks a window busy while it owns a pending chooser or an unfinished job. Calling `window.setDocumentState({dirty: false, busy: false})` cannot clear this host-owned state. Window/workspace/quit guards remain active until work finishes or queued cancellation succeeds. Source changes cancel old jobs; retained handles cannot retarget another host. Window retirement initiates cleanup even when an app neglects to close its handles.
@@ -55,4 +63,4 @@ The desktop marks a window busy while it owns a pending chooser or an unfinished
 
 `src/extensions/transfer-bridge.test.ts` tests the actual SDK/RPC path for preparation without execution, permissions, binding checks, hidden native IDs/local paths, folder capability loss, progress, cancellation races, late chooser cleanup, foreign handles, failed cancellation retry and source retirement.
 
-The Windows installed-app desktop fixture passes 49 checks. It includes a separately built SDK client, injected host transfer services, folder/multiple download selection, cancellation followed by late completion, mandatory busy/quit guards, and host recovery after failed cleanup of unseen tickets. It does not open an OS chooser or transfer live host data. The native transfer engine and bundled Files workflows have separate evidence in [transfers.md](transfers.md).
+The Windows installed-app desktop fixture passes 88 checks at both 1360×900 and 800×900. It includes a separately built SDK client, injected host transfer services, folder/multiple download selection, cancellation followed by late completion, mandatory busy/quit guards, and host recovery after failed cleanup of unseen tickets. Cut checks additionally cover bundled Files into an installed app, move-grant denial, retained reservations, failed close and cleanup retry in both app and bundled UI. It does not open an OS chooser or transfer live host data. The native transfer engine has separate evidence in [transfers.md](transfers.md).

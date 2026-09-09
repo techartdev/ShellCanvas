@@ -16,6 +16,7 @@ let capturedListing:
 let watching = false;
 let fileExportAbort: AbortController | undefined;
 let fileExport: Promise<boolean> | undefined;
+let clipboardMove: import("@shellcanvas/app-sdk").RemoteTransfer | undefined;
 let transfer: import("@shellcanvas/app-sdk").RemoteTransfer | undefined;
 let transferRunning:
   Promise<import("@shellcanvas/app-sdk").TransferResult> | undefined;
@@ -48,6 +49,62 @@ window.addEventListener("message", async (event) => {
   let windowError: string | undefined;
   let imageClipboard: Record<string, boolean> | undefined;
   let fileClipboard: Record<string, boolean> | undefined;
+  if (
+    ["file-move-blocked", "file-move-denied", "file-shared-move"].includes(
+      event.data.action,
+    )
+  ) {
+    const client = (await connection)!;
+    const binding = (await client.environment.get()).binding!;
+    try {
+      const jobs = await client.clipboard.pasteFiles({
+        binding,
+        path: "fixture:shared-target",
+      });
+      clipboardMove = jobs[0];
+      const result = await clipboardMove.run();
+      if (event.data.action === "file-move-blocked") {
+        const status = await clipboardMove.status();
+        fileClipboard = {
+          cleanupPending:
+            result.status === "failed" &&
+            status.state === "cancel-failed" &&
+            !status.result,
+        };
+      } else {
+        await clipboardMove.close();
+        fileClipboard = {
+          completed:
+            jobs.length === 1 &&
+            clipboardMove.direction === "move" &&
+            result.status === "completed" &&
+            result.destination?.path === "fixture:shared-moved",
+        };
+      }
+    } catch (error) {
+      fileClipboard = {
+        denied:
+          event.data.action === "file-move-denied" &&
+          (error as { code?: string }).code === "denied",
+      };
+    }
+  }
+  if (event.data.action === "file-move-close-failed") {
+    let refused = false;
+    try {
+      await clipboardMove!.close();
+    } catch {
+      refused = true;
+    }
+    fileClipboard = {
+      retained:
+        refused && (await clipboardMove!.status()).state === "cancel-failed",
+    };
+  }
+  if (event.data.action === "file-move-close") {
+    await clipboardMove!.close();
+    fileClipboard = { released: true };
+  }
   if (event.data.action === "file-shared-paste") {
     const client = (await connection)!;
     const binding = (await client.environment.get()).binding!;

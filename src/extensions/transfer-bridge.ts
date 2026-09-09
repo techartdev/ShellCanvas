@@ -11,6 +11,7 @@ import type {
   TransferSnapshot,
 } from "../../packages/app-sdk/src/transfer-client";
 import { RpcError, type Json, type RpcMethod } from "./rpc";
+import { TransferCleanupError } from "../transfer-errors";
 
 export interface AppTransferSource {
   binding: string;
@@ -56,6 +57,7 @@ interface Job {
   wake?: () => void;
   closed: boolean;
   abandoned: boolean;
+  cleanupResult?: TransferResult;
 }
 function parameters(value: Json, fields: string[]) {
   if (
@@ -156,7 +158,14 @@ export class AppTransfers {
       .cancelTransfer(job.ticket.id)
       .then(
         () => {
-          if (!job.running && !job.snapshot.result)
+          if (job.cleanupResult) {
+            this.update(job, {
+              state: job.cleanupResult.status,
+              result: job.cleanupResult,
+              cancellationError: undefined,
+            });
+            job.cleanupResult = undefined;
+          } else if (!job.running && !job.snapshot.result)
             this.update(job, {
               state: "canceled",
               result: { status: "canceled", bytes: 0, total: job.ticket.size },
@@ -179,6 +188,9 @@ export class AppTransfers {
   private async release(job: Job) {
     await this.cancel(job);
     if (job.running) await job.running;
+    // A blocked start can discover failed cleanup after the initial concurrent
+    // cancellation settled. Release only after that retained reservation clears.
+    if (job.cleanupResult) await this.cancel(job);
     this.forget(job);
   }
   private abandon(job: Job) {
@@ -274,7 +286,13 @@ export class AppTransfers {
           total: job.snapshot.progress.total,
           message: message(error),
         };
-        this.update(job, { state: "failed", result });
+        if (error instanceof TransferCleanupError) {
+          job.cleanupResult = result;
+          this.update(job, {
+            state: "cancel-failed",
+            cancellationError: result.message ?? "Move cleanup failed",
+          });
+        } else this.update(job, { state: "failed", result });
         return result;
       }
     })();

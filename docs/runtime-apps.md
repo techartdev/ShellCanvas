@@ -55,7 +55,7 @@ Opening an installed app is asynchronous. It holds a shared per-app [Web Lock](h
 
 An asynchronous launch completing after desktop teardown releases its lease instead of creating an orphan window. A workspace removed while an app is opening similarly retires the prepared instance. Existing windows keep their original package and grant snapshot after an update, including when another process installs it.
 
-The Windows two-process fixture passes 11 checks covering remote install/update/disable/removal, preserved generations/grants, refusal to remove while another process has running windows, and successful removal after the runner terminates that fixture process. It uses a unique synthetic catalog and no real host or clipboard. The full desktop regression fixture also passes all 80 checks after asynchronous launch integration. This establishes Windows/WebView2 coordination; other native webviews still require equivalent evidence.
+The Windows two-process fixture passes 11 checks covering remote install/update/disable/removal, preserved generations/grants, refusal to remove while another process has running windows, and successful removal after the runner terminates that fixture process. It uses a unique synthetic catalog and no real host or clipboard. The full desktop regression fixture now passes 88 checks at both 1360×900 and 800×900, including Cut/Paste across bundled and installed apps and retained cleanup ownership/retry. This establishes Windows/WebView2 coordination; other native webviews still require equivalent evidence.
 
 ```powershell
 $env:SHELLCANVAS_SDK_PROBE = '1'

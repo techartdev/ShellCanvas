@@ -7,6 +7,7 @@ import type {
 } from "./sdk";
 import { shareFileClipboard } from "./file-clipboard";
 import { transferCapability } from "./sdk";
+import { TransferCleanupError } from "./transfer-errors";
 import { RpcError } from "./extensions/rpc";
 
 const scopes = new WeakMap<
@@ -181,10 +182,14 @@ export function scopeAppServices(
       const owned = tickets.get(ticket.id);
       if (!owned) throw new Error("Transfer does not belong to this app");
       check(transferCapability(owned.direction));
+      let keepForCleanup = false;
       try {
         return await base.runTransfer({ ...owned }, onProgress);
+      } catch (error) {
+        keepForCleanup = error instanceof TransferCleanupError;
+        throw error;
       } finally {
-        tickets.delete(owned.id);
+        if (!keepForCleanup) tickets.delete(owned.id);
       }
     },
     cancelTransfer: async (id) => {
