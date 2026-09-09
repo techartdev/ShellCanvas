@@ -8,6 +8,10 @@ import { fileMethods, type AppFileSourceGetter } from "./file-bridge";
 import { AppDirectories } from "./directory-bridge";
 import { AppConsoles, type AppConsoleSourceGetter } from "./console-bridge";
 import { AppTransfers, type AppTransferSourceGetter } from "./transfer-bridge";
+import {
+  AppHostSettings,
+  type AppHostSettingsSourceGetter,
+} from "./host-settings-bridge";
 import type { AppLease } from "./catalog";
 import { documentStateMethod, type AppDocumentState } from "./window-api";
 import { isFrameHandshake, mountAppDocument } from "./frame-document";
@@ -42,6 +46,7 @@ export function ExtensionFrame({
   fileSource,
   consoleSource,
   transferSource,
+  hostSettingsSource,
 }: {
   app: AppPackage;
   system: SystemAPI;
@@ -55,6 +60,7 @@ export function ExtensionFrame({
   fileSource?: AppFileSourceGetter;
   consoleSource?: AppConsoleSourceGetter;
   transferSource?: AppTransferSourceGetter;
+  hostSettingsSource?: AppHostSettingsSourceGetter;
 }) {
   const ref = useRef<HTMLIFrameElement>(null);
   const [error, setError] = useState("");
@@ -86,11 +92,28 @@ export function ExtensionFrame({
       : undefined;
     let appDocument: AppDocumentState = { dirty: false, busy: false };
     let transferBusy = false;
+    let settingsBusy = false;
     const publishDocument = () =>
       documentState.current?.({
         ...appDocument,
-        busy: appDocument.busy || transferBusy,
+        busy: appDocument.busy || transferBusy || settingsBusy,
       });
+    const hostSettings = hostSettingsSource
+      ? new AppHostSettings(
+          hostSettingsSource,
+          () => {
+            const state = environment.snapshot();
+            return (
+              state.connection === "connected" &&
+              state.capabilities.includes("host.settings")
+            );
+          },
+          (busy) => {
+            settingsBusy = busy;
+            publishDocument();
+          },
+        )
+      : undefined;
     const transfers: AppTransfers | undefined = transferSource
       ? new AppTransfers(
           transferSource,
@@ -145,6 +168,9 @@ export function ExtensionFrame({
           methods.set(name, method);
       if (transfers)
         for (const [name, method] of transfers.methods())
+          methods.set(name, method);
+      if (hostSettings)
+        for (const [name, method] of hostSettings.methods())
           methods.set(name, method);
       const customService = customMethods(
         custom,
@@ -229,6 +255,7 @@ export function ExtensionFrame({
         approved,
       );
       peer.onClose(() => {
+        hostSettings?.close();
         transfers?.close();
         consoles?.close();
         directories?.close();
@@ -247,6 +274,7 @@ export function ExtensionFrame({
     setTransferFailure(null);
     const unmount = mountAppDocument(frame, app, token, setError);
     const retire = () => {
+      hostSettings?.close();
       transfers?.close();
       consoles?.close();
       directories?.close();
@@ -276,6 +304,7 @@ export function ExtensionFrame({
     fileSource,
     consoleSource,
     transferSource,
+    hostSettingsSource,
   ]);
   return (
     <div

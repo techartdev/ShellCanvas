@@ -12,6 +12,8 @@ Public console checkpoint: `client.console` supports byte reads/writes, optional
 
 ## Immediate delivery focus — everyday basics
 
+Public remote-settings checkpoint: separate read/write grants, provider-owned field metadata, revision-checked apply and mandatory in-flight write guards are implemented. Seven SDK/RPC tests, permission-mapping tests, standalone SDK packaging and 56 Windows installed-app checks pass. Remaining process-adapter service bridges, persistent mixed profiles, adapter SDK/starters and AI skills stay open. See [runtime app remote settings](docs/app-host-settings.md).
+
 Public transfer checkpoint: SDK job preparation, run/status/watch/cancel/close, mandatory desktop busy guards and host retry for failed cleanup of unseen tickets are implemented. Eight SDK/RPC tests, standalone SDK packaging and 49 Windows installed-app checks pass. This extends the existing native engine to external apps; it does not complete the remaining adapter/settings/developer-tooling goal. See [runtime app transfers](docs/app-transfers.md).
 
 Prioritize a dependable working desktop over adding protocols or more bundled apps. Delivered: terminal containment/actions, saved host CRUD, independent host workspaces, Files context actions/clipboard, multiple app instances, existing-file text editing with unsaved guards, and persistent desktop/app preferences. Save As, explicit reconnect, provider-owned navigation, regular-file transfers and provider-defined host settings are also implemented. Next: remaining native integration and failure-handling gates. [Core completion work](docs/core-completion.md) tracks the active overnight goal. Keep the composite-adapter architecture as a constraint rather than building every adapter now.

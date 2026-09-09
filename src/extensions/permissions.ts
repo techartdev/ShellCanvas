@@ -7,6 +7,8 @@ export function appCapabilities(grants: readonly string[]): Capability[] {
     ...new Set(
       grants.flatMap((grant): Capability[] => {
         if (grant === "system.console") return ["terminal"];
+        if (grant === "host.settings.read" || grant === "host.settings.write")
+          return ["host.settings"];
         return Object.hasOwn(capabilityLabels, grant)
           ? [grant as Capability]
           : [];

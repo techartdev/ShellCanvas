@@ -4,6 +4,10 @@ import { RpcPeer, messagePortTransport, type Json } from "./rpc.js";
 import { appFileClient, type AppFilesAPI } from "./file-client.js";
 import { appConsoleClient, type AppConsoleAPI } from "./console-client.js";
 import { appTransferClient, type AppTransfersAPI } from "./transfer-client.js";
+import {
+  appHostSettingsClient,
+  type AppHostSettingsAPI,
+} from "./host-settings-client.js";
 import type { AppDocumentState } from "./window-api.js";
 import type { AppStorageAPI, AppValue, StoragePage } from "./storage-api.js";
 import type {
@@ -21,6 +25,7 @@ export interface ExtensionClient {
   readonly files: AppFilesAPI;
   readonly console: AppConsoleAPI;
   readonly transfers: AppTransfersAPI;
+  readonly hostSettings: AppHostSettingsAPI;
   readonly window: { setDocumentState(state: AppDocumentState): Promise<void> };
   readonly storage: AppStorageAPI;
   readonly settings: AppStorageAPI;
@@ -175,6 +180,7 @@ export function connectToShellCanvas(
         files: appFileClient(peer),
         console: appConsoleClient(peer),
         transfers: appTransferClient(peer),
+        hostSettings: appHostSettingsClient(peer),
         storage: storage("storage"),
         settings: storage("settings"),
         environment: Object.freeze({

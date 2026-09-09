@@ -19,6 +19,10 @@ let transferRunning:
   Promise<import("@shellcanvas/app-sdk").TransferResult> | undefined;
 let lateChooserAbort: AbortController | undefined;
 let lateChooser: Promise<boolean> | undefined;
+let capturedSetting:
+  import("@shellcanvas/app-sdk").RemoteHostSetting | undefined;
+let settingsAbort: AbortController | undefined;
+let pendingSetting: Promise<boolean> | undefined;
 let capturedEntry:
   import("@shellcanvas/app-sdk").RemoteEntryLocation | undefined;
 window.addEventListener("message", async (event) => {
@@ -37,6 +41,90 @@ window.addEventListener("message", async (event) => {
   let storage: unknown;
   let files: Record<string, boolean> | undefined;
   let transfers: Record<string, boolean> | undefined;
+  let hostSettings: Record<string, boolean> | undefined;
+  if (event.data.action.startsWith("host-settings")) {
+    try {
+      const client = (await connection)!;
+      const binding = (await client.environment.get()).binding!;
+      switch (event.data.action) {
+        case "host-settings": {
+          const fields = await client.hostSettings.read({ binding });
+          capturedSetting = fields[0];
+          const updated = await client.hostSettings.apply(
+            capturedSetting,
+            "quiet",
+          );
+          let conflict = false;
+          try {
+            await client.hostSettings.apply(capturedSetting, "normal");
+          } catch (error) {
+            conflict = (error as { code: string }).code === "failed";
+          }
+          hostSettings = {
+            conflict,
+            metadata:
+              fields[0].id === "fixture:mode" &&
+              fields[0].choices.includes("quiet") &&
+              fields[1].writable === false &&
+              fields[1].reason === "Unsupported on this device",
+            updated:
+              updated.value === "quiet" &&
+              updated.revision === "h2" &&
+              updated.binding === binding,
+          };
+          break;
+        }
+        case "host-settings-start": {
+          const [field] = await client.hostSettings.read({ binding });
+          settingsAbort = new AbortController();
+          pendingSetting = client.hostSettings
+            .apply(field, "held", settingsAbort.signal)
+            .then(
+              () => false,
+              (error) => error.code === "aborted",
+            );
+          await client.window.setDocumentState({ dirty: false, busy: false });
+          hostSettings = { started: true };
+          break;
+        }
+        case "host-settings-cancel":
+          settingsAbort!.abort();
+          hostSettings = { aborted: await pendingSetting! };
+          await client.window.setDocumentState({ dirty: false, busy: false });
+          break;
+        case "host-settings-refresh": {
+          const [field] = await client.hostSettings.read({ binding });
+          hostSettings = {
+            updated: field.value === "held" && field.revision === "h3",
+          };
+          break;
+        }
+        case "host-settings-stale":
+          try {
+            await client.hostSettings.apply(capturedSetting!, "normal");
+            hostSettings = { rejected: false };
+          } catch (error) {
+            hostSettings = {
+              rejected: (error as { code: string }).code === "closed",
+            };
+          }
+          break;
+        case "host-settings-readonly": {
+          const [field] = await client.hostSettings.read({ binding });
+          let denied = false;
+          try {
+            await client.hostSettings.apply(field, "normal");
+          } catch (error) {
+            denied = (error as { code: string }).code === "denied";
+          }
+          hostSettings = { read: field.value === "held", denied };
+          break;
+        }
+      }
+    } catch {
+      hostSettings = { failed: false };
+    }
+  }
   if (event.data.action.startsWith("transfer-")) {
     try {
       const client = (await connection)!;
@@ -77,6 +165,10 @@ window.addEventListener("message", async (event) => {
         case "transfer-run":
           transferRunning = transfer!.run();
           transfers = { started: true };
+          break;
+        case "transfer-release":
+          await transfer!.close();
+          transfers = { released: true };
           break;
         case "transfer-cancel":
           await transfer!.cancel();
@@ -363,6 +455,7 @@ window.addEventListener("message", async (event) => {
       storage,
       files,
       transfers,
+      hostSettings,
       clipboard,
       environment,
       services,

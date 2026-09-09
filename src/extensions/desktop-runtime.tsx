@@ -23,6 +23,7 @@ import { RpcError } from "./rpc";
 import type { AppFileSourceGetter } from "./file-bridge";
 import type { AppConsoleSourceGetter } from "./console-bridge";
 import type { AppTransferSourceGetter } from "./transfer-bridge";
+import type { AppHostSettingsSourceGetter } from "./host-settings-bridge";
 import { appCapabilities } from "./permissions";
 import {
   clipboard as systemClipboard,
@@ -159,6 +160,15 @@ function RuntimeDocument({
     },
     [],
   );
+  const hostSettingsSource = useMemo<AppHostSettingsSourceGetter>(
+    () => () => {
+      const current = fileTarget.current;
+      return current.binding
+        ? { binding: current.binding, services: current.services }
+        : undefined;
+    },
+    [],
+  );
   useLayoutEffect(() => environment.update(state));
   const system = useMemo<SystemAPI>(
     () => ({
@@ -206,6 +216,7 @@ function RuntimeDocument({
           fileSource={fileSource}
           consoleSource={consoleSource}
           transferSource={transferSource}
+          hostSettingsSource={hostSettingsSource}
         />
       </div>
     </div>

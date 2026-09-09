@@ -33,6 +33,11 @@ export type {
 export type { AppClipboardAPI } from "./clipboard-client.js";
 export type { AppConsoleAPI, RemoteConsole } from "./console-client.js";
 export type {
+  HostSetting,
+  RemoteHostSetting,
+  AppHostSettingsAPI,
+} from "./host-settings-client.js";
+export type {
   AppTransfersAPI,
   RemoteTransfer,
   TransferProgress,

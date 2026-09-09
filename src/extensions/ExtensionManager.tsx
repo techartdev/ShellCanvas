@@ -7,6 +7,10 @@ import "./ExtensionManager.css";
 
 function permissionName(name: string) {
   if (name === "system.console") return "Open and control remote consoles";
+  if (name === "host.settings.read")
+    return "Read settings provided by the remote device";
+  if (name === "host.settings.write")
+    return "Change settings on the remote device";
   if (name.startsWith("services."))
     return `Use ${name.slice(9)} services on the selected connection`;
   if (name === "system.storage") return "This app’s local data and settings";

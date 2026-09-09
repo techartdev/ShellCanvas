@@ -1294,7 +1294,7 @@ export default function App({
         <ConfirmDialog
           title={
             hasBusy
-              ? "A file operation is still running"
+              ? "An operation is still running"
               : "Close ShellCanvas with unsaved changes?"
           }
           message={

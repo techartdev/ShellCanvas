@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 import type { FileEntry, TextDocument } from "../packages/app-sdk/src/files";
+import type { HostSetting } from "../packages/app-sdk/src/host-settings-client";
+export type { HostSetting } from "../packages/app-sdk/src/host-settings-client";
 import type { ComponentType } from "react";
 import type { SystemAPI } from "./system-api";
 export type {
@@ -23,17 +25,6 @@ export type Capability =
   | "files.upload"
   | "files.download"
   | "host.settings";
-export interface HostSetting {
-  id: string;
-  label: string;
-  description: string;
-  value: string | null;
-  revision: string | null;
-  editor: "text" | "select";
-  choices: string[];
-  writable: boolean;
-  reason: string | null;
-}
 export const capabilityLabels: Record<Capability, string> = {
   terminal: "Terminal",
   "files.read": "File browsing",

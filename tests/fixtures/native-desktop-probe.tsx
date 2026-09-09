@@ -24,6 +24,7 @@ import type {
   TransferTicket,
   TransferOutcome,
   TransferProgress,
+  HostSetting,
 } from "../../src/sdk";
 import source from "../../.local/native-extension-probe/desktop-client.js?raw";
 import style from "../../examples/dialog-app/style.css?raw";
@@ -58,10 +59,25 @@ const fixtureSession: Session = {
       "files.upload",
       "files.download",
       "files.folders",
+      "host.settings",
     ],
   },
 };
 let fileWrites = 0;
+let setting: HostSetting = {
+  id: "fixture:mode",
+  label: "Device mode",
+  description: "Fixture device setting",
+  value: "normal",
+  revision: "h1",
+  editor: "select",
+  choices: ["normal", "quiet", "held"],
+  writable: true,
+  reason: null,
+};
+let settingAttempts = 0;
+let settingWrites = 0;
+let heldSetting: (() => void) | undefined;
 let remoteText = "Original note";
 let remoteRevision = 1;
 let fileActions = 0;
@@ -127,6 +143,38 @@ const relocateAction = (
 };
 const services = {
   ...previewServices,
+  readHostSettings: async () => [
+    { ...setting },
+    {
+      ...setting,
+      id: "fixture:readonly",
+      writable: false,
+      value: null,
+      revision: null,
+      reason: "Unsupported on this device",
+    },
+  ],
+  applyHostSetting: async (
+    _id: number,
+    id: string,
+    value: string,
+    revision: string,
+  ) => {
+    settingAttempts++;
+    if (
+      id !== setting.id ||
+      revision !== setting.revision ||
+      !setting.choices.includes(value)
+    )
+      throw new Error("Setting revision changed or invalid value");
+    if (value === "held")
+      await new Promise<void>((resolve) => {
+        heldSetting = resolve;
+      });
+    settingWrites++;
+    setting = { ...setting, value, revision: `h${settingWrites + 1}` };
+    return { ...setting };
+  },
   prepareCopy: async (
     _id: number,
     path: string,
@@ -352,6 +400,7 @@ function ask(frame: HTMLIFrameElement, action = "snapshot") {
     storage?: Record<string, unknown>;
     files?: Record<string, boolean>;
     transfers?: Record<string, boolean>;
+    hostSettings?: Record<string, boolean>;
     environment?: AppEnvironment;
     services?: readonly ServiceMethodInfo[];
     environmentEvents?: AppEnvironment[];
@@ -418,6 +467,7 @@ async function install(version: string) {
             "files.read",
             "files.edit",
             "files.create",
+            "host.settings.read",
             ...(version === "1.0.0"
               ? [
                   "files.manage",
@@ -425,6 +475,7 @@ async function install(version: string) {
                   "files.copy",
                   "files.upload",
                   "files.download",
+                  "host.settings.write",
                 ]
               : []),
             "system.storage",
@@ -589,7 +640,7 @@ async function run() {
     await until(
       () =>
         document.querySelector<HTMLButtonElement>(
-          'dialog[aria-label="A file operation is still running"] .danger-button',
+          'dialog[aria-label="An operation is still running"] .danger-button',
         )?.disabled,
       "transfer quit guard",
     );
@@ -645,6 +696,47 @@ async function run() {
   checks.sdkTransferCleanupRetry =
     transferTickets.size === 0 && transferRuns === 5;
   await report("sdk-transfers");
+  const settingResult = (await ask(first, "host-settings")).hostSettings;
+  checks.sdkHostSettings =
+    !!settingResult &&
+    Object.values(settingResult).every(Boolean) &&
+    settingWrites === 1 &&
+    settingAttempts === 2;
+  await ask(first, "host-settings-start");
+  await until(
+    () => heldSetting && closeTransferWindow().disabled,
+    "settings write close guard",
+  );
+  if (isTauri()) {
+    await getCurrentWindow().close();
+    await until(
+      () =>
+        document.querySelector<HTMLButtonElement>(
+          'dialog[aria-label="An operation is still running"] .danger-button',
+        )?.disabled,
+      "settings quit guard",
+    );
+    checks.sdkSettingsQuitGuard = true;
+    button("Keep working").click();
+  }
+  const settingsCanceled = (await ask(first, "host-settings-cancel"))
+    .hostSettings;
+  checks.sdkSettingsCancelGuard =
+    settingsCanceled?.aborted === true &&
+    closeTransferWindow().disabled &&
+    settingWrites === 1;
+  await ask(first, "transfer-prepare");
+  heldSetting!();
+  await until(() => settingWrites === 2, "settings backend settled");
+  checks.sdkIndependentBusyOwners = closeTransferWindow().disabled;
+  await ask(first, "transfer-release");
+  await until(() => !closeTransferWindow().disabled, "settings write settled");
+  checks.sdkSettingsRefreshAfterCancel =
+    (await ask(first, "host-settings-refresh")).hostSettings?.updated ===
+      true &&
+    settingWrites === 2 &&
+    settingAttempts === 3;
+  await report("sdk-host-settings");
   if (persistence === "read") {
     await ask(first, "restore");
     checks.storageSurvivesPageClose =
@@ -759,6 +851,9 @@ async function run() {
       initialEnvironment.environment?.binding;
   button("Cancel", fileDialog).click();
   const staleFiles = (await ask(first, "files-stale")).files;
+  checks.sdkOldSettingRejected =
+    (await ask(first, "host-settings-stale")).hostSettings?.rejected === true &&
+    settingAttempts === 3;
   await frameState(first, (state) => state.ready && state.openNoteEnabled);
   checks.exampleRestoresTextAction = true;
   checks.sdkOldDocumentRejected =
@@ -782,6 +877,12 @@ async function run() {
     "second runtime window",
   );
   await frameState(second, (state) => state.ready);
+  const readOnlySettings = (await ask(second, "host-settings-readonly"))
+    .hostSettings;
+  checks.sdkSettingsReadOnlyGrant =
+    readOnlySettings?.read === true &&
+    readOnlySettings.denied === true &&
+    settingAttempts === 3;
   checks.sdkTransferGrantDenied =
     (await ask(second, "transfer-denied")).transfers?.denied === true &&
     transferRuns === 5;

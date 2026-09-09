@@ -22,7 +22,13 @@ async function setup() {
           id: "org.example.notes",
           title: "Notes",
           version,
-          permissions: ["system.dialogs", "files.read", "system.console"],
+          permissions: [
+            "system.dialogs",
+            "files.read",
+            "system.console",
+            "host.settings.read",
+            "host.settings.write",
+          ],
           script: "void 0",
           style: "",
         }),
@@ -41,6 +47,18 @@ it("maps the namespaced console permission to a host capability without granting
   expect(descriptor.optional).toEqual(["terminal"]);
   expect(descriptor.requires).toEqual([]);
   runtime.closeAll();
+});
+it("maps each remote settings grant to its host capability without changing approved grants", async () => {
+  for (const grant of ["host.settings.read", "host.settings.write"]) {
+    const { runtime, install, catalog } = await setup();
+    await install("1.0.0", [grant]);
+    expect(
+      runtime.snapshot().find((app) => app.id === "org.example.notes")
+        ?.optional,
+    ).toEqual(["host.settings"]);
+    expect(catalog.snapshot()[0].grants).toEqual([grant]);
+    runtime.closeAll();
+  }
 });
 it("pins running descriptors and grants while new desktop windows use the installed update", async () => {
   const { runtime, install } = await setup();
