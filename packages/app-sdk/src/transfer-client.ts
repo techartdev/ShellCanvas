@@ -45,6 +45,11 @@ export interface RemoteTransfer {
   close(): Promise<void>;
 }
 export interface AppTransfersAPI {
+  /** Prepare the current native file clipboard as owned upload work. Does not start copying. */
+  pasteClipboard(
+    destination: RemoteFileLocation,
+    signal?: AbortSignal,
+  ): Promise<RemoteTransfer[]>;
   upload(
     destination: RemoteFileLocation,
     options?: { folder?: boolean },
@@ -71,7 +76,9 @@ interface Prepared {
   size: number;
   direction: RemoteTransfer["direction"];
 }
-export function appTransferClient(peer: RpcPeer): AppTransfersAPI {
+export function appTransferClient(
+  peer: Pick<RpcPeer, "call">,
+): AppTransfersAPI {
   const handle = (item: Prepared): RemoteTransfer => {
     let closed = false;
     let running: Promise<TransferResult> | undefined;
@@ -171,6 +178,12 @@ export function appTransferClient(peer: RpcPeer): AppTransfersAPI {
     }
   }
   return {
+    pasteClipboard: (destination, signal) =>
+      prepare(
+        "clipboardPaste",
+        { binding: destination.binding, parent: destination.path },
+        signal,
+      ),
     upload: (destination, options, signal) =>
       prepare(
         options?.folder ? "uploadFolder" : "upload",

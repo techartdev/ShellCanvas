@@ -199,6 +199,11 @@ export interface ClipboardPreparation {
   onProgress?: (progress: TransferProgress) => void;
 }
 export interface HostServices {
+  prepareCopySelection?(
+    sessionId: number,
+    files: { path: string; revision: string }[],
+    parent: string,
+  ): Promise<TransferTicket>;
   /** Capture native source identities once; never follow a later source replacement. */
   bindSources?(session: Session): HostServices;
   custom?: import("./custom-services").CustomBackend;
@@ -311,6 +316,10 @@ export interface HostServices {
 }
 /** Apps receive a fixed session handle, never connection administration. */
 export interface SessionServices {
+  prepareCopySelection?(
+    files: { path: string; revision: string }[],
+    parent: string,
+  ): Promise<TransferTicket>;
   custom?: import("./custom-services").CustomAccess;
   cancelClipboardPreparation(operation: string): Promise<void>;
   systemClipboardSequence(): Promise<number>;

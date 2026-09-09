@@ -22,7 +22,8 @@ export interface AppTransferSource {
     | "prepareCopy"
     | "runTransfer"
     | "cancelTransfer"
-  >;
+  > &
+    Partial<Pick<SessionServices, "pasteSystemFiles" | "systemFileClipboard">>;
 }
 export type AppTransferSourceGetter = () => AppTransferSource | undefined;
 interface Preparation {
@@ -278,12 +279,15 @@ export class AppTransfers {
         p: { [key: string]: Json },
       ) => Promise<TransferTicket[]>,
       folder = false,
+      extraGrants: string[] = [],
+      supported: () => boolean = () => true,
     ): [string, RpcMethod] => [
       `system.transfers.${name}`,
       {
-        grants: [capability],
+        grants: [capability, ...extraGrants],
         available: () =>
           this.available(capability) &&
+          supported() &&
           (!folder || this.available("files.folders")),
         invoke: async (value, signal) => {
           const p = parameters(value, ["id", "binding", ...fields]);
@@ -303,6 +307,7 @@ export class AppTransfers {
             throw new RpcError("aborted", "Transfer preparation canceled.");
           if (
             !this.available(capability) ||
+            !supported() ||
             (folder && !this.available("files.folders"))
           )
             throw new RpcError(
@@ -408,6 +413,18 @@ export class AppTransfers {
       invoke,
     });
     return new Map([
+      prepare(
+        "clipboardPaste",
+        "files.upload",
+        ["parent"],
+        async (source, p) =>
+          (await source.services.pasteSystemFiles!(p.parent as string)) ?? [],
+        false,
+        ["system.clipboard.files.read"],
+        () =>
+          this.source()?.services.systemFileClipboard === true &&
+          typeof this.source()?.services.pasteSystemFiles === "function",
+      ),
       prepare("upload", "files.upload", ["parent"], (s, p) =>
         s.services.chooseUploads(p.parent as string),
       ),

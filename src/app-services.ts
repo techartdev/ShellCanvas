@@ -83,6 +83,16 @@ export function scopeAppServices(
       const result = await base.pasteSystemFiles(parent);
       return result === null ? null : result.map(adopt);
     }),
+    prepareCopySelection: base.prepareCopySelection
+      ? guard(
+          "files.copy",
+          async (
+            ...args: Parameters<
+              NonNullable<SessionServices["prepareCopySelection"]>
+            >
+          ) => adopt(await base.prepareCopySelection!(...args)),
+        )
+      : undefined,
     cutToSystem: guard(
       "files.move",
       async (...args: Parameters<SessionServices["cutToSystem"]>) => {

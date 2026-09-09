@@ -80,6 +80,17 @@ impl Catalog {
     pub fn size(&self) -> u64 {
         self.size.load(Ordering::Relaxed)
     }
+    pub fn has_directories(&self) -> Result<bool> {
+        Ok(self
+            .db
+            .lock()
+            .map_err(|_| anyhow::anyhow!("Transfer catalog lock failed"))?
+            .query_row(
+                "SELECT EXISTS(SELECT 1 FROM nodes WHERE directory=1)",
+                [],
+                |row| row.get(0),
+            )?)
+    }
     pub fn add(
         &self,
         parent: Option<&Node>,

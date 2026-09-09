@@ -64,7 +64,6 @@ class FileClipboard {
     if (
       !parent ||
       !entries.length ||
-      entries.length > 16 ||
       entries.some(
         (entry) =>
           !["file", "directory"].includes(entry.kind) ||
@@ -74,7 +73,7 @@ class FileClipboard {
       new Set(entries.map((entry) => entry.path)).size !== entries.length
     )
       throw new Error(
-        "Select up to 16 files or folders with current revisions to copy.",
+        "Select files or folders with current revisions to copy.",
       );
     ++this.generation;
     this.publish({
@@ -109,18 +108,30 @@ class FileClipboard {
     const tickets: TransferTicket[] = [];
     this.publish({ ...this.state, working: true, error: "" });
     try {
-      for (const item of copies) {
-        if (!this.active || generation !== this.generation)
-          throw new Error(
-            "The copied files or connection changed. Copy them again.",
-          );
+      if (services.prepareCopySelection) {
         tickets.push(
-          await services.prepareCopy(
-            item.entry.path,
-            item.entry.revision!,
+          await services.prepareCopySelection(
+            copies.map(({ entry }) => ({
+              path: entry.path,
+              revision: entry.revision!,
+            })),
             parent,
           ),
         );
+      } else {
+        for (const item of copies) {
+          if (!this.active || generation !== this.generation)
+            throw new Error(
+              "The copied files or connection changed. Copy them again.",
+            );
+          tickets.push(
+            await services.prepareCopy(
+              item.entry.path,
+              item.entry.revision!,
+              parent,
+            ),
+          );
+        }
       }
       if (!this.active || generation !== this.generation)
         throw new Error(

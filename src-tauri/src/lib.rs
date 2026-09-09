@@ -761,6 +761,7 @@ pub fn run() {
                 transfers::cancel_clipboard_preparation,
                 transfers::cut_system_file,
                 transfers::paste_system_files,
+                transfers::prepare_file_copy_selection,
                 transfers::system_clipboard_sequence,
                 transfers::prepare_file_copy,
                 transfers::run_transfer,

@@ -17,6 +17,17 @@ Objective: provide a small, coherent virtual-desktop API for bundled and communi
 
 ## Direction
 
+File paste checkpoint (2026-09-09): installed apps can prepare native file-list
+uploads using `client.clipboard.pasteFiles`, with separate clipboard-read and
+upload grants and the existing owned transfer lifecycle. Clipboard selections now
+share one disk catalog and one queued job; the old 16-root clipboard limit is
+removed. Files open on demand with metadata checks, and per-item completion
+updates allow cancellation between items. The Windows installed-app fixture passes
+73 checks with synthetic clipboard services. Large-selection, permission and late
+cancellation tests pass. Outgoing app file copy/cut, custom formats, interruptible
+native root preparation and remaining lifecycle/platform gates are still open.
+The separate Upload/Download picker limits have not changed.
+
 Image clipboard checkpoint (2026-09-09): the SDK now reads/writes RGBA images with
 separate image grants, window-owned chunk streams, captured pixels and complete
 publication. Six protocol tests and two native-wrapper cleanup tests pass; the

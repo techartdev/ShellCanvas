@@ -42,6 +42,7 @@ let clipboardImage: import("@shellcanvas/app-sdk").ClipboardImage = {
   rgba: new Uint8Array([1, 2, 3, 255]),
 };
 let imageReads = 0;
+let fileClipboardReads = 0;
 const runtime = new DesktopRuntime(catalog, apps, localData, {
   readImage: async () => {
     imageReads++;
@@ -213,6 +214,13 @@ const services = {
     )
       throw new Error("Incorrect transfer source or destination");
     return transferTicket("copy");
+  },
+  systemFileClipboard: true,
+  pasteSystemFiles: async (_id: number, parent: string) => {
+    if (parent !== "fixture:clipboard-target")
+      throw new Error("Unexpected clipboard destination");
+    fileClipboardReads++;
+    return [{ ...transferTicket("upload"), name: "128 clipboard items" }];
   },
   chooseUploads: async (_id: number, parent: string, folder?: boolean) => {
     if (parent === "fixture:late-chooser")
@@ -433,6 +441,7 @@ function ask(frame: HTMLIFrameElement, action = "snapshot") {
     environmentEvents?: AppEnvironment[];
     clipboard?: Record<string, boolean>;
     imageClipboard?: Record<string, boolean>;
+    fileClipboard?: Record<string, boolean>;
   }>((resolve, reject) => {
     const timer = setTimeout(() => {
       window.removeEventListener("message", receive);
@@ -511,6 +520,7 @@ async function install(version: string) {
             "system.clipboard.write",
             "system.clipboard.image.read",
             "system.clipboard.image.write",
+            "system.clipboard.files.read",
           ],
           script: source,
           style,
@@ -1030,6 +1040,16 @@ async function run() {
   checks.sdkTransferGrantDenied =
     (await ask(second, "transfer-denied")).transfers?.denied === true &&
     transferRuns === 5;
+  const pasted = (await ask(first, "file-clipboard")).fileClipboard;
+  checks.sdkFileClipboard =
+    !!pasted &&
+    Object.values(pasted).every(Boolean) &&
+    fileClipboardReads === 1 &&
+    transferRuns === 6 &&
+    transferTickets.size === 0;
+  checks.sdkFileClipboardDenied =
+    (await ask(second, "file-clipboard-denied")).fileClipboard?.denied ===
+      true && fileClipboardReads === 1;
   const secondEnvironment = await ask(second, "environment");
   const deniedFiles = (await ask(second, "files-denied")).files;
   checks.sdkFileGrantDenied = deniedFiles?.rejected === true;

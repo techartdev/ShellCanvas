@@ -34,8 +34,8 @@ pub fn files() -> Result<Option<Vec<PathBuf>>, String> {
 // Handle remains owned by the clipboard (or the isolated test allocation).
 unsafe fn read_drop(handle: HDROP) -> Result<Vec<PathBuf>, String> {
     let count = DragQueryFileW(handle, u32::MAX, None);
-    if count == 0 || count > 16 {
-        return Err("Copy up to 16 files or folders in Explorer, then paste here.".into());
+    if count == 0 {
+        return Err("Copy files or folders in Explorer, then paste here.".into());
     }
     let mut paths = Vec::new();
     for index in 0..count {
@@ -85,7 +85,7 @@ mod tests {
         }
     }
     #[test]
-    fn decodes_unicode_multiple_files_and_refuses_relative_or_oversized_batches() {
+    fn decodes_unicode_large_selections_and_refuses_relative_or_empty_paths() {
         assert_eq!(
             decode(&[r"C:\test\Notes 🌍.txt", r"D:\two.bin"]).unwrap(),
             vec![
@@ -94,7 +94,7 @@ mod tests {
             ]
         );
         assert!(decode(&[r"relative.txt"]).is_err());
-        assert!(decode(&[r"C:\x"; 17]).is_err());
+        assert_eq!(decode(&[r"C:\x"; 4096]).unwrap().len(), 4096);
         assert!(decode(&[]).is_err());
     }
 }

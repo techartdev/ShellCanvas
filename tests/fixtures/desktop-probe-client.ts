@@ -45,6 +45,39 @@ window.addEventListener("message", async (event) => {
   let windowState: import("@shellcanvas/app-sdk").AppWindowState | undefined;
   let windowError: string | undefined;
   let imageClipboard: Record<string, boolean> | undefined;
+  let fileClipboard: Record<string, boolean> | undefined;
+  if (event.data.action === "file-clipboard") {
+    const client = (await connection)!;
+    const binding = (await client.environment.get()).binding!;
+    const jobs = await client.clipboard.pasteFiles({
+      binding,
+      path: "fixture:clipboard-target",
+    });
+    const queued =
+      jobs.length === 1 && (await jobs[0].status()).state === "queued";
+    const result = await jobs[0].run();
+    await jobs[0].close();
+    fileClipboard = {
+      queued,
+      completed:
+        result.status === "completed" &&
+        result.destination?.binding === binding &&
+        result.destination?.path === "fixture:uploaded",
+    };
+  }
+  if (event.data.action === "file-clipboard-denied") {
+    const client = (await connection)!;
+    const binding = (await client.environment.get()).binding!;
+    try {
+      await client.clipboard.pasteFiles({
+        binding,
+        path: "fixture:clipboard-target",
+      });
+      fileClipboard = { denied: false };
+    } catch (error) {
+      fileClipboard = { denied: (error as { code: string }).code === "denied" };
+    }
+  }
   if (event.data.action === "image-clipboard") {
     const client = (await connection)!;
     const expected = {
@@ -513,6 +546,7 @@ window.addEventListener("message", async (event) => {
       windowState,
       windowError,
       imageClipboard,
+      fileClipboard,
       clipboard,
       environment,
       services,

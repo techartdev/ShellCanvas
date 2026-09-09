@@ -56,6 +56,10 @@ pub struct Outcome {
     pub path: Option<String>,
 }
 enum Job {
+    Selection {
+        catalog: Arc<catalog::Catalog>,
+        parent: String,
+    },
     Tree {
         tree: tree::Tree,
         target: tree::Target,
@@ -463,6 +467,45 @@ async fn remote_tree(
     tree::remote(service, entry).await.map_err(error)
 }
 #[tauri::command]
+pub async fn prepare_file_copy_selection(
+    session_id: u64,
+    binding: Option<ConnectionIdentity>,
+    files: Vec<DownloadSource>,
+    parent: String,
+    state: State<'_, DesktopState>,
+) -> Result<Ticket, String> {
+    if files.is_empty() || parent.is_empty() {
+        return Err("Select files and a destination folder.".into());
+    }
+    let service = provider(&state, session_id, binding.as_ref()).await?;
+    let catalog = Arc::new(catalog::Catalog::new(false).map_err(error)?);
+    for file in files {
+        let tree = remote_tree(&service, &file).await?;
+        catalog
+            .add(None, vec![(tree.root.entry, tree.root.local)])
+            .map_err(error)?;
+        tokio::task::yield_now().await;
+    }
+    let size = catalog.size();
+    let name = if catalog.len() == 1 {
+        catalog.get(1).map_err(error)?.entry.name
+    } else {
+        format!("{} copied items", catalog.len())
+    };
+    let registry = state.registry.lock().await;
+    registry
+        .sessions
+        .get(&session_id)
+        .ok_or("Host disconnected during preparation")?
+        .check_source(&ServiceRole::Files, binding.as_ref())?;
+    let mut tickets = state.transfers.lock().await.add(
+        session_id,
+        service,
+        vec![(Job::Selection { catalog, parent }, name, size, "copy")],
+    )?;
+    Ok(tickets.remove(0))
+}
+#[tauri::command]
 pub async fn cancel_clipboard_preparation(
     session_id: u64,
     operation: String,
@@ -512,13 +555,15 @@ async fn prepare_clipboard(
         checkpoint(&cancel)?;
         let _permit = tokio::select! { permit = slots.acquire() => permit?, _ = wait_for_cancel(cancel.clone()) => bail!("Transfer canceled") };
         let service = provider(state, session, binding.as_ref()).await.map_err(anyhow::Error::msg)?;
-        let mut catalogs = Vec::new(); let mut names = std::collections::HashSet::new();
+        let roots = Arc::new(catalog::Catalog::new(true)?);
         let mut last = Instant::now();
         for file in files {
             checkpoint(&cancel)?;
             let tree = remote_tree(&service, &file).await.map_err(anyhow::Error::msg)?;
-            if !names.insert(tree.root.entry.name.to_lowercase()) { bail!("Selected names conflict in Explorer"); }
-            let catalog = tree::scan(tree, service.clone(), true, &cancel, &mut |event| {
+            roots.add(None, vec![(tree.root.entry, tree.root.local)])?;
+            tokio::task::yield_now().await;
+        }
+        let catalog = tree::scan_catalog(roots, service.clone(), &cancel, &mut |event| {
                 if last.elapsed().as_millis() >= 100 { let _ = on_event.send(event); last = Instant::now(); }
             }).await?;
             // The descriptor format itself has a fixed-size path field.
@@ -527,12 +572,10 @@ async fn prepare_clipboard(
                 if catalog.get(id)?.display.encode_utf16().count() >= 260 { bail!("A folder path is too long for Explorer's clipboard (259 characters). Use Download instead."); }
                 if id % shellcanvas_core::TRANSFER_DIRECTORY_PAGE as u64 == 0 { tokio::task::yield_now().await; }
             }
-            catalogs.push(catalog);
-        }
         checkpoint(&cancel)?;
         state.registry.lock().await.sessions.get(&session).ok_or_else(|| anyhow::anyhow!("Host disconnected while preparing clipboard"))?
             .check_source(&ServiceRole::Files, binding.as_ref()).map_err(anyhow::Error::msg)?;
-        let sources = crate::clipboard_stream::Sources::catalogs(catalogs, service, tokio::runtime::Handle::current());
+        let sources = crate::clipboard_stream::Sources::catalogs(vec![catalog], service, tokio::runtime::Handle::current());
         crate::windows_clipboard::publish(sources, sequence).await.map_err(anyhow::Error::msg)
     }.await;
     state.transfers.lock().await.preparations.remove(&operation);
@@ -547,8 +590,8 @@ pub async fn copy_system_files(
     on_event: Channel<Progress>,
     state: State<'_, DesktopState>,
 ) -> Result<u32, String> {
-    if files.is_empty() || files.len() > 16 {
-        return Err("Select up to 16 files or folders.".into());
+    if files.is_empty() {
+        return Err("Select files or folders to copy.".into());
     }
     #[cfg(not(windows))]
     {
@@ -578,45 +621,41 @@ pub async fn system_clipboard_sequence() -> Result<u32, String> {
     }
 }
 
-// Retain opened local handles before returning any tickets. No path supplied by JS.
+// Capture root metadata in one disk catalog. Contents open only when their turn runs.
+// No local path is supplied by JS or exposed in the returned ticket.
 fn clipboard_uploads(
     paths: Vec<PathBuf>,
     parent: String,
 ) -> Result<Vec<(Job, String, u64, &'static str)>, String> {
-    if paths.is_empty() || paths.len() > 16 {
-        return Err("Copy up to 16 files or folders at a time.".into());
+    if paths.is_empty() {
+        return Err("Copy files or folders first.".into());
     }
-    let mut names = std::collections::HashSet::new();
-    paths
-        .into_iter()
-        .map(|path| {
-            if !path.is_absolute() {
-                return Err("Clipboard paths must be absolute".into());
-            }
-            let tree = tree::local(path.clone()).map_err(error)?;
-            let name = tree.root.entry.name.clone();
-            let size = tree.root.entry.size;
-            if !names.insert(name.clone()) {
-                return Err("Copied items have duplicate names. Paste them separately.".into());
-            }
-            let job = if tree.root.entry.kind == "file" {
-                let (file, _, modified) = source(&path).map_err(error)?;
-                Job::Upload {
-                    file,
-                    parent: parent.clone(),
-                    name: name.clone(),
-                    size,
-                    modified,
-                }
-            } else {
-                Job::Tree {
-                    tree,
-                    target: tree::Target::Remote(parent.clone()),
-                }
-            };
-            Ok((job, name, size, "upload"))
-        })
-        .collect()
+    let roots = Arc::new(catalog::Catalog::new(false).map_err(error)?);
+    let count = paths.len();
+    for path in paths {
+        if !path.is_absolute() {
+            return Err("Clipboard paths must be absolute".into());
+        }
+        let tree = tree::local(path).map_err(error)?;
+        roots
+            .add(None, vec![(tree.root.entry, tree.root.local)])
+            .map_err(error)?;
+    }
+    let size = roots.size();
+    let name = if count == 1 {
+        roots.get(1).map_err(error)?.entry.name
+    } else {
+        format!("{count} clipboard items")
+    };
+    Ok(vec![(
+        Job::Selection {
+            catalog: roots,
+            parent,
+        },
+        name,
+        size,
+        "upload",
+    )])
 }
 
 #[tauri::command]
@@ -647,6 +686,13 @@ pub async fn paste_system_files(
         let Some(jobs) = jobs else {
             return Ok(None);
         };
+        for (job, _, _, _) in &jobs {
+            if let Job::Selection { catalog, .. } = job {
+                if catalog.has_directories().map_err(error)? && !service.supports_folders() {
+                    return Err("Folder transfers are unavailable on this device".into());
+                }
+            }
+        }
         let registry = state.registry.lock().await;
         registry
             .sessions
@@ -813,6 +859,9 @@ async fn execute(
 ) -> Result<String> {
     checkpoint(cancel)?;
     match job {
+        Job::Selection { catalog, parent } => {
+            tree::execute_selection(catalog, parent, service, cancel, progress).await
+        }
         Job::Tree { tree, target } => {
             tree::execute_tree(tree, target, service, cancel, progress).await
         }

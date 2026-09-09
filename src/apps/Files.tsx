@@ -854,7 +854,6 @@ export function Files({
           shortcut: "Ctrl+C",
           disabled:
             !copyAvailable ||
-            selectedEntries.length > 16 ||
             selectedEntries.some(
               (entry) => !transferable(entry) || !entry.revision,
             ),

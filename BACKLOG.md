@@ -12,6 +12,15 @@ Public console checkpoint: `client.console` supports byte reads/writes, optional
 
 ## Immediate delivery focus — everyday basics
 
+File paste checkpoint (2026-09-09): the public SDK now prepares incoming native
+file clipboard transfers through owned handles and separate read/upload grants.
+Clipboard selections share one disk catalog/job, removing the old 16-root Copy
+limit without holding one open file per root. The 73-check Windows installed-app
+fixture passes using synthetic clipboard services. Large-selection/source-change
+and cancellation tests cover the native engine and SDK. Public outgoing file
+copy/cut, custom formats, native preparation cancellation and the remaining
+kernel roadmap gates remain open. Separate Upload/Download picker limits remain.
+
 Image clipboard checkpoint (2026-09-09): installed apps can read/write RGBA images
 through separate grants and chunked, window-owned transfers. Six protocol tests,
 two native-wrapper cleanup tests and 71 Windows installed-app checks pass. The

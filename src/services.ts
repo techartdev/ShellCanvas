@@ -23,6 +23,7 @@ const commandRoles: Record<string, "files" | "console" | "settings"> = {
   copy_system_files: "files",
   choose_download_files: "files",
   prepare_file_copy: "files",
+  prepare_file_copy_selection: "files",
   choose_upload_files: "files",
   choose_download_file: "files",
   create_text: "files",
@@ -115,6 +116,8 @@ function createNativeServices(pins?: SourcePins): HostServices {
       invoke("choose_download_files", { sessionId, files }),
     prepareCopy: (sessionId, path, revision, parent) =>
       invoke("prepare_file_copy", { sessionId, path, revision, parent }),
+    prepareCopySelection: (sessionId, files, parent) =>
+      invoke("prepare_file_copy_selection", { sessionId, files, parent }),
     readHostSettings: (sessionId) =>
       invoke("read_host_settings", { sessionId }),
     applyHostSetting: (sessionId, id, value, revision) =>

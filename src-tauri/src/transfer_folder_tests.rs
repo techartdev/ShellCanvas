@@ -106,6 +106,54 @@ fn provider(bad_child: Option<FileEntry>) -> Arc<dyn FileTransferService> {
     })
 }
 #[tokio::test]
+async fn selection_catalog_keeps_distinct_roots_and_nested_descriptor_paths() {
+    let service = provider(None);
+    let catalog = Arc::new(catalog::Catalog::new(true).unwrap());
+    for index in 0..128 {
+        catalog
+            .add(
+                None,
+                vec![(
+                    entry(
+                        &format!("single@{index}"),
+                        &format!("single-{index}.bin"),
+                        false,
+                        1,
+                    ),
+                    None,
+                )],
+            )
+            .unwrap();
+    }
+    catalog
+        .add(None, vec![(entry("root@opaque", "Root", true, 0), None)])
+        .unwrap();
+    let (_stop, cancel) = watch::channel(false);
+    let catalog = tree::scan_catalog(catalog, service.clone(), &cancel, &mut |_| {})
+        .await
+        .unwrap();
+    assert_eq!(catalog.len(), 131);
+    assert_eq!(catalog.get(1).unwrap().display, "single-0.bin");
+    assert_eq!(catalog.get(129).unwrap().display, "Root");
+    assert_eq!(catalog.get(130).unwrap().display, "Root\\Empty");
+    assert_eq!(catalog.get(131).unwrap().display, "Root\\binary.bin");
+    #[cfg(windows)]
+    {
+        let sources = crate::clipboard_stream::Sources::catalogs(
+            vec![catalog.clone()],
+            service,
+            tokio::runtime::Handle::current(),
+        );
+        assert_eq!(sources.len(), 131);
+        assert_eq!(sources.get(130).unwrap().display_path, "Root\\binary.bin");
+        assert_eq!(sources.get(130).unwrap().entry.path, "file@opaque");
+    }
+    // The same Windows destination name cannot be supplied by another root.
+    assert!(catalog
+        .add(None, vec![(entry("another@root", "ROOT", true, 0), None)])
+        .is_err());
+}
+#[tokio::test]
 async fn local_folder_plan_keeps_metadata_and_empty_directories_without_open_files() {
     let temp = tempfile::tempdir().unwrap();
     let root = temp.path().join("Folder");

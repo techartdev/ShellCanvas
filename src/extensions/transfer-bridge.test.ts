@@ -3,6 +3,7 @@ import { expect, it, vi } from "vitest";
 import { AppTransfers, type AppTransferSource } from "./transfer-bridge";
 import { RpcPeer, type RpcTransport } from "./rpc";
 import { appTransferClient } from "../../packages/app-sdk/src/transfer-client";
+import { appClipboardClient } from "../../packages/app-sdk/src/clipboard-client";
 import type { TransferOutcome, TransferProgress, TransferTicket } from "../sdk";
 
 function deferred<T>() {
@@ -32,6 +33,10 @@ function setup(grants = ["files.upload", "files.download", "files.copy"]) {
   >();
   const progress = new Map<number, (event: TransferProgress) => void>();
   const services = {
+    systemFileClipboard: true,
+    pasteSystemFiles: vi.fn(
+      async (_parent: string): Promise<TransferTicket[]> => [ticket("upload")],
+    ),
     chooseUploads: vi.fn(async (_parent: string, _folder?: boolean) => [
       ticket("upload"),
       ticket("upload"),
@@ -159,6 +164,80 @@ it("prepares without starting, keeps native tickets private, coalesces progress 
     expect(t.busy).toHaveBeenLastCalledWith(false);
     await job.close();
     await expect(job.status()).rejects.toMatchObject({ code: "closed" });
+  } finally {
+    t.close();
+  }
+});
+it("prepares native clipboard files only with both grants and returns owned jobs without starting them", async () => {
+  for (const grants of [
+    [],
+    ["files.upload"],
+    ["system.clipboard.files.read"],
+  ]) {
+    const denied = setup(grants);
+    try {
+      await expect(
+        appClipboardClient(denied.peer).pasteFiles(destination),
+      ).rejects.toMatchObject({ code: "denied" });
+      expect(denied.services.pasteSystemFiles).not.toHaveBeenCalled();
+    } finally {
+      denied.close();
+    }
+  }
+  const t = setup(["files.upload", "system.clipboard.files.read"]);
+  try {
+    const clipboard = appClipboardClient(t.peer);
+    const [job] = await clipboard.pasteFiles(destination);
+    expect(t.services.pasteSystemFiles).toHaveBeenCalledWith(destination.path);
+    expect(job).not.toHaveProperty("id");
+    expect(t.services.runTransfer).not.toHaveBeenCalled();
+    expect(t.busy).toHaveBeenLastCalledWith(true);
+    const running = job.run();
+    await vi.waitFor(() => expect(t.results.size).toBe(1));
+    t.finish([...t.results.keys()][0]);
+    expect(await running).toMatchObject({
+      status: "completed",
+      destination: { binding: "first", path: "device:result" },
+    });
+    await job.close();
+    t.services.pasteSystemFiles.mockResolvedValueOnce([]);
+    expect(await clipboard.pasteFiles(destination)).toEqual([]);
+    expect(t.busy).toHaveBeenLastCalledWith(false);
+    t.services.systemFileClipboard = false;
+    await expect(clipboard.pasteFiles(destination)).rejects.toMatchObject({
+      code: "unavailable",
+    });
+    expect(t.services.pasteSystemFiles).toHaveBeenCalledTimes(2);
+  } finally {
+    t.close();
+  }
+});
+it("keeps canceled clipboard preparation busy until late tickets are released and never routes it to a replacement", async () => {
+  const t = setup(["files.upload", "system.clipboard.files.read"]);
+  const pending = deferred<TransferTicket[]>();
+  t.services.pasteSystemFiles.mockReturnValueOnce(pending.promise);
+  try {
+    const abort = new AbortController();
+    const result = appClipboardClient(t.peer).pasteFiles(
+      destination,
+      abort.signal,
+    );
+    const rejected = expect(result).rejects.toMatchObject({ code: "aborted" });
+    await vi.waitFor(() =>
+      expect(t.services.pasteSystemFiles).toHaveBeenCalledOnce(),
+    );
+    abort.abort();
+    await rejected;
+    expect(t.busy).toHaveBeenLastCalledWith(true);
+    t.replace();
+    pending.resolve([
+      { id: 99, name: "1000 clipboard items", size: 1000, direction: "upload" },
+    ]);
+    await vi.waitFor(() =>
+      expect(t.services.cancelTransfer).toHaveBeenCalledWith(99),
+    );
+    await vi.waitFor(() => expect(t.busy).toHaveBeenLastCalledWith(false));
+    expect(t.services.runTransfer).not.toHaveBeenCalled();
   } finally {
     t.close();
   }

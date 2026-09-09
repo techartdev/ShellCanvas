@@ -2,33 +2,26 @@
 use super::*;
 
 #[test]
-fn clipboard_uploads_capture_bytes_and_refuse_duplicate_names() {
-    use std::io::Read;
+fn clipboard_uploads_capture_root_metadata_and_refuse_duplicate_names() {
     let directory = tempfile::tempdir().unwrap();
     let first = directory.path().join("local 🌍.bin");
     std::fs::write(&first, b"clipboard source").unwrap();
     let second = directory.path().join("second.txt");
     std::fs::write(&second, b"second").unwrap();
     let jobs = clipboard_uploads(vec![first.clone(), second], "opaque@destination".into()).unwrap();
-    assert_eq!(jobs.len(), 2);
-    let (
-        Job::Upload {
-            mut file, parent, ..
-        },
-        name,
-        size,
-        direction,
-    ) = jobs.into_iter().next().unwrap()
+    assert_eq!(jobs.len(), 1);
+    let (Job::Selection { catalog, parent }, name, size, direction) =
+        jobs.into_iter().next().unwrap()
     else {
-        panic!("Expected upload")
+        panic!("Expected selection upload")
     };
-    let mut bytes = Vec::new();
-    file.read_to_end(&mut bytes).unwrap();
-    assert_eq!(bytes, b"clipboard source");
+    assert_eq!(catalog.len(), 2);
+    assert_eq!(catalog.get(1).unwrap().entry.name, "local 🌍.bin");
+    assert_eq!(catalog.get(1).unwrap().local.as_ref().unwrap().size, 16);
     assert_eq!(parent, "opaque@destination");
     assert_eq!(
         (name.as_str(), size, direction),
-        ("local 🌍.bin", 16, "upload")
+        ("2 clipboard items", 22, "upload")
     );
     assert!(clipboard_uploads(vec![first.clone(), first.clone()], "dest".into()).is_err());
     assert!(clipboard_uploads(vec![first, directory.path().to_path_buf()], "dest".into()).is_ok());
@@ -140,6 +133,89 @@ fn copy_job() -> Job {
         parent: "folder@other".into(),
         name: "binary.bin".into(),
     }
+}
+
+#[tokio::test]
+async fn clipboard_selection_streams_many_roots_through_one_job() {
+    let directory = tempfile::tempdir().unwrap();
+    let mut paths = Vec::new();
+    let mut expected = Vec::new();
+    for index in 0..128u16 {
+        let path = directory.path().join(format!("item-{index}.bin"));
+        let bytes = index.to_le_bytes().repeat(1025);
+        std::fs::write(&path, &bytes).unwrap();
+        expected.extend_from_slice(&bytes);
+        paths.push(path);
+    }
+    let mut jobs = clipboard_uploads(paths, "target@folder".into()).unwrap();
+    assert_eq!(jobs.len(), 1);
+    let memory = Memory::new(false);
+    let (_, canceled) = watch::channel(false);
+    let mut last = (0, 0);
+    let result = execute(
+        jobs.pop().unwrap().0,
+        memory.clone(),
+        &canceled,
+        &mut |event| {
+            last = (event.bytes, event.total);
+        },
+    )
+    .await
+    .unwrap();
+    assert_eq!(result, "target@folder");
+    assert_eq!(*memory.writes.lock().unwrap(), expected);
+    assert_eq!(memory.commits.load(Ordering::SeqCst), 128);
+    assert_eq!(last, (expected.len() as u64, expected.len() as u64));
+}
+
+#[tokio::test]
+async fn clipboard_selection_refuses_changed_sources_before_opening_upload() {
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("source.bin");
+    std::fs::write(&path, b"original").unwrap();
+    let job = clipboard_uploads(vec![path.clone()], "target".into())
+        .unwrap()
+        .pop()
+        .unwrap()
+        .0;
+    std::fs::write(&path, b"changed length since preparation").unwrap();
+    let memory = Memory::new(false);
+    let (_, canceled) = watch::channel(false);
+    assert!(execute(job, memory.clone(), &canceled, &mut |_| {})
+        .await
+        .is_err());
+    assert!(memory.writes.lock().unwrap().is_empty());
+    assert_eq!(memory.commits.load(Ordering::SeqCst), 0);
+}
+
+#[tokio::test]
+async fn clipboard_selection_cancellation_preserves_completed_roots_and_stops_following_items() {
+    let directory = tempfile::tempdir().unwrap();
+    let paths: Vec<_> = (0..3)
+        .map(|index| {
+            let path = directory.path().join(format!("{index}.bin"));
+            std::fs::write(&path, [index as u8; 16]).unwrap();
+            path
+        })
+        .collect();
+    let job = clipboard_uploads(paths, "target@folder".into())
+        .unwrap()
+        .pop()
+        .unwrap()
+        .0;
+    let memory = Memory::new(false);
+    let (cancel, canceled) = watch::channel(false);
+    let result = execute(job, memory.clone(), &canceled, &mut |_| {
+        if memory.commits.load(Ordering::SeqCst) == 1 {
+            cancel.send(true).unwrap();
+        }
+    })
+    .await;
+    assert!(
+        format!("{:#}", result.unwrap_err()).contains("completed items remain at target@folder")
+    );
+    assert_eq!(memory.commits.load(Ordering::SeqCst), 1);
+    assert_eq!(*memory.writes.lock().unwrap(), [0u8; 16]);
 }
 
 #[tokio::test]

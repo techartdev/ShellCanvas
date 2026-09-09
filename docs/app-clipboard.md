@@ -1,5 +1,41 @@
 # Clipboard API for runtime apps
 
+## Files copied on this device
+
+`client.clipboard.pasteFiles(destination, signal?)` prepares uploads from the
+native file clipboard to a `{ binding, path }` remote directory. Declare both
+`system.clipboard.files.read` and `files.upload`. The file permission is independent
+of text/image access; permission denial happens before clipboard reading.
+Discovery exposes `system.transfers.clipboardPaste` only as available when the
+workspace provides uploads and the desktop supports native file clipboard input.
+
+```ts
+const jobs = await client.clipboard.pasteFiles(destination, signal);
+for (const job of jobs) {
+  try {
+    const result = await job.run(signal);
+    // Present the authoritative result, including partial failure or cancellation.
+  } finally {
+    await job.close();
+  }
+}
+```
+
+Preparation does not start uploads. Returned handles use the same status, watch,
+cancel and close contract as [other transfers](app-transfers.md). The desktop keeps
+pending preparation and unfinished jobs busy even if an app reports itself idle.
+Late tickets after cancellation, closure or source replacement are cleaned up;
+native root preparation itself currently finishes before that cleanup occurs.
+
+Windows currently accepts Explorer's file-list format (CF_HDROP). An empty or
+non-file clipboard returns no jobs. Native input paths never appear in SDK ticket
+fields. Files and folders share one disk-backed selection catalog and one queued
+job; file contents open on demand and are checked against captured metadata.
+Folders require provider folder-transfer support. A locally cut selection uploads
+a copy and retains its source. Other applications' virtual-file formats and native
+macOS/Linux file clipboard input are not yet supported. Public outgoing file
+copy/cut and custom-format APIs remain separate work.
+
 ## Images
 
 `client.clipboard.readImage(signal?)` returns `{ width, height, rgba }`, where
@@ -44,7 +80,12 @@ checks denied reads after a permission change. It does not overwrite the user's
 OS clipboard or establish a Paint/Explorer image interoperability result.
 The complete fixture passes 71 checks at both 1360×900 and 800×900.
 
-File and custom-format clipboard APIs for installed apps remain separate work.
+Outgoing file and custom-format clipboard APIs for installed apps remain separate work.
+
+The file-paste checkpoint passes 73 Windows installed-app checks at 1360×900,
+including successful paste through the independently packaged SDK and denied
+access without invoking the backend. Clipboard content is synthetic; this does
+not replace the user's clipboard or establish a new live Explorer walkthrough.
 
 ## Text
 
@@ -76,7 +117,10 @@ Cancellation before commit leaves the system clipboard unchanged. A native write
 
 ## Scope and evidence
 
-This app API currently handles text. The bundled Files app's native file/folder Copy/Paste path is documented separately in [system-clipboard.md](system-clipboard.md); those file-transfer operations and image/custom-format clipboard access are not yet exposed through this runtime client. The broker's explicit namespaced method map allows additional formats/services to be added without changing the existing text contract.
+The app API provides text, images and incoming native file paste. The bundled
+Files app's outgoing file/folder Copy path is documented separately in
+[system-clipboard.md](system-clipboard.md). Outgoing file and custom-format access
+are not yet exposed through the runtime client.
 
 `npm test -- src/extensions/clipboard-api.test.ts` exercises real RPC channels with synthetic clipboard contents: a text value larger than one RPC envelope, split surrogate pairs, empty text, snapshot consistency, separate permissions, foreign handles, ordered chunks, incomplete commits, cancellation during staging/startup, late completion, exclusive native publication and close cleanup.
 

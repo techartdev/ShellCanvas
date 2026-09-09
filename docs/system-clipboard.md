@@ -1,10 +1,10 @@
 # File clipboard and Windows transfers
 
-Files uses **Copy** / Ctrl+C for up to 16 selected files or folders. Paste in another folder in the same workspace queues revision-checked copies, retaining sources and refusing existing destinations. The clipboard is shared across Files windows. Copy name/path remain explicit text actions; preview, address, terminal and editor text clipboard behavior is unchanged.
+Files uses **Copy** / Ctrl+C for selected files or folders. Paste in another folder in the same workspace queues a revision-checked selection job, retaining sources and refusing existing destinations. The clipboard is shared across Files windows. Copy name/path remain explicit text actions; preview, address, terminal and editor text clipboard behavior is unchanged.
 
 On Windows, Copy also publishes virtual files to Explorer. No file bytes are fetched at Copy: the native clipboard exposes descriptors and streams the bytes when Explorer pastes. Keep ShellCanvas and the connection open until completion. There are no staging files or JavaScript byte buffers. The provider checks the captured source revision and size, including final verification before returning the last bytes. Explorer owns its progress, destination collision prompts and partial-file handling.
 
-Copy local files in Explorer, then use **Paste here** / Ctrl+V on the Files surface to upload them. Rust reads the Windows file list only on explicit Paste, validates up to 16 selected files or folders and returns session/app-owned transfer tickets. Individually selected files retain their handles; folder contents are opened on demand after metadata discovery. The existing queue supplies progress, cancellation, source checks, temporary-file cleanup and no-overwrite publication. Links, junctions, special files, duplicate destination names and unsupported clipboard formats are refused. The captured remote destination is not changed by later navigation.
+Copy local files in Explorer, then use **Paste here** / Ctrl+V on the Files surface to upload them. Rust reads the Windows file list only on explicit Paste, snapshots root metadata into one disk catalog and returns one session/app-owned selection ticket. All source files open on demand when their transfer runs; changed sources are refused against the recorded metadata. Folder contents are discovered by the queued job. The existing queue supplies progress, cancellation, source checks, temporary-file cleanup and no-overwrite publication. Links, junctions, special files and duplicate destination names are refused. The captured remote destination is not changed by later navigation.
 
 The Windows clipboard is authoritative. A newer Copy in another application replaces the older remote selection; returning to ShellCanvas clears stale indicators, and every file Paste checks again. Text clipboard contents are not interpreted as file paths or remote commands. Pasting text in Files gives guidance to use an editor or terminal. Clipboard identity tracks the owned OLE data object so delayed rendering does not invalidate a still-current remote selection.
 
@@ -22,7 +22,16 @@ Local folder discovery retains metadata rather than an open handle for every fil
 
 Links, junctions, reparse points and special files are rejected rather than followed. Windows destination names are validated for traversal, reserved names and case collisions; Explorer virtual paths must fit its 259 UTF-16-unit descriptor limit. Download does not have that clipboard-specific limit (normal filesystem limits still apply). Windows requires a contiguous [FILEGROUPDESCRIPTORW metadata array](https://learn.microsoft.com/en-us/windows/win32/api/shlobj_core/ns-shlobj_core-filegroupdescriptorw) when Explorer requests the selection. ShellCanvas fills that block directly from the catalog, then serves indexed file streams on demand. This native format still requires memory proportional to the descriptor count; disk space, OS allocation and path limits remain real constraints.
 
-The existing controls of 16 top-level selections, 32 queued jobs and four active workers remain separate from folder size. A selected folder can contain far more than 16 files. No full-tree vector or per-file handle collection is retained during a folder transfer.
+Clipboard Copy/Paste has no application-defined top-level selection cap. One
+selection occupies one catalog and one queue slot, including regular files on a
+provider without folder support. The queue still limits concurrent jobs/workers;
+those limits do not restrict the number of roots inside a job. Root pathnames are
+temporarily collected while decoding the native clipboard; tree metadata is
+disk-backed and no per-file handle collection is retained. Native root preparation
+is not yet interruptible; cancellation discards its returned ticket before run.
+Failures stop the batch and preserve completed items, reporting the destination
+folder. The separate Upload files and multi-file Download pickers retain their
+existing 16-item limits.
 
 A queued folder gets aggregate byte progress and cancellation. Its destination root must be absent; ShellCanvas does not merge with or replace an existing folder. Each file is verified and published separately using the existing temporary-file protocol. On failure/cancellation, completed files and created directories remain; the result explicitly reports the incomplete destination. There is no automatic recursive deletion. A late cancellation cannot undo a completed file. Explorer controls collision prompts and partial results for pastes it owns.
 

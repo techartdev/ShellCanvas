@@ -25,6 +25,52 @@ const session = (id: number) => ({
     ],
   },
 });
+it("prepares large immutable selections as one native job and releases a stale batch", async () => {
+  const prepareCopySelection = vi.fn(
+    async (
+      _sessionId: number,
+      _entries: { path: string; revision: string }[],
+      _parent: string,
+    ) => ({
+      id: 42,
+      name: "1000 copied items",
+      size: 10000,
+      direction: "copy" as const,
+    }),
+  );
+  const cancelTransfer = vi.fn(async () => {});
+  const prepareCopy = vi.fn();
+  const binding = bindSession(
+    { ...previewServices, prepareCopySelection, prepareCopy, cancelTransfer },
+    session(1120),
+  );
+  const clipboard = fileClipboard(binding.services);
+  const entries = Array.from({ length: 1000 }, (_, index) => ({
+    ...source,
+    path: `entry@${index}`,
+  }));
+  clipboard.copy(entries, "source");
+  entries[0].revision = "changed-after-copy";
+  try {
+    expect(
+      await clipboard.prepareCopies("target", binding.services),
+    ).toHaveLength(1);
+    expect(prepareCopySelection).toHaveBeenCalledWith(
+      1120,
+      expect.arrayContaining([{ path: "entry@0", revision: source.revision }]),
+      "target",
+    );
+    expect(prepareCopySelection.mock.calls[0][1]).toHaveLength(1000);
+    expect(prepareCopy).not.toHaveBeenCalled();
+    const pending = clipboard.prepareCopies("another-target", binding.services);
+    clipboard.removed("entry@0");
+    await expect(pending).rejects.toThrow("changed");
+    expect(cancelTransfer).toHaveBeenCalledWith(1120, 42);
+    expect(clipboard.snapshot().working).toBe(false);
+  } finally {
+    binding.dispose();
+  }
+});
 it("copies several immutable sources, queues through the receiving app, and permits another destination", async () => {
   let id = 10;
   const prepareCopy = vi.fn(async () => ({

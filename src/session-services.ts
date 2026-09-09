@@ -207,6 +207,17 @@ export function bindSession(
       check("files.download", expected);
       return result;
     },
+    prepareCopySelection: backend.prepareCopySelection
+      ? async (files, parent) => {
+          const expected = generation;
+          const ticket = await backend.prepareCopySelection!(
+            check("files.copy"),
+            files.map((file) => ({ ...file })),
+            parent,
+          );
+          return (await adopt([ticket], expected, "files.copy"))[0];
+        }
+      : undefined,
     chooseDownloads: async (files) => {
       const expected = generation;
       return adopt(

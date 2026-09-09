@@ -1,10 +1,17 @@
 // SPDX-License-Identifier: MPL-2.0
 import { RpcError, type RpcPeer } from "./rpc.js";
+import { appTransferClient, type RemoteTransfer } from "./transfer-client.js";
+import type { RemoteFileLocation } from "./file-client.js";
 import {
   appImageClipboardClient,
   type ClipboardImage,
 } from "./clipboard-image.js";
 export interface AppClipboardAPI {
+  /** Prepare clipboard files/folders for upload. Run and close the returned owned transfer handles. */
+  pasteFiles(
+    destination: RemoteFileLocation,
+    signal?: AbortSignal,
+  ): Promise<RemoteTransfer[]>;
   readText(signal?: AbortSignal): Promise<string>;
   writeText(text: string, signal?: AbortSignal): Promise<void>;
   readImage(signal?: AbortSignal): Promise<ClipboardImage>;
@@ -17,6 +24,7 @@ export function appClipboardClient(
   const release = (id: string) =>
     peer.call("system.clipboard.release", { id }).catch(() => {});
   return Object.freeze({
+    pasteFiles: appTransferClient(peer).pasteClipboard,
     ...appImageClipboardClient(peer),
     async readText(signal) {
       const id = crypto.randomUUID();

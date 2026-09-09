@@ -139,6 +139,17 @@ pub(super) async fn scan(
     checkpoint(cancel)?;
     let catalog = Arc::new(Catalog::new(portable)?);
     catalog.add(None, vec![(tree.root.entry, tree.root.local)])?;
+    scan_catalog(catalog, service, cancel, progress).await
+}
+
+/// Root selections share one database and one directory cursor, regardless of root count.
+pub(super) async fn scan_catalog(
+    catalog: Arc<Catalog>,
+    service: Arc<dyn FileTransferService>,
+    cancel: &watch::Receiver<bool>,
+    progress: &mut (dyn FnMut(Progress) + Send),
+) -> Result<Arc<Catalog>> {
+    checkpoint(cancel)?;
     progress(Progress {
         items: Some(catalog.len()),
         bytes: 0,
@@ -237,8 +248,42 @@ pub(super) async fn execute_tree(
         progress,
     )
     .await?;
+    execute_catalog(catalog, target, service, cancel, progress, None).await
+}
+
+pub(super) async fn execute_selection(
+    catalog: Arc<Catalog>,
+    parent: String,
+    service: Arc<dyn FileTransferService>,
+    cancel: &watch::Receiver<bool>,
+    progress: &mut (dyn FnMut(Progress) + Send),
+) -> Result<String> {
+    if catalog.has_directories()? && !service.supports_folders() {
+        bail!("Folder transfers are unavailable on this device");
+    }
+    let destination = (catalog.len() > 1).then(|| parent.clone());
+    let catalog = scan_catalog(catalog, service.clone(), cancel, progress).await?;
+    execute_catalog(
+        catalog,
+        Target::Remote(parent),
+        service,
+        cancel,
+        progress,
+        destination,
+    )
+    .await
+}
+
+async fn execute_catalog(
+    catalog: Arc<Catalog>,
+    target: Target,
+    service: Arc<dyn FileTransferService>,
+    cancel: &watch::Receiver<bool>,
+    progress: &mut (dyn FnMut(Progress) + Send),
+    selection_destination: Option<String>,
+) -> Result<String> {
     if let Target::Remote(parent) = &target {
-        if !service.supports_folders() {
+        if catalog.has_directories()? && !service.supports_folders() {
             bail!("Folder transfers are unavailable on this device");
         }
         if catalog.contains_directory(parent)? {
@@ -324,6 +369,12 @@ pub(super) async fn execute_tree(
                 root = Some(path.clone());
             }
             catalog.set_output(id, &path)?;
+            progress(Progress {
+                items: Some(id),
+                bytes: completed,
+                total,
+                phase: "running",
+            });
             tokio::task::yield_now().await;
         }
         progress(Progress {
@@ -332,12 +383,16 @@ pub(super) async fn execute_tree(
             total,
             phase: "finishing",
         });
-        root.clone().context("Folder transfer has no root")
+        selection_destination
+            .clone()
+            .or_else(|| root.clone())
+            .context("Transfer selection has no root")
     }
     .await;
     work.map_err(|error| match root {
         Some(root) => anyhow::anyhow!(
-            "{error:#}. Folder transfer is incomplete; completed items remain at {root}"
+            "{error:#}. Transfer is incomplete; completed items remain at {}",
+            selection_destination.as_ref().unwrap_or(&root)
         ),
         None => error,
     })
