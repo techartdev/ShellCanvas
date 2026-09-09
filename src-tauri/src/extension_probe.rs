@@ -7,6 +7,18 @@ use std::sync::{
 use tauri::{Listener, Runtime};
 
 #[tauri::command]
+pub fn live_clipboard_probe_context(app: tauri::AppHandle) -> Result<(), String> {
+    if app.config().identifier == "dev.shellcanvas.extensionprobe"
+        && std::env::var("SHELLCANVAS_EXTENSION_PROBE").as_deref() == Ok("1")
+        && std::env::var("SHELLCANVAS_LIVE_CLIPBOARD_PROBE").as_deref() == Ok("1")
+    {
+        Ok(())
+    } else {
+        Err("Live clipboard probe requires explicit opt-in from its dedicated runner".into())
+    }
+}
+
+#[tauri::command]
 pub fn catalog_probe_context(app: tauri::AppHandle) -> Result<serde_json::Value, String> {
     if app.config().identifier != "dev.shellcanvas.extensionprobe"
         || std::env::var("SHELLCANVAS_EXTENSION_PROBE").as_deref() != Ok("1")

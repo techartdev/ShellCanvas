@@ -40,8 +40,9 @@ temporarily collected while decoding the native clipboard; tree metadata is
 disk-backed and no per-file handle collection is retained. Native root preparation
 is not yet interruptible; cancellation discards its returned ticket before run.
 Failures stop the batch and preserve completed items, reporting the destination
-folder. The separate Upload files and multi-file Download pickers retain their
-existing 16-item limits.
+folder. Upload files and multi-file Download now use the same catalog-backed
+batch strategy, without a fixed selection-count limit. Provider, filesystem and
+OS format limits still apply.
 
 A queued folder gets aggregate byte progress and cancellation. Its destination root must be absent; ShellCanvas does not merge with or replace an existing folder. Each file is verified and published separately using the existing temporary-file protocol. On failure/cancellation, completed files and created directories remain; the result explicitly reports the incomplete destination. There is no automatic recursive deletion. A late cancellation cannot undo a completed file. Explorer controls collision prompts and partial results for pastes it owns.
 

@@ -49,7 +49,12 @@ An app's `services` is a `SessionServices` handle: `list(path)`, `preview(path)`
 
 Move-capable app scopes share the workspace's file clipboard and its disconnect cleanup. This preserves Cut/Paste between Files windows. A scope without declared `files.move` cannot acquire move access through the clipboard. `session.info.capabilities` remains a host metadata snapshot, not an app permission list: only the manifest's declared services are callable. Check `active` for UI such as portal menus that should disappear when the workspace is hidden; switching workspaces does not unmount the app.
 
-These checks prevent accidental undeclared calls by trusted source modules. They are **not an isolation boundary for hostile JavaScript**: bundled modules share the webview, can import native IPC and can reach other trusted code. External package execution, native enforcement of extension grants, revocation and composite binding policy remain separate work. No user permission prompts or credential access are introduced here. See [service declarations](app-services.md).
+These checks prevent accidental undeclared calls by trusted source modules. They
+are **not an isolation boundary for hostile JavaScript**: bundled modules share
+the webview, can import native IPC and can reach other trusted code. Installed
+apps use the separate [runtime package and grant boundary](runtime-apps.md).
+These bundled declarations do not introduce user permission prompts or credential
+access. See [service declarations](app-services.md).
 
 ## Acceptance checklist
 

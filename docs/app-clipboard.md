@@ -231,6 +231,15 @@ of foreign workspaces/replaced providers and independent catalogs for repeated
 pastes. Broker tests check clipboard changes and separate copy/upload grants.
 Clipboard services in these integration checks are synthetic.
 
+The subsequent Windows checkpoint passes 91 installed-app checks at 1360×900,
+including public `cutFile` publication, denied publication permission and paste
+into bundled Files. The 88-check checkpoint at 800×900 covers the earlier shared
+Cut/move and cleanup guards. These counts describe different checkpoints; they
+do not establish live Windows clipboard image interoperability. The separate
+opt-in [live image runner](live-image-clipboard-validation.md) now passes both
+directions for opaque 2×2 images using the production service and an independent
+Windows reader/writer.
+
 The app API provides text, images, native file paste and native file export. The
 bundled Files app's workspace Copy/Cut path is documented separately in
 [system-clipboard.md](system-clipboard.md). Copy selections are shared with

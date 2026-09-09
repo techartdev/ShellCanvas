@@ -1,0 +1,20 @@
+{
+  "productName": "ShellCanvas Live Image Clipboard Probe",
+  "identifier": "dev.shellcanvas.extensionprobe",
+  "build": {
+    "beforeBuildCommand": "node scripts/build-extension-probe.mjs",
+    "frontendDist": "../.local/native-extension-probe/dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "ShellCanvas live image clipboard probe",
+        "url": "tests/fixtures/live-image-clipboard-probe.html",
+        "width": 640,
+        "height": 480,
+        "visible": false
+      }
+    ]
+  }
+}

@@ -34,7 +34,11 @@ The returned `RemoteTextDocument` contains the provider's text, name, path, pare
 
 Calls accept an optional `AbortSignal`. Cancellation before dispatch prevents work; cancellation or source replacement after dispatch suppresses late results but cannot undo a provider write already issued. The existing native text methods do not have interruptible byte streaming. Do not retry mutations automatically after cancellation, failure or uncertain completion. Provider error messages are returned as `failed`; structured conflict categories remain part of the error-contract consolidation work.
 
-Text operations use the existing bounded text-document service. They do not replace the streaming binary/folder transfer engine or impose a file-tree count limit. Terminal streams and transfers remain separate SDK deliverables. Installed process adapters still need their text/mutation bridges before they can advertise these capabilities.
+Text operations use the existing bounded text-document service. They do not
+replace the streaming binary/folder transfer engine or impose a file-tree count
+limit. [Console streams](app-console.md) and [transfers](app-transfers.md) have
+their own SDK methods. Installed process adapters can advertise the implemented
+text and mutation methods described in the [adapter contract](adapter-process.md).
 
 ## File actions
 
