@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
+import { showModal } from "../dialog-compat";
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { LoaderCircle, Trash2 } from "lucide-react";
@@ -34,7 +35,7 @@ export function DeleteFilesDialog({
     live.current = true;
     stop.current = false;
     const previous = document.activeElement as HTMLElement | null;
-    dialog.current?.showModal();
+    showModal(dialog.current);
     return () => {
       live.current = false;
       stop.current = true;

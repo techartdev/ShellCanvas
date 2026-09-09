@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
+import { showModal } from "../dialog-compat";
 import { useEffect, useRef, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import {
   Check,
   ChevronRight,
@@ -94,7 +96,7 @@ export function SettingsDialog({
   useEffect(() => {
     const previous = document.activeElement as HTMLElement | null;
     const el = dialog.current!;
-    el.showModal();
+    showModal(el);
     return () => {
       el.close();
       if (previous?.isConnected) previous.focus({ preventScroll: true });
@@ -150,7 +152,7 @@ export function SettingsDialog({
     );
   }
   const info = sections.find((item) => item.id === section)!;
-  return (
+  return createPortal(
     <dialog
       ref={dialog}
       className="preferences-dialog"
@@ -459,6 +461,7 @@ export function SettingsDialog({
           </>
         )}
       </footer>
-    </dialog>
+    </dialog>,
+    document.body,
   );
 }

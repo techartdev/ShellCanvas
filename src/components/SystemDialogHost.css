@@ -6,12 +6,14 @@
   border-radius: 17px;
   padding: 0;
   box-shadow: 0 30px 110px #020d19b3;
+  max-height: calc(100vh - 40px);
   max-height: calc(100dvh - 40px);
   overflow: auto;
   margin: auto;
 }
 .system-dialog::backdrop {
   background: #07121bb8;
+  -webkit-backdrop-filter: blur(5px);
   backdrop-filter: blur(5px);
 }
 .system-dialog-header {
@@ -140,6 +142,7 @@
 .system-picker-body {
   display: grid;
   grid-template-columns: 150px minmax(0, 1fr);
+  height: min(340px, 43vh);
   height: min(340px, 43dvh);
   min-height: 170px;
 }

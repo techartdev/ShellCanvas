@@ -1,0 +1,121 @@
+/* SPDX-License-Identifier: MPL-2.0 */
+/* Only engines failing the measured flex-gap probe use these margins. Keep
+   desktop chrome and the core Files/Terminal controls readable on Catalina.
+   Grid spacing and all modern-engine layouts keep their native gap behavior. */
+.legacy-flex-gap .brand > * + *,
+.legacy-flex-gap .host-pill > * + *,
+.legacy-flex-gap .window-title > * + *,
+.legacy-flex-gap .workspace-connect > * + * {
+  margin-left: 9px;
+}
+.legacy-flex-gap .system-indicators > * + * {
+  margin-left: 15px;
+}
+.legacy-flex-gap .system-indicators time > * + * {
+  margin-left: 13px;
+}
+.legacy-flex-gap .desktop-meta > * + * {
+  margin-left: 24px;
+}
+.legacy-flex-gap .desktop-meta svg,
+.legacy-flex-gap .disconnect-button svg {
+  margin-right: 6px;
+}
+.legacy-flex-gap .workspace-connect > svg:first-child {
+  margin-right: 9px;
+}
+.legacy-flex-gap .workspace-choice > * + *,
+.legacy-flex-gap .desktop-caption > * + *,
+.legacy-flex-gap .toast > * + * {
+  margin-left: 12px;
+}
+.legacy-flex-gap .window-controls > * + * {
+  margin-left: 2px;
+}
+.legacy-flex-gap .dock > * + * {
+  margin-left: 6px;
+}
+.legacy-flex-gap .bottom-status > * + *,
+.legacy-flex-gap .file-search > * + *,
+.legacy-flex-gap .terminal-tabs > span:first-child > * + * {
+  margin-left: 7px;
+}
+.legacy-flex-gap .file-toolbar > * + *,
+.legacy-flex-gap .files-footer > * + * {
+  margin-left: 5px;
+}
+.legacy-flex-gap .file-sidebar > button svg,
+.legacy-flex-gap .file-row > span:first-child svg,
+.legacy-flex-gap .file-cut-bar > svg {
+  margin-right: 10px;
+}
+.legacy-flex-gap .path-bar > * + *,
+.legacy-flex-gap .volume > * + *,
+.legacy-flex-gap .window-adjustment > * + *,
+.legacy-flex-gap .folder-heading > * + * {
+  margin-left: 8px;
+}
+.legacy-flex-gap .context-menu-label svg,
+.legacy-flex-gap .popover-heading > span svg,
+.legacy-flex-gap .auth-tabs button svg,
+.legacy-flex-gap .launcher-connect svg {
+  margin-right: 8px;
+}
+.legacy-flex-gap .file-table-head button svg {
+  margin-left: 4px;
+}
+.legacy-flex-gap .terminal-footer button svg,
+.legacy-flex-gap .file-cut-bar button svg {
+  margin-right: 5px;
+}
+.legacy-flex-gap .files-footer button svg {
+  margin-right: 3px;
+}
+.legacy-flex-gap .terminal-footer > * + *,
+.legacy-flex-gap .file-cut-bar > button + button {
+  margin-left: 10px;
+}
+.legacy-flex-gap .file-message > * + * {
+  margin-top: 10px;
+}
+.legacy-flex-gap .context-menu button > * + * {
+  margin-left: 20px;
+}
+.legacy-flex-gap .primary-button > svg:last-child {
+  margin-left: 22px;
+}
+.legacy-flex-gap .launcher-app > * + *,
+.legacy-flex-gap .form-row > * + * {
+  margin-left: 13px;
+}
+.legacy-flex-gap .wallpaper-options > * + * {
+  margin-left: 9px;
+}
+.legacy-flex-gap .auth-tabs > * + * {
+  margin-left: 3px;
+}
+.legacy-flex-gap .trust-note svg {
+  margin-right: 9px;
+}
+.legacy-flex-gap .profile-actions > *,
+.legacy-flex-gap .profile-removal > *,
+.legacy-flex-gap .capability-list > * {
+  margin-right: 8px;
+  margin-bottom: 8px;
+}
+@media (max-width: 899px) {
+  .legacy-flex-gap .system-indicators > * + * {
+    margin-left: 6px;
+  }
+  .legacy-flex-gap .desktop-meta > * + * {
+    margin-left: 15px;
+  }
+  .legacy-flex-gap .workspace-windows > * + * {
+    margin-top: 18px;
+  }
+}
+@media (max-width: 600px) {
+  .legacy-flex-gap .desktop-meta > * + * {
+    margin-left: 10px;
+  }
+}

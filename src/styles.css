@@ -74,6 +74,7 @@ button:active:not(:disabled) {
   transform: translateY(1px);
 }
 .desktop {
+  height: 100vh;
   height: 100dvh;
   min-height: 540px;
   position: relative;
@@ -101,7 +102,10 @@ button:active:not(:disabled) {
 }
 .landscape {
   position: absolute;
-  inset: 0;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
   z-index: -2;
   background:
     linear-gradient(140deg, var(--sky) 5%, #1b344500 75%),
@@ -185,7 +189,10 @@ button:active:not(:disabled) {
 }
 .landscape-grain {
   position: absolute;
-  inset: 0;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
   opacity: 0.13;
   background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 180 180' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.88' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' opacity='.34' filter='url(%23n)'/%3E%3C/svg%3E");
   pointer-events: none;
@@ -198,6 +205,7 @@ button:active:not(:disabled) {
   padding: 0 23px;
   background: #102330a8;
   border-bottom: 1px solid #b7d8dd11;
+  -webkit-backdrop-filter: blur(20px);
   backdrop-filter: blur(20px);
   font-size: 12px;
   position: relative;
@@ -257,6 +265,7 @@ button:active:not(:disabled) {
   left: 50%;
   transform: translateX(-50%);
   width: min(340px, calc(100vw - 28px));
+  max-height: min(480px, calc(100vh - 110px));
   max-height: min(480px, calc(100dvh - 110px));
   overflow: auto;
   padding: 14px;
@@ -264,6 +273,7 @@ button:active:not(:disabled) {
   border-radius: 14px;
   background: #1b2e3bf5;
   box-shadow: 0 18px 55px #06111b88;
+  -webkit-backdrop-filter: blur(24px);
   backdrop-filter: blur(24px);
 }
 .workspace-switcher .popover-heading small {
@@ -385,6 +395,7 @@ button:active:not(:disabled) {
   border: 1px solid #d6e3de25;
   background: #d0e8de0b;
   border-radius: 8px;
+  -webkit-backdrop-filter: blur(12px);
   backdrop-filter: blur(12px);
   font-size: 11px;
   color: #d6e2e1;
@@ -410,14 +421,20 @@ button:active:not(:disabled) {
 }
 .windows-area {
   position: absolute;
-  inset: 0 0 var(--dock-reserve);
+  top: 0;
+  right: 0;
+  bottom: var(--dock-reserve);
+  left: 0;
   z-index: 1;
   /* Empty desktop space belongs to the widgets underneath. */
   pointer-events: none;
 }
 .workspace-windows {
   position: absolute;
-  inset: 0;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
 }
 .workspace-windows[hidden] {
   display: none !important;
@@ -570,7 +587,10 @@ button:active:not(:disabled) {
   height: calc(var(--initial-window-height) * 0.78);
 }
 .app-window.maximized {
-  inset: 0 !important;
+  top: 0 !important;
+  right: 0 !important;
+  bottom: 0 !important;
+  left: 0 !important;
   width: 100% !important;
   height: 100% !important;
   max-width: 100%;
@@ -1085,11 +1105,16 @@ button:active:not(:disabled) {
   min-height: 0;
   min-width: 0;
   overflow: hidden;
-  --terminal-inset: 21px 16px 8px;
+  --terminal-top: 21px;
+  --terminal-side: 16px;
+  --terminal-bottom: 8px;
 }
 .terminal-viewport {
   position: absolute;
-  inset: var(--terminal-inset);
+  top: var(--terminal-top);
+  right: var(--terminal-side);
+  bottom: var(--terminal-bottom);
+  left: var(--terminal-side);
   /* Clip painting without letting focus scroll this wrapper; xterm owns scrolling. */
   overflow: clip;
 }
@@ -1133,6 +1158,7 @@ button:active:not(:disabled) {
   white-space: nowrap;
 }
 .context-menu {
+  max-height: calc(100vh - 16px);
   max-height: calc(100dvh - 16px);
   overflow-y: auto;
   position: fixed;
@@ -1143,6 +1169,7 @@ button:active:not(:disabled) {
   border-radius: 11px;
   background: #22333ff5;
   box-shadow: 0 14px 45px #06111b99;
+  -webkit-backdrop-filter: blur(18px);
   backdrop-filter: blur(18px);
 }
 .context-menu button {
@@ -1303,6 +1330,7 @@ button:active:not(:disabled) {
   box-shadow:
     0 12px 35px #071a2855,
     inset 0 1px 0 #e4eee911;
+  -webkit-backdrop-filter: blur(24px);
   backdrop-filter: blur(24px);
   border-radius: 17px;
 }
@@ -1414,6 +1442,7 @@ button:active:not(:disabled) {
   z-index: 15;
   background: #21323df2;
   border: 1px solid #bdd8d829;
+  -webkit-backdrop-filter: blur(25px);
   backdrop-filter: blur(25px);
   box-shadow: 0 20px 65px #03131b80;
   border-radius: 13px;
@@ -1529,9 +1558,13 @@ button:active:not(:disabled) {
 }
 .modal-backdrop {
   position: absolute;
-  inset: 0;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
   z-index: 50;
   background: #09172199;
+  -webkit-backdrop-filter: blur(9px);
   backdrop-filter: blur(9px);
   display: grid;
   place-items: center;
@@ -1541,6 +1574,7 @@ button:active:not(:disabled) {
   position: relative;
   margin: 0;
   display: block;
+  max-height: calc(100vh - 40px);
   max-height: calc(100dvh - 40px);
   overflow: auto;
   width: min(460px, calc(100vw - 40px));
@@ -1804,7 +1838,9 @@ button:active:not(:disabled) {
     grid-template-columns: minmax(160px, 1fr) 90px 65px;
   }
   .terminal-container {
-    --terminal-inset: 28px 23px 10px;
+    --terminal-top: 28px;
+    --terminal-side: 23px;
+    --terminal-bottom: 10px;
   }
 }
 @media (max-height: 760px) and (min-width: 900px) {
@@ -1866,6 +1902,7 @@ button:active:not(:disabled) {
 @media (max-width: 899px) {
   .desktop {
     overflow: auto;
+    height: 100vh;
     height: 100dvh;
     min-height: 540px;
   }
@@ -1905,6 +1942,7 @@ button:active:not(:disabled) {
   .workspace {
     height: auto;
     padding: 30px 22px 110px;
+    min-height: calc(100vh - 44px);
     min-height: calc(100dvh - 44px);
   }
   .desktop-heading h1 {
@@ -1919,7 +1957,10 @@ button:active:not(:disabled) {
   }
   .windows-area {
     position: relative;
-    inset: auto;
+    top: auto;
+    right: auto;
+    bottom: auto;
+    left: auto;
     pointer-events: auto;
     margin-top: 27px;
     display: flex;
@@ -1929,7 +1970,8 @@ button:active:not(:disabled) {
   .app-window,
   .app-window.maximized {
     position: relative !important;
-    inset: auto !important;
+    right: auto !important;
+    bottom: auto !important;
     left: auto !important;
     top: auto !important;
     width: 100% !important;
@@ -1986,7 +2028,9 @@ button:active:not(:disabled) {
     width: 135px;
   }
   .terminal-container {
-    --terminal-inset: 16px 16px 8px;
+    --terminal-top: 16px;
+    --terminal-side: 16px;
+    --terminal-bottom: 8px;
   }
 }
 @media (max-width: 560px) {
@@ -2124,6 +2168,7 @@ button:active:not(:disabled) {
     padding: 10px;
   }
   .connect-dialog {
+    max-height: calc(100vh - 20px);
     max-height: calc(100dvh - 20px);
   }
   .connection-emblem {

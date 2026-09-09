@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 .file-action-dialog {
   width: min(470px, calc(100vw - 32px));
+  max-height: calc(100vh - 50px);
   max-height: calc(100dvh - 50px);
   overflow: auto;
   padding: 28px;
@@ -13,6 +14,7 @@
 }
 .file-action-dialog::backdrop {
   background: #06111bc4;
+  -webkit-backdrop-filter: blur(4px);
   backdrop-filter: blur(4px);
 }
 .file-action-emblem {

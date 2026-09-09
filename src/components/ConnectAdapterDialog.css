@@ -1,4 +1,5 @@
 .adapter-connect {
+  max-height: calc(100vh - 48px);
   max-height: calc(100dvh - 48px);
   overflow: auto;
 }

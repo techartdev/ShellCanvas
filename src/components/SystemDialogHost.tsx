@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
+import { showModal } from "../dialog-compat";
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
 import {
@@ -42,7 +43,7 @@ function Dialog({ request }: { request: DialogRequest }) {
   useEffect(() => {
     const previous = request.returnFocus;
     request.owner.focus();
-    dialog.current?.showModal();
+    showModal(dialog.current);
     dialog.current
       ?.querySelector<HTMLElement>("[data-dialog-focus='true']")
       ?.focus();

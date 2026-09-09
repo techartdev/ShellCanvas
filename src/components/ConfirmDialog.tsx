@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
+import { showModal } from "../dialog-compat";
 import { useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import "./ConfirmDialog.css";
@@ -20,7 +21,7 @@ export function ConfirmDialog({
   const ref = useRef<HTMLDialogElement>(null);
   useEffect(() => {
     const previous = document.activeElement as HTMLElement | null;
-    ref.current?.showModal();
+    showModal(ref.current);
     return () => {
       previous?.isConnected && previous.focus({ preventScroll: true });
     };

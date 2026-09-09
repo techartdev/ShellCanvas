@@ -25,6 +25,10 @@ npm run tauri -- build --debug --no-bundle
 
 Windows output: `target/debug/shellcanvas.exe`. This debug build is for local evaluation. Installers, signing, release optimization, and macOS/Linux/mobile packaging are not validated yet. Windows requires the WebView2 runtime, but end users do not need Node or Rust for a packaged build.
 
+For the Catalina Intel test machine, use `sh scripts/build-macos-legacy.sh`.
+This explicit debug build includes a dependency-specific startup workaround; see
+the [Mac validation record and remaining limits](docs/macos-validation.md).
+
 ## Included
 
 - A custom desktop shell with mountain wallpapers, a dock, launcher, local clock, and floating app windows.

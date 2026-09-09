@@ -9,6 +9,7 @@
 }
 .confirm-dialog::backdrop {
   background: #07121bcc;
+  -webkit-backdrop-filter: blur(4px);
   backdrop-filter: blur(4px);
 }
 .confirm-dialog h2 {

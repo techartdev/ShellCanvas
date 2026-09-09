@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
+import { showModal } from "../dialog-compat";
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { FilePenLine, LoaderCircle } from "lucide-react";
@@ -41,7 +42,7 @@ export function SaveAsDialog({
   binding.current = { services, connected };
   useEffect(() => {
     const previous = document.activeElement as HTMLElement | null;
-    dialog.current?.showModal();
+    showModal(dialog.current);
     nameField.current?.select();
     return () => {
       ++sequence.current;
