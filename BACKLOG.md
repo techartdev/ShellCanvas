@@ -12,6 +12,12 @@ Public console checkpoint: `client.console` supports byte reads/writes, optional
 
 ## Immediate delivery focus — everyday basics
 
+Windows adapter tree checkpoint (2026-09-09): per-generation job objects now own
+ordinary adapter descendants from suspended startup through cleanup. Tests verify
+child/grandchild exit, failure/cancellation cleanup, supervisor termination and an
+unaffected independent adapter. Non-Windows tree supervision, diagnostics, crash
+staging cleanup and remaining kernel roadmap gates stay open.
+
 Catalog coordination checkpoint (2026-09-09): installed app changes refresh other
 desktop instances, and removal checks running leases across processes/generations.
 New launches reread authoritative storage; existing windows retain code/grants.

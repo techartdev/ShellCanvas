@@ -8,10 +8,14 @@ use std::sync::{
     Arc, Mutex,
 };
 use tokio::{io::AsyncWriteExt, sync::mpsc};
+mod process_tree_fixture;
 mod transfer_fixture;
 
 #[tokio::main]
 async fn main() {
+    if process_tree_fixture::helper_mode().await {
+        return;
+    }
     let mut stdin = tokio::io::stdin();
     let (send, mut receive) = mpsc::channel::<Vec<u8>>(4);
     let writer = tokio::spawn(async move {
@@ -54,8 +58,16 @@ async fn main() {
             let value = match method.as_str() {
                 "system.adapter.initialize" => {
                     let protocol = params["configuration"]["protocol"].as_u64().unwrap_or(1);
-                    let mut services = json!([{"id":"acme", "version":1, "methods":["acme.echo","acme.wait","acme.fail","acme.crash","acme.malformed","acme.oversize","acme.unknown","acme.cancelCount","acme.calls","acme.waitCount","acme.consoleCount","acme.openCount","acme.arguments","acme.transferStats"]}]);
+                    let mut services = json!([{"id":"acme", "version":1, "methods":["acme.echo","acme.wait","acme.fail","acme.crash","acme.malformed","acme.oversize","acme.unknown","acme.cancelCount","acme.calls","acme.waitCount","acme.consoleCount","acme.openCount","acme.arguments","acme.transferStats","acme.spawnTree"]}]);
                     let config = params["configuration"].clone();
+                    if let Some(path) = config["treeReadyFile"].as_str() {
+                        let pids = process_tree_fixture::spawn_tree().await;
+                        std::fs::write(path, serde_json::to_vec(&pids).unwrap()).unwrap();
+                        let gate = std::path::Path::new(config["treeGateFile"].as_str().unwrap());
+                        while !gate.exists() {
+                            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+                        }
+                    }
                     if config["standard"] == "files" || config["standard"] == "both" {
                         let mut methods = vec!["files.list", "files.locate", "files.preview"];
                         methods.extend(transfer_fixture::methods(&config));
@@ -115,6 +127,7 @@ async fn main() {
                     json!({"protocol":protocol,"services":services})
                 }
                 "acme.echo" => params,
+                "acme.spawnTree" => json!(process_tree_fixture::spawn_tree().await),
                 "acme.arguments" => json!(std::env::args().skip(1).collect::<Vec<_>>()),
                 "acme.wait" => {
                     tokio::time::sleep(std::time::Duration::from_millis(

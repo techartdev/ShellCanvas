@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
+use crate::process_tree::ProcessTree;
 use crate::wire::{self, Envelope, Initialized, ServiceDescriptor};
 use async_trait::async_trait;
 use serde_json::{json, Value};
@@ -142,12 +143,10 @@ impl AdapterProcess {
             .stdout(Stdio::piped())
             .stderr(Stdio::null())
             .kill_on_drop(true);
-        #[cfg(windows)]
-        command.creation_flags(0x08000000); // CREATE_NO_WINDOW; never open a console for a connector.
-        let child = command.spawn().map_err(|_| {
+        let (child, tree) = ProcessTree::spawn(&mut command).await.map_err(|_| {
             error(
                 "failed",
-                "Unable to start the trusted adapter executable",
+                "Unable to start and supervise the trusted adapter executable",
                 false,
             )
         })?;
@@ -157,13 +156,13 @@ impl AdapterProcess {
         let alive = Arc::new(AtomicBool::new(true));
         let wake = Arc::new(Notify::new());
         tokio::spawn(run(
-            child,
+            (child, tree),
             receive,
             stopping,
             complete,
             alive.clone(),
             wake.clone(),
-            owner,
+            RetainedOwner(owner),
         ));
         let mut process = Self {
             inner: Arc::new(Inner {
@@ -340,14 +339,23 @@ impl ConnectionLifecycle for AdapterProcess {
     }
 }
 
+// A canceled supervisor must not release installed assets without confirmed cleanup.
+struct RetainedOwner(Option<Arc<dyn Send + Sync>>);
+impl Drop for RetainedOwner {
+    fn drop(&mut self) {
+        if let Some(owner) = self.0.take() {
+            std::mem::forget(owner);
+        }
+    }
+}
 async fn run(
-    mut child: Child,
+    (mut child, tree): (Child, ProcessTree),
     mut requests: mpsc::Receiver<Request>,
     mut stop: watch::Receiver<bool>,
     complete: watch::Sender<Option<Result<(), AdapterError>>>,
     alive: Arc<AtomicBool>,
     wake: Arc<Notify>,
-    owner: Option<Arc<dyn Send + Sync>>,
+    mut owner: RetainedOwner,
 ) {
     let mut stdin = child.stdin.take().expect("piped stdin");
     let mut stdout = child.stdout.take().expect("piped stdout");
@@ -458,9 +466,8 @@ async fn run(
     reader.abort();
     writer.abort();
     let _ = tokio::join!(reader, writer);
-    // Kill and reap the directly owned process. kill_on_drop is a fallback if the runtime stops.
-    let cleanup = tokio::time::timeout(Duration::from_secs(2), child.kill()).await;
-    let outcome = if matches!(cleanup, Ok(Ok(()))) || matches!(child.try_wait(), Ok(Some(_))) {
+    let cleanup = tokio::time::timeout(Duration::from_secs(2), tree.cleanup(&mut child)).await;
+    let outcome = if matches!(cleanup, Ok(Ok(()))) {
         Ok(())
     } else {
         Err(error(
@@ -469,12 +476,8 @@ async fn run(
             true,
         ))
     };
-    if outcome.is_err() {
-        if let Some(owner) = owner {
-            std::mem::forget(owner);
-        }
-    } else {
-        drop(owner);
+    if outcome.is_ok() {
+        drop(owner.0.take());
     }
     complete.send_replace(Some(outcome));
 }

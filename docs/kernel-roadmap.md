@@ -17,6 +17,14 @@ Objective: provide a small, coherent virtual-desktop API for bundled and communi
 
 ## Direction
 
+Windows adapter tree checkpoint (2026-09-09): adapters start suspended, join a
+private job object and resume only after assignment. Cleanup stops descendants,
+waits for process exits and retains installed assets if cleanup is unconfirmed.
+Three real-process tests cover close/drop, crash/protocol failure, canceled/rejected
+startup and termination of the owning supervisor, with independent adapters left
+running. Non-Windows tree supervision, diagnostics, crash staging cleanup and the
+other delivery gates remain required. See [adapter lifecycle](adapter-process.md).
+
 Catalog coordination checkpoint (2026-09-09): desktop instances now refresh app
 catalog changes through invalidation plus focus/periodic recovery. Asynchronous
 launch checks current storage under a shared app lease; removal requires an

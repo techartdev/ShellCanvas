@@ -17,6 +17,9 @@ uuid = { version = "1", features = ["v4"] }
 shellcanvas-services = { path = "../service-contracts" }
 tokio = { version = "1", features = ["process", "io-util", "io-std", "sync", "time", "rt-multi-thread", "macros"] }
 
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61.2", features = ["Win32_Foundation", "Win32_Security", "Win32_System_JobObjects", "Win32_System_Threading", "Win32_System_Diagnostics_ToolHelp"] }
+
 [[bin]]
 name = "fixture-adapter"
 path = "tests/support/fixture_adapter.rs"
