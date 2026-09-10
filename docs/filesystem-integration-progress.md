@@ -12,6 +12,16 @@ Include the dependencies' licensing/distribution limitations in that app.
 
 ## Current implementation
 
+- Bridge `e58d386` passes native Windows acceptance in CI run `34518237898`
+  (32.21 seconds), including directory rename with two open directory aliases.
+  An open descendant correctly blocks rename with error 5 and preserves source
+  contents/handles; after closing the child, rename succeeds and both directory
+  handles still return metadata. Replacing a nonempty destination is rejected
+  without damaging either tree. A separate local NTFS baseline and Microsoft's
+  MS-FSA FileRenameInformation specification confirm that the open-child rule
+  differs from POSIX. The first test expected POSIX behavior and failed; its
+  Windows expectation was corrected, with no driver behavior changed. All prior
+  native Windows acceptance markers and Linux/macOS builds/tests also pass.
 - Windows attachment setup now offers only unused D: through Z: drive letters,
   also excluding active ShellCanvas reservations. The backend still checks the
   chosen location at attachment time. Synthetic browser checks confirm the first
@@ -275,7 +285,8 @@ Include the dependencies' licensing/distribution limitations in that app.
    native chooser/source-retirement race without touching the normal user profile.
 4. Native Windows file API, replacement-save, capacity, basic error and busy-detach
    checks now pass in disposable WinFsp CI. Remaining: desktop-created SFTP mapping,
-   Explorer/ordinary editor acceptance, directory rename with open handles,
+   Explorer/ordinary editor acceptance (native directory rename/open-handle
+   semantics are now verified above),
    disconnect behavior and failure recovery. Local driver setup is still pending.
 5. Native Linux FUSE tests using a CI binary and a disposable directory. Validate
    directory cursor/rewind and inode retention/forget behavior, create/rename/
@@ -290,8 +301,9 @@ Include the dependencies' licensing/distribution limitations in that app.
    Windows cleanup-time deletion warnings and busy-detach control are implemented
    with busy detach now passing native WinFsp acceptance. Cleanup-time failure
    warnings now pass native failure injection. Volume-wide flush and cross-handle rename
-   are implemented with bookkeeping regression tests; native checks and file
-   attribute work remain. Linux shared/private/read-only memory-mapping acceptance
+   are implemented with bookkeeping regression tests. Native directory alias
+   rename checks now pass; volume-wide flush and file attribute work remain.
+   Linux shared/private/read-only memory-mapping acceptance
    passes, as does Windows shared/private/read-only mapping against a disposable
    local provider. macOS mapped-file tests and concurrent remote-edit behavior
    remain unverified. This is not database or VM-image compatibility evidence.
