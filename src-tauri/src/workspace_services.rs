@@ -13,6 +13,9 @@ use std::{
     time::Duration,
 };
 
+#[path = "mounted_binding.rs"]
+mod mounted_binding;
+
 #[derive(serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ServiceStatus {
@@ -571,6 +574,18 @@ impl Drop for WorkspaceServices {
 
 #[async_trait]
 impl FileSystemProvider for Bound<dyn FileSystemProvider> {
+    fn supports_local_mount(&self) -> bool {
+        self.binding.check().is_ok() && self.service.supports_local_mount()
+    }
+    async fn mount_root(&self, path: &str, writable: bool) -> FsResult<Arc<dyn MountedFileSystem>> {
+        self.binding.mount_check()?;
+        let filesystem = self.service.mount_root(path, writable).await?;
+        self.binding.mount_check()?;
+        Ok(Arc::new(mounted_binding::FileSystem::new(
+            self.binding.clone(),
+            filesystem,
+        )))
+    }
     async fn list(&self, path: Option<&str>) -> Result<Directory> {
         self.binding.run(false, self.service.list(path)).await
     }

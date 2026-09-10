@@ -14,6 +14,7 @@ pub use device::*;
 pub mod directory;
 pub use directory::*;
 pub mod volumes;
+pub use shellcanvas_filesystem_sdk::*;
 pub use volumes::*;
 pub mod terminal;
 pub use terminal::*;
@@ -161,6 +162,20 @@ pub struct TextDocument {
 
 #[async_trait]
 pub trait FileSystemProvider: Send + Sync {
+    /// Optional native local-drive projection, separate from remote disk control.
+    fn supports_local_mount(&self) -> bool {
+        false
+    }
+    async fn mount_root(
+        &self,
+        _path: &str,
+        _writable: bool,
+    ) -> FsResult<Arc<dyn MountedFileSystem>> {
+        Err(FsError::new(
+            FsErrorKind::Unsupported,
+            "Local drive attachment is unavailable on this file provider",
+        ))
+    }
     /// Optional; basic file providers need not implement disk management.
     async fn volumes(&self) -> Result<FileVolumes> {
         Ok(FileVolumes::unavailable())

@@ -131,6 +131,19 @@ impl SshFileBrowser {
 }
 #[async_trait]
 impl FileSystemProvider for SshFileBrowser {
+    fn supports_local_mount(&self) -> bool {
+        true
+    }
+    async fn mount_root(&self, path: &str, writable: bool) -> FsResult<Arc<dyn MountedFileSystem>> {
+        // Each attachment has its own channel, while authentication and verified
+        // host identity remain owned by the accepted connection.
+        let service = self
+            .connection
+            .text_files()
+            .await
+            .map_err(|e| FsError::new(FsErrorKind::Offline, e.to_string()))?;
+        Ok(crate::mounted::SftpMount::new(Arc::new(service), path, writable).await?)
+    }
     async fn volumes(&self) -> Result<FileVolumes> {
         self.inventory().await
     }

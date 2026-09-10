@@ -243,6 +243,22 @@ are contract demonstrations, not production device support.
 
 ## Extensions, AI and distribution
 
+- [ ] **BRIDGE-01 — Attach remote folders as local drives: Windows proof.**
+      Proposed built-in action with an optional WinFsp native component and a
+      small, optional handle-based Files capability. Verify read-only SFTP access
+      through Explorer/local apps on an existing Linux or Mac host. A Windows
+      remote host is not needed. Driver setup and license packaging need validation.
+      See [design and acceptance gates](local-drive-bridge.md).
+- [ ] **BRIDGE-02 — Writable local-drive release.** Offset writes, ordinary editor
+      saves/replace, errors, bounded caches, disconnect handling, mappings UI and
+      detach/quit lifecycle. A read-only prototype alone does not complete this.
+- [ ] **BRIDGE-03 — Linux/macOS local mounts.** FUSE/platform backends and exact OS
+      verification; decide Catalina runtime support separately from using it as
+      a remote SSH host.
+- [ ] **BRIDGE-04 — Optional adapter/app integration.** Prove a second file
+      provider, then expose only the optional contracts needed. Keep native mount
+      ownership and credentials in the desktop; limited adapters stay unchanged.
+
 - [ ] **EXT-03 — Package distribution.** Publisher authentication, signatures,
       explicit rollback tooling and marketplace/catalog distribution. Existing
       install/update/remove, integrity checks and retained generations are complete.

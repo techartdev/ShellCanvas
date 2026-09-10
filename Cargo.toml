@@ -1,5 +1,5 @@
 [workspace]
-members = ["crates/service-contracts", "crates/adapter-sdk", "crates/adapter-runtime", "crates/ssh-core", "src-tauri"]
+members = ["crates/filesystem-sdk", "crates/service-contracts", "crates/adapter-sdk", "crates/adapter-runtime", "crates/ssh-core", "src-tauri"]
 resolver = "2"
 
 # Released Tauri still requires Tao 0.35. Pin the upstream Windows keyboard

@@ -7,6 +7,7 @@ pub use volumes::SshFileBrowser;
 pub mod file_actions;
 pub mod host_keys;
 pub use host_keys::*;
+pub mod mounted;
 pub mod probe;
 pub mod profiles;
 pub mod provider;

@@ -71,6 +71,12 @@ impl SftpBrowser {
 }
 #[async_trait]
 impl FileSystemProvider for SftpBrowser {
+    fn supports_local_mount(&self) -> bool {
+        true
+    }
+    async fn mount_root(&self, path: &str, writable: bool) -> FsResult<Arc<dyn MountedFileSystem>> {
+        Ok(crate::mounted::SftpMount::new(self.0.clone(), path, writable).await?)
+    }
     async fn list(&self, path: Option<&str>) -> Result<Directory> {
         let mut directory = collect_directory(self.open(path).await?).await?;
         // Existing materializing callers retain their presentation order. Page
