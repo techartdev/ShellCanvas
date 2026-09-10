@@ -85,6 +85,21 @@ Include the dependencies' licensing/distribution limitations in that app.
   replies/connection loss now return failure exits on both Windows and FUSE;
   ordinary explicit detach remains successful. All three platform CI jobs pass.
   This tests abrupt bridge IPC loss, not an actual SSH network outage.
+- The same `1459801` Linux artifact (SHA-256
+  `4c759947a074c87ff29c10467afdf02961b4fb5e5938875c9f350ea970925882`)
+  passes native Linux 6.8 bridge-transport-loss acceptance over the core SFTP
+  provider. A local file is held open after a confirmed write/fsync, then both
+  bridge pipes are closed. The next write and final close report ENOTCONN (107),
+  source bytes inspected through an independent SSH command remain `confirmed`,
+  the bridge exits unsuccessfully and `/proc/self/mountinfo` shows the mount
+  removed. The fixture and staged binary were separately confirmed removed.
+  Reproduce the existing `native_bridge_probe` with both
+  `SHELLCANVAS_LIVE_MOUNT_PROBE=1` and `SHELLCANVAS_PROBE_TRANSPORT_LOSS=1`.
+  Its cleanup now consults mountinfo even when a disconnected mount rejects stat.
+  The first attempt exposed a test expectation issue: close also returned the
+  connection error; after explicitly validating that result the full replay passed.
+  Example compilation/clippy pass. This verifies the Linux 6.8/root runtime used;
+  non-root helper fallback, modern macOS and actual SSH outages remain separate.
 - SFTP handle acquisition now closes the mount's dedicated channel if OPEN or
   OPENDIR times out before the handle ID arrives. This releases potentially
   allocated but unclaimed server handles without replaying CREATE. Native library
@@ -228,8 +243,9 @@ Include the dependencies' licensing/distribution limitations in that app.
 5. Native Linux FUSE tests using a CI binary and a disposable directory. Validate
    directory cursor/rewind and inode retention/forget behavior, create/rename/
    truncate, permissions, flush, detach and helper failure. Specifically exercise
-   pipe loss with an open file: inspect the resulting mount table and the library's
-   abnormal cleanup behavior; do not infer it from explicit busy-detach tests.
+   pipe loss with an open file now passes on Linux 6.8 as root, including source
+   preservation and confirmed mount disappearance. Validate non-root helper
+   fallback and other supported runtimes separately; no cross-platform inference.
 6. Verify modern macOS compilation and native runtime as available. fuser's
    kernel/libfuse backend is implemented; FSKit operation is not established.
    Do not claim an OS version/runtime works solely because Linux compiled.

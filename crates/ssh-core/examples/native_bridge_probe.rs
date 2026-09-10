@@ -6,7 +6,7 @@ use shellcanvas_core::*;
 use shellcanvas_filesystem_sdk::bridge_control::{BridgeControl, BridgePhase};
 use shellcanvas_filesystem_sdk::wire::Server;
 use std::{path::PathBuf, process::Stdio, sync::Arc, time::Duration};
-use tokio::io::AsyncBufReadExt;
+use tokio::io::{AsyncBufReadExt, AsyncReadExt};
 fn quote(value: &str) -> String {
     format!("'{}'", value.replace('\'', "'\\''"))
 }
@@ -51,6 +51,7 @@ async fn main() -> Result<()> {
         std::env::var("SHELLCANVAS_LIVE_MOUNT_PROBE").as_deref() == Ok("1"),
         "Set SHELLCANVAS_LIVE_MOUNT_PROBE=1 for disposable native mount testing"
     );
+    let transport_loss = std::env::var("SHELLCANVAS_PROBE_TRANSPORT_LOSS").as_deref() == Ok("1");
     let connection = Arc::new(
         Connection::connect_with_trust_store(
             &ConnectOptions {
@@ -74,6 +75,7 @@ async fn main() -> Result<()> {
         .await?;
     let source = service.make_directory(&root, "source").await?;
     let target = service.make_directory(&root, "mount").await?;
+    println!("NATIVE_FIXTURE: {root}");
     let browser = SshFileBrowser::new(Arc::new(SftpBrowser(service.clone())), connection.clone());
     let fs = browser.mount_root(&source, true).await?;
     let remote = format!("exec {} --mount {}", quote(&args[5]), quote(&target));
@@ -101,6 +103,47 @@ async fn main() -> Result<()> {
             }
             anyhow::Ok(())
         }).await??;
+        if transport_loss {
+            let script = r#"import os,sys,errno
+f=os.open(sys.argv[1]+'/loss.bin',os.O_CREAT|os.O_EXCL|os.O_RDWR,0o600)
+os.pwrite(f,b'confirmed',0)
+os.fsync(f)
+print('HELD',flush=True)
+sys.stdin.read()
+try:
+    os.pwrite(f,b'unconfirmed',0)
+    raise AssertionError('write succeeded after loss of provider')
+except OSError as e:
+    assert e.errno in (errno.EIO,errno.ENOTCONN,errno.ENODEV), e
+    print('LINUX_LOST_WRITE_PASS: errno='+str(e.errno),flush=True)
+finally:
+    try:
+        os.close(f)
+    except OSError as e:
+        assert e.errno in (errno.EIO,errno.ENOTCONN,errno.ENODEV), e
+        print('LINUX_LOST_CLOSE_ERROR: errno='+str(e.errno),flush=True)
+"#;
+            let mut holder = ssh(&args, &format!("exec timeout 45s python3 -u -c {} {}", quote(script), quote(&target)))
+                .stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::inherit()).spawn()?;
+            let mut output = tokio::io::BufReader::new(holder.stdout.take().unwrap());
+            let mut line = String::new();
+            tokio::time::timeout(Duration::from_secs(15), output.read_line(&mut line)).await??;
+            ensure!(line.trim() == "HELD", "Loss fixture did not open its file");
+            // Drop the bridge's real transport endpoints, while the separate
+            // SSH connection driving the local application remains available.
+            serving.abort();
+            while !serving.is_finished() { tokio::task::yield_now().await; }
+            drop(holder.stdin.take());
+            line.clear();
+            tokio::time::timeout(Duration::from_secs(15), output.read_to_string(&mut line)).await??;
+            print!("{line}");
+            ensure!(tokio::time::timeout(Duration::from_secs(5), holder.wait()).await??.success(), "Lost-write fixture failed");
+            let status = tokio::time::timeout(Duration::from_secs(15), child.wait()).await??;
+            ensure!(!status.success(), "Transport loss reported a successful exit");
+            let verify = "import sys; from pathlib import Path; assert Path(sys.argv[1]+'/loss.bin').read_bytes()==b'confirmed'; mounted=any(l.split()[4]==sys.argv[2] for l in open('/proc/self/mountinfo')); print('LINUX_LOSS_MOUNT_STATE: '+('retained' if mounted else 'removed')); print('LINUX_TRANSPORT_LOSS_PASS: failed write, preserved source, failure exit')";
+            print!("{}",run(&args, &format!("python3 -c {} {} {}",quote(verify),quote(&source),quote(&target))).await?);
+            return Ok(());
+        }
         let hold = "import os,sys; f=os.open(sys.argv[1]+'/held',os.O_CREAT|os.O_RDWR,0o600); print('HELD',flush=True); sys.stdin.read(); os.close(f)";
         let mut holder = ssh(&args, &format!("exec timeout 60s python3 -u -c {} {}", quote(hold), quote(&target)))
             .stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::inherit()).spawn()?;
@@ -150,11 +193,14 @@ async fn main() -> Result<()> {
         Ok(())
     }
     .await;
-    // All test file descriptors are closed before ordinary unmount. Never use lazy/forced detach.
+    // Query mountinfo even for a disconnected FUSE mount whose stat() fails.
+    // Recovery is an ordinary unmount after the fixture's descriptors close.
+    let present = "import sys; sys.exit(0 if any(l.split()[4]==sys.argv[1] for l in open('/proc/self/mountinfo')) else 1)";
     let detached = run(
         &args,
         &format!(
-            "if mountpoint -q {}; then fusermount3 -u {}; fi",
+            "if python3 -c {} {}; then fusermount3 -u -- {}; fi",
+            quote(present),
             quote(&target),
             quote(&target)
         ),
@@ -173,7 +219,7 @@ async fn main() -> Result<()> {
     }
     // The regular Files action intentionally removes only empty directories.
     // This harness owns the entire UUID fixture, including the populated source.
-    let cleanup = "import os,shutil,sys; p=sys.argv[1]; assert p.startswith('/tmp/shellcanvas-native-') and os.path.dirname(p)=='/tmp' and not os.path.islink(p) and not os.path.ismount(p+'/mount'); shutil.rmtree(p)";
+    let cleanup = "import os,shutil,sys; p=sys.argv[1]; assert p.startswith('/tmp/shellcanvas-native-') and os.path.dirname(p)=='/tmp' and not os.path.islink(p) and not any(l.split()[4]==p+'/mount' for l in open('/proc/self/mountinfo')); shutil.rmtree(p)";
     run(
         &args,
         &format!("python3 -c {} {}", quote(cleanup), quote(&root)),
