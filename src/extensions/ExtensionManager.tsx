@@ -1,11 +1,14 @@
 // SPDX-License-Identifier: MPL-2.0
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
-import { Package, Plus, RefreshCw, ShieldCheck } from "lucide-react";
+import { Github, Package, Plus, RefreshCw, ShieldCheck } from "lucide-react";
 import { capabilityLabels, type Capability } from "../sdk";
 import { AppCatalog, type AppLease, type InstallReview } from "./catalog";
 import "./ExtensionManager.css";
+import { inspectRepository } from "./repository";
 
 function permissionName(name: string) {
+  if (name === "system.network")
+    return "Send data to API endpoints you configure for this app";
   if (name === "system.console") return "Open and control remote consoles";
   if (name === "host.settings.read")
     return "Read settings provided by the remote device";
@@ -48,6 +51,11 @@ export function ExtensionManager({
   const [grants, setGrants] = useState<readonly string[]>([]);
   const sequence = useRef(0);
   const file = useRef<HTMLInputElement>(null);
+  const download = useRef<AbortController | null>(null);
+  const [repositoryForm, setRepositoryForm] = useState(false);
+  const [repository, setRepository] = useState("");
+  const [reference, setReference] = useState("main");
+  const [fetching, setFetching] = useState(false);
   const refresh = async () => {
     setLoading(true);
     try {
@@ -63,6 +71,7 @@ export function ExtensionManager({
     void refresh();
     return () => {
       sequence.current++;
+      download.current?.abort();
     };
   }, [catalog]);
   const run = async (action: () => Promise<unknown>) => {
@@ -91,6 +100,38 @@ export function ExtensionManager({
       );
     });
   };
+  const fromRepository = async (
+    input = repository,
+    ref = reference,
+    expectedId?: string,
+  ) => {
+    const expected = ++sequence.current;
+    download.current?.abort();
+    const controller = new AbortController();
+    download.current = controller;
+    setFetching(true);
+    setReview(null);
+    await run(async () => {
+      const result = await inspectRepository(input, ref, controller.signal);
+      if (expectedId && result.manifest.id !== expectedId)
+        throw new Error(
+          "This repository now points to a different app. Its update was not installed.",
+        );
+      const next = await catalog.review(result.raw, result.source);
+      if (controller.signal.aborted || sequence.current !== expected) return;
+      setReview(next);
+      setGrants(
+        next.replaces
+          ? next.replaces.grants.filter((grant) =>
+              next.package.permissions.includes(grant),
+            )
+          : next.package.permissions,
+      );
+      setRepositoryForm(false);
+    });
+    if (sequence.current === expected) setFetching(false);
+    if (download.current === controller) download.current = null;
+  };
   return (
     <section className="extension-manager" aria-label="Installed apps">
       <header>
@@ -100,6 +141,13 @@ export function ExtensionManager({
           <p>Add tools that make this desktop yours.</p>
         </div>
         <div className="extension-actions">
+          <button
+            disabled={loading || busy}
+            onClick={() => setRepositoryForm(!repositoryForm)}
+          >
+            <Github size={16} />
+            Install from GitHub
+          </button>
           <button
             onClick={() => void refresh()}
             disabled={loading || busy}
@@ -141,6 +189,75 @@ export function ExtensionManager({
           />
         </div>
       </header>
+      {repositoryForm && (
+        <form
+          className="extension-repository"
+          onSubmit={(event) => {
+            event.preventDefault();
+            void fromRepository();
+          }}
+        >
+          <div className="extension-review-heading">
+            <Github size={22} />
+            <div>
+              <h3>A new tool, straight from its creator</h3>
+              <p>
+                Enter a repository with a ShellCanvas app manifest. You’ll
+                review the app before installing.
+              </p>
+            </div>
+          </div>
+          <div className="extension-repository-fields">
+            <label>
+              GitHub repository
+              <input
+                autoFocus
+                required
+                placeholder="owner/repository"
+                value={repository}
+                disabled={busy}
+                onChange={(event) => setRepository(event.target.value)}
+              />
+            </label>
+            <label>
+              Branch, tag or commit
+              <input
+                required
+                value={reference}
+                disabled={busy}
+                onChange={(event) => setReference(event.target.value)}
+              />
+            </label>
+          </div>
+          <div className="extension-actions">
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => setRepositoryForm(false)}
+            >
+              Cancel
+            </button>
+            <button
+              className="extension-primary"
+              disabled={busy || loading}
+              type="submit"
+            >
+              Review app
+            </button>
+          </div>
+        </form>
+      )}
+      {fetching && (
+        <div className="extension-repository-progress" role="status">
+          <RefreshCw size={16} />
+          <span>Fetching and checking the app package…</span>
+          <div className="extension-actions">
+            <button onClick={() => download.current?.abort()}>
+              Cancel download
+            </button>
+          </div>
+        </div>
+      )}
       {error && (
         <p className="extension-error" role="alert">
           {error}
@@ -163,6 +280,22 @@ export function ExtensionManager({
               </p>
             </div>
           </div>
+          {review.source && (
+            <p className="extension-source">
+              From {review.source.owner}/{review.source.repository} ·{" "}
+              {review.source.ref}
+            </p>
+          )}
+          {review.replaces?.source &&
+            (!review.source ||
+              review.replaces.source.owner !== review.source.owner ||
+              review.replaces.source.repository !==
+                review.source.repository) && (
+              <p className="extension-error">
+                The source differs from the installed version. Check that you
+                trust this replacement.
+              </p>
+            )}
           <p>
             Approve the access this version can use. Existing windows keep their
             current version and permissions.
@@ -199,6 +332,12 @@ export function ExtensionManager({
           <details>
             <summary>Package fingerprint</summary>
             <code>{review.digest}</code>
+            {review.source && (
+              <>
+                <p>Repository artifact SHA-256</p>
+                <code>{review.source.sha256}</code>
+              </>
+            )}
             <p>
               This identifies the reviewed content; it does not verify its
               publisher.
@@ -248,8 +387,28 @@ export function ExtensionManager({
                 Version {entry.package.version} · {entry.package.id}
               </p>
               <small>{entry.grants.length} approved permissions</small>
+              {entry.source && (
+                <p>
+                  {entry.source.owner}/{entry.source.repository} ·{" "}
+                  {entry.source.ref}
+                </p>
+              )}
             </div>
             <div className="extension-actions">
+              {entry.source && (
+                <button
+                  disabled={busy || loading}
+                  onClick={() =>
+                    void fromRepository(
+                      `${entry.source!.owner}/${entry.source!.repository}`,
+                      entry.source!.ref,
+                      entry.package.id,
+                    )
+                  }
+                >
+                  Check update
+                </button>
+              )}
               <button
                 disabled={busy || loading || !entry.enabled}
                 onClick={async () => {

@@ -43,11 +43,17 @@ shared desktop dialogs and window chrome should remain consistent with the host.
   custom device service. Avoid protocol or OS assumptions in app UI.
 - Own listeners, streams and jobs by the app window. Dispose them on teardown.
   Render device text as text; remote labels and file contents are not UI markup.
+- For HTTP model/API connections, use `network.configure` and `network.postJSON`
+  with `system.network`. Let the host credential dialog collect secrets; never
+  store keys in app settings, history, manifests or attachments. Close streamed
+  responses in `finally`; cancellation does not authorize automatic retries.
 
 Read only the relevant service guide: [files](../../docs/app-files.md),
 [console](../../docs/app-console.md), [transfers](../../docs/app-transfers.md),
 [clipboard](../../docs/app-clipboard.md), [settings](../../docs/app-host-settings.md),
-or [custom services](../../docs/custom-services.md).
+or [custom services](../../docs/custom-services.md). For user-configured HTTP,
+read [network connections](../../docs/app-network.md); for direct GitHub installs,
+read [repository distribution](../../docs/repository-apps.md).
 
 ## Verify the result
 

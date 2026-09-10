@@ -6,6 +6,21 @@ const app = {
   requires: ["files.read"],
 } as unknown as DesktopApp;
 describe("capability-driven desktop", () => {
+  it("opens an optional host-aware app locally without bypassing required capabilities", () => {
+    const optional = {
+      scope: "host",
+      allowWithoutHost: true,
+      requires: [],
+      optional: ["files.read", "terminal"],
+    } as unknown as DesktopApp;
+    expect(unavailableReason(optional, null)).toBeNull();
+    expect(
+      unavailableReason({ ...optional, requires: ["files.read"] }, null),
+    ).toContain("Connect");
+    expect(
+      unavailableReason({ ...optional, allowWithoutHost: false }, null),
+    ).toContain("Connect");
+  });
   it("keeps local apps available without an SSH session", () => {
     expect(
       unavailableReason(

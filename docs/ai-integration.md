@@ -15,6 +15,21 @@ Status: source assessment, not an implementation. Inspected the user-owned WispC
 
 The checkout declares MIT licensing. If source is reused later, preserve its copyright/license notices and review the specific dependencies being included. No source has been copied into this project during this assessment.
 
+## Standalone implementation selected (2026-09-10)
+
+The current goal implements [Canvas Assistant](https://github.com/techartdev/ShellCanvas-Assistant)
+as an independent installable app using the packaged SDK. Its own small bounded
+tool loop handles OpenAI-compatible Chat Completions; no WispCrew source or Node
+sidecar is copied into the app. ShellCanvas supplies generic
+[credential-backed HTTP](app-network.md), optional file/console services and
+[GitHub installation](repository-apps.md). The app supplies conversations,
+attachments, streaming and concrete action review. Missing host services leave
+ordinary chat usable.
+
+The earlier options below are retained as research for possible later WispCrew
+integration. They are not prerequisites for this implementation. Track actual
+verification and remaining work in [the active goal](assistant-goal.md).
+
 ## Recommended boundary
 
 ```text

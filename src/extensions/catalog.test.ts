@@ -35,6 +35,31 @@ function storage() {
   };
 }
 
+it("retains verified repository provenance and rejects a mismatched artifact hash", async () => {
+  const catalog = new AppCatalog(storage().api);
+  await catalog.load();
+  const sha256 = [
+    ...new Uint8Array(
+      await crypto.subtle.digest("SHA-256", new TextEncoder().encode(raw())),
+    ),
+  ]
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("");
+  const source = { owner: "example", repository: "notes", ref: "main", sha256 };
+  await expect(
+    catalog.review(raw(), { ...source, sha256: "a".repeat(64) }),
+  ).rejects.toThrow("fingerprint");
+  const app = await catalog.install(await catalog.review(raw(), source), []);
+  await catalog.load();
+  expect(catalog.snapshot()[0].source).toEqual(source);
+  expect(app.source).toEqual(source);
+  const lease = await catalog.launch(app.package.id);
+  await catalog.install(await catalog.review(raw("2.0.0")), []);
+  expect(lease.installed.source).toEqual(source);
+  expect(catalog.snapshot()[0].source).toBeUndefined();
+  lease.close();
+});
+
 it("revalidates stale launchers and retains leases across another catalog's update and disable", async () => {
   const saved = storage();
   const locks = new Map<string, number>();

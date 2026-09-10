@@ -16,6 +16,11 @@
       "types": "./dist/package.d.ts",
       "import": "./dist/package.js"
     },
+    "./repository": {
+      "types": "./dist/repository.d.ts",
+      "import": "./dist/repository.js"
+    },
+    "./schemas/app-repository.schema.json": "./schemas/app-repository.schema.json",
     "./schemas/app-manifest.schema.json": "./schemas/app-manifest.schema.json",
     "./schemas/app-package.schema.json": "./schemas/app-package.schema.json"
   },

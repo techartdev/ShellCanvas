@@ -2,8 +2,8 @@
 
 Product name: **ShellCanvas**. Monetization and public launch dates remain open. The initial source repository is private while the foundation develops.
 
-Updated 2026-09-10 after the Windows base API goal and the Mac compatibility
-follow-up. [Current unfinished work](docs/post-goal-backlog.md) separates native
+Updated 2026-09-10 after the Windows base API goal, Mac compatibility follow-up,
+and standalone assistant proof. [Current unfinished work](docs/post-goal-backlog.md) separates native
 validation, new features and decisions, with an observable gate for each item.
 
 Build a beautiful desktop for remote devices, with a small dependable core and an approachable extension platform. SSH is the first and default connection method. A workspace can combine adapters: for example, FTP for files, serial or Telnet for a console, and an API for device operations. Use existing device interfaces without requiring a product-specific remote daemon. See [connection and service composition](docs/connections.md).
@@ -27,16 +27,22 @@ Build a beautiful desktop for remote devices, with a small dependable core and a
 | M2 — Everyday workspace  | Saved non-secret profiles, trust enrollment, multiple terminal instances, resilient transfers and safe file writes                                | Core flows delivered; native/failure checks and refinements remain             |
 | M3 — Provider proof      | Linux and Raspberry Pi OS, macOS, Windows OpenSSH, then one non-POSIX appliance; common desktop works without OS branches in apps                 | Linux live evidence; Mac browsing/shell confirmed; broader coverage open       |
 | M4 — External extensions | Versioned installable packages, isolated UI and native permission enforcement, lifecycle limits, upgrade/uninstall and documented SDK             | Windows runtime/SDK delivered; other native platforms gated                    |
-| M5 — Optional assistant  | WispCrew reuse spike followed by host-bound chat, streaming, cancel, approvals and bounded tool execution                                         | Planned; architectural spike may run after M1                                  |
+| M5 — Optional assistant  | Independent installable chat app, streaming, cancel, selected context, approvals and bounded host tools                                          | Windows proof delivered; live Terra tests and public GitHub install/update verified |
 | M6 — Wider distribution  | Validated Windows/macOS/Linux packages, tablet-native proof, accessibility and release documentation                                              | Windows/Mac debug builds; Mac layout/Settings confirmed; release packages open |
 
 M3 can progress alongside M2 when representative hosts are available. SDK contracts
 remain provisional; actual device compatibility requires its own evidence.
-WispCrew reuse was assessed, but assistant integration remains deferred. Do not
+WispCrew reuse was assessed; its runtime integration remains a possible follow-up.
+The first assistant uses its own app-side engine through the public SDK. Do not
 make a Node runtime, daemon, model account or remote installation a prerequisite
 for Files and Terminal.
 
 ## Current handoff
+
+The [standalone assistant milestone](docs/assistant-goal.md) delivers public
+GitHub installation, generic credential-backed HTTP and Canvas Assistant 0.1.2.
+Live model/file/console, clipboard, update and permission checks ran on Windows.
+The app has no registry, desktop-source or Node runtime dependency at execution.
 
 The bounded Windows API goal is complete. Runtime apps/adapters, mixed-source
 workspaces, shared services and independently built SDK examples passed the

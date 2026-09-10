@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 export { connectToShellCanvas } from "./client.js";
 export type { ExtensionClient } from "./client.js";
+export type { AppNetworkAPI, AppHTTPResponse, AppConnection } from "./network-client.js";
 export { RpcError } from "./rpc.js";
 export type { RpcCode, Json } from "./rpc.js";
 export { SystemError } from "./system-api.js";

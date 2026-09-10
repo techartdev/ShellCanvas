@@ -35,6 +35,13 @@ import { AppClipboard } from "./clipboard-api";
 import { AppFileClipboard } from "./file-clipboard-api";
 import { customMethods } from "./custom-bridge";
 import type { CustomAccess } from "../custom-services";
+import {
+  AppNetwork,
+  type ConfigureConnection,
+  type ConnectionPrompt,
+} from "./network-bridge";
+import { ConnectionDialog } from "./ConnectionDialog";
+import type { AppConnection } from "../../packages/app-sdk/src/network-client";
 
 /** Isolated app document shared by the desktop and development workbenches.
  * One effect owns one document, port and system handle. A prop change retires that instance.
@@ -72,6 +79,35 @@ export function ExtensionFrame({
 }) {
   const ref = useRef<HTMLIFrameElement>(null);
   const [error, setError] = useState("");
+  const [connectionPrompt, setConnectionPrompt] = useState<{
+    request: ConnectionPrompt;
+    finish(value: AppConnection | null): void;
+  } | null>(null);
+  const pendingConnection = useRef<(() => void) | null>(null);
+  const configureConnection = useRef<ConfigureConnection>(async () => null);
+  configureConnection.current = (request) =>
+    new Promise((resolve, reject) => {
+      if (pendingConnection.current) {
+        reject(
+          new RpcError("busy", "Finish the open connection dialog first."),
+        );
+        return;
+      }
+      if (request.signal.aborted) {
+        reject(new RpcError("aborted", "Connection setup canceled."));
+        return;
+      }
+      const finish = (value: AppConnection | null) => {
+        request.signal.removeEventListener("abort", abort);
+        pendingConnection.current = null;
+        setConnectionPrompt(null);
+        resolve(value);
+      };
+      const abort = () => finish(null);
+      pendingConnection.current = abort;
+      request.signal.addEventListener("abort", abort, { once: true });
+      setConnectionPrompt({ request, finish });
+    });
   const [transferFailure, setTransferFailure] = useState<{
     message: string;
     retry(): Promise<void>;
@@ -96,6 +132,9 @@ export function ExtensionFrame({
     ]);
     let stopEnvironment: (() => void) | undefined;
     const clipboardOwner = clipboard ? new AppClipboard(clipboard) : undefined;
+    const network = new AppNetwork(app.id, app.title, (request) =>
+      configureConnection.current(request),
+    );
     const directories = fileSource ? new AppDirectories(fileSource) : undefined;
     const consoles = consoleSource
       ? new AppConsoles(consoleSource, setError)
@@ -184,6 +223,7 @@ export function ExtensionFrame({
         app.permissions.includes(grant),
       );
       const methods = new Map(systemMethods(system, approved));
+      for (const [name, method] of network.methods()) methods.set(name, method);
       for (const [name, method] of windowMethods(() => controls.current))
         methods.set(name, method);
       if (fileSource)
@@ -288,6 +328,8 @@ export function ExtensionFrame({
         approved,
       );
       peer.onClose(() => {
+        network.close();
+        pendingConnection.current?.();
         fileClipboard?.close();
         hostSettings?.close();
         transfers?.close();
@@ -308,6 +350,8 @@ export function ExtensionFrame({
     setTransferFailure(null);
     const unmount = mountAppDocument(frame, app, token, setError);
     const retire = () => {
+      network.close();
+      pendingConnection.current?.();
       fileClipboard?.close();
       hostSettings?.close();
       transfers?.close();
@@ -350,6 +394,12 @@ export function ExtensionFrame({
         minHeight: 0,
       }}
     >
+      {connectionPrompt && (
+        <ConnectionDialog
+          request={connectionPrompt.request}
+          finish={connectionPrompt.finish}
+        />
+      )}
       {transferFailure && (
         <div role="alert" className="runtime-connection-review">
           <span>{transferFailure.message}</span>

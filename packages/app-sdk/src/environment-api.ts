@@ -6,6 +6,8 @@ export interface AppEnvironment {
     "local" | "connected" | "disconnected" | "review-required";
   /** Opaque identity of the explicitly accepted binding, never a native session handle. */
   readonly binding: string | null;
+  /** Display metadata only; never use labels as routing identities. */
+  readonly host?: { readonly name: string; readonly system: string };
   readonly visible: boolean;
   readonly capabilities: readonly string[];
   /** Optional supported operations within a capability; absent keys are legacy metadata. */

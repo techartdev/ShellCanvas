@@ -2,8 +2,13 @@
 import { parseAppPackage, type AppPackage } from "./package";
 import { RpcError } from "./rpc";
 import { catalogNotifications, holdCatalogLock } from "./catalog-coordination";
+import {
+  parseRepositorySource,
+  type RepositorySource,
+} from "../../packages/app-sdk/src/repository";
 
 export interface InstalledApp {
+  readonly source?: RepositorySource;
   readonly package: AppPackage;
   readonly generation: string;
   readonly grants: readonly string[];
@@ -24,6 +29,7 @@ export interface CatalogStorage {
   compareAndSet(expected: string | null, next: CatalogSnapshot): Promise<void>;
 }
 export interface InstallReview {
+  readonly source?: RepositorySource;
   readonly package: AppPackage;
   readonly digest: string;
   readonly replaces: InstalledApp | null;
@@ -82,6 +88,9 @@ export function parseCatalog(value: unknown): CatalogSnapshot | null {
       generation: entry.generation,
       grants: grantsFor(app, entry.grants as string[]),
       enabled: entry.enabled,
+      ...(entry.source === undefined
+        ? {}
+        : { source: parseRepositorySource(entry.source) }),
     });
   });
   return Object.freeze({
@@ -208,7 +217,7 @@ export class AppCatalog {
         "Load the installed app catalog first.",
       );
   }
-  async review(raw: string): Promise<InstallReview> {
+  async review(raw: string, source?: RepositorySource): Promise<InstallReview> {
     this.check();
     const app = parseAppPackage(raw);
     const replaces =
@@ -218,7 +227,27 @@ export class AppCatalog {
     const digest = [...new Uint8Array(hash)]
       .map((byte) => byte.toString(16).padStart(2, "0"))
       .join("");
-    const result = Object.freeze({ package: app, digest, replaces });
+    if (source) {
+      source = parseRepositorySource(source);
+      const rawHash = await crypto.subtle.digest(
+        "SHA-256",
+        new TextEncoder().encode(raw),
+      );
+      const rawDigest = [...new Uint8Array(rawHash)]
+        .map((byte) => byte.toString(16).padStart(2, "0"))
+        .join("");
+      if (rawDigest !== source.sha256)
+        throw new RpcError(
+          "invalid",
+          "Repository fingerprint does not match this package.",
+        );
+    }
+    const result = Object.freeze({
+      package: app,
+      digest,
+      replaces,
+      ...(source ? { source } : {}),
+    });
     this.reviews.add(result);
     return result;
   }
@@ -248,6 +277,7 @@ export class AppCatalog {
         generation: crypto.randomUUID(),
         grants,
         enabled: true,
+        ...(review.source ? { source: review.source } : {}),
       });
       await this.commit([
         ...this.snapshot().filter(

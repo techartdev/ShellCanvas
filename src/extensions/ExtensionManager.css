@@ -3,6 +3,56 @@
   padding: 28px;
   overflow: auto;
 }
+.extension-repository {
+  margin-top: 24px;
+  padding: 22px;
+  border: 1px solid #476471;
+  border-radius: 14px;
+  background: linear-gradient(125deg, #243e49, #1b303c);
+}
+.extension-repository-fields {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+  gap: 14px;
+  margin: 20px 0;
+}
+.extension-repository-fields label {
+  display: grid;
+  gap: 8px;
+  font-size: 12px;
+  color: #b5cbd4;
+}
+.extension-repository-fields input {
+  min-width: 0;
+  padding: 11px 12px;
+  color: #e0ebf0;
+  background: #142a35;
+  border: 1px solid #486471;
+  border-radius: 8px;
+  font: inherit;
+}
+.extension-repository > .extension-actions {
+  justify-content: flex-end;
+}
+.extension-repository-progress {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  padding: 16px 0;
+  color: #b9d8cd;
+  font-size: 12px;
+}
+.extension-repository-progress > span {
+  flex: 1;
+}
+.extension-source {
+  overflow-wrap: anywhere;
+}
+@media (max-width: 500px) {
+  .extension-repository-fields {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
 .extension-center {
   min-height: 0;
   height: 100%;

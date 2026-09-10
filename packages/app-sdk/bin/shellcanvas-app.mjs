@@ -4,9 +4,30 @@ import { build } from "esbuild";
 import { readFile, mkdir, writeFile, rename, unlink } from "node:fs/promises";
 import { resolve, join, dirname } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { randomUUID } from "node:crypto";
+import { randomUUID, createHash } from "node:crypto";
 import { parseAppManifest, parseAppPackage } from "../dist/package.js";
+import { parseAppRepository, validRepositoryPath } from "../dist/repository.js";
 const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+
+export async function repositoryManifest(directory, { path = "dist/app.shellcanvas.json", description = "" } = {}) {
+  if (!validRepositoryPath(path)) throw new Error("Package path must stay inside the repository.");
+  directory = resolve(directory);
+  const bytes = await readFile(join(directory, path));
+  const app = parseAppPackage(new TextDecoder("utf-8", { fatal: true }).decode(bytes));
+  const manifest = parseAppRepository(JSON.stringify({
+    format: 1, kind: "app-repository", id: app.id, version: app.version, title: app.title, description,
+    package: { path, sha256: createHash("sha256").update(bytes).digest("hex") },
+  }));
+  const destination = join(directory, "shellcanvas.repo.json");
+  const temporary = join(directory, `.repository-${randomUUID()}.tmp`);
+  try {
+    await writeFile(temporary, JSON.stringify(manifest, null, 2) + "\n", { encoding: "utf8", flag: "wx" });
+    await rename(temporary, destination);
+  } finally {
+    await unlink(temporary).catch(error => { if (error.code !== "ENOENT") throw error; });
+  }
+  return destination;
+}
 
 export async function packApp(directory, version) {
   directory = resolve(directory);
@@ -153,6 +174,7 @@ const help = `ShellCanvas app tools
   shellcanvas-app init <new-directory> --id org.example.notes --title "Notes" [--sdk <sdk.tgz>]
   shellcanvas-app build [directory] [--version 0.2.0]
   shellcanvas-app validate <app.shellcanvas.json>
+  shellcanvas-app repository [directory] [--path dist/app.shellcanvas.json] [--description "App description"]
 Install the generated project's dependencies, then run npm run build. No desktop rebuild is needed.`;
 export async function main(args) {
   if (!args.length || ["--help", "-h"].includes(args[0])) {
@@ -171,7 +193,7 @@ export async function main(args) {
     const key = arg.slice(2);
     if (
       !(
-        { init: ["id", "title", "sdk"], build: ["version"], validate: [] }[
+        { init: ["id", "title", "sdk"], build: ["version"], validate: [], repository: ["path", "description"] }[
           command
         ] ?? []
       ).includes(key) ||
@@ -192,6 +214,7 @@ export async function main(args) {
     console.log(
       `App package: ${await packApp(positionals[0] ?? ".", options.version)}`,
     );
+  else if (command === "repository") console.log(`Repository manifest: ${await repositoryManifest(positionals[0] ?? ".", options)}`);
   else if (command === "validate" && positionals.length) {
     const app = parseAppPackage(
       await readFile(resolve(positionals[0]), "utf8"),

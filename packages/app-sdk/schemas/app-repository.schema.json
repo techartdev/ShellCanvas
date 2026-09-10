@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ShellCanvas repository manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["format", "kind", "id", "version", "title", "description", "package"],
+  "properties": {
+    "format": { "const": 1 },
+    "kind": { "const": "app-repository" },
+    "id": { "type": "string", "pattern": "^[a-z][a-z0-9-]*(?:\\.[a-z][a-z0-9-]*)+$" },
+    "version": { "type": "string", "pattern": "^\\d+\\.\\d+\\.\\d+(?:-[a-zA-Z0-9.-]+)?$" },
+    "title": { "type": "string", "minLength": 1, "maxLength": 100, "pattern": "\\S" },
+    "description": { "type": "string", "maxLength": 1000 },
+    "package": {
+      "type": "object", "additionalProperties": false, "required": ["path", "sha256"],
+      "properties": {
+        "path": { "type": "string", "minLength": 1, "maxLength": 240, "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._-]*(?:/[a-zA-Z0-9][a-zA-Z0-9._-]*)*$" },
+        "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" }
+      }
+    }
+  }
+}

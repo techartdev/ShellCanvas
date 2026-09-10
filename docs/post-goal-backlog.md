@@ -206,7 +206,9 @@ are contract demonstrations, not production device support.
 - [ ] **EXT-03 — Package distribution.** Publisher authentication, signatures,
       explicit rollback tooling and marketplace/catalog distribution. Existing
       install/update/remove, integrity checks and retained generations are complete.
-      Gate: trust and update/recovery behavior is verified before public distribution.
+      Direct public-GitHub package installation and reviewed updates are now
+      delivered; hashes do not authenticate publishers. Verify any future
+      signing, marketplace and rollback guarantees before advertising them.
 - [ ] **POST-22 — SDK release/versioning. Decision/implementation.** The public
       contracts are provisional and SDKs are not published to registries. Choose
       compatibility policy, API/data migrations, publication and support matrix.
@@ -216,12 +218,20 @@ are contract demonstrations, not production device support.
       integration is not. Compare optional connection versus portable extraction,
       then measure size/startup/cancellation with a fake streaming model. Keep Files
       and Terminal independent of AI and any Node sidecar. See [assessment](ai-integration.md).
-- [ ] **AI-02 — Optional assistant app.** Model setup, streaming/cancel,
-      per-host conversations and user-selected context, after AI-01. No automatic
-      export of terminal/file content.
-- [ ] **AI-03 — Assistant tools.** Read-only tools first, then reviewed writes or
-      commands with session-bound approval, cancellation, audit outcomes and budgets.
-      Do not inherit WispCrew's local shell/filesystem defaults.
+- [x] **AI-02 — Optional assistant app.** Delivered as the independent public
+      Canvas Assistant package: model setup, Responses/Chat Completions streaming,
+      cancellation, local history with host context, and selected text/image
+      attachments. No background terminal/file export. The standalone engine was
+      selected without requiring WispCrew runtime integration. See [evidence](assistant-goal.md).
+- [x] **AI-03 — Assistant tools.** Discovery/files, reviewed text changes and
+      console input, retained bindings/revisions, cancellation and bounded tool
+      rounds verified in fixtures and native Windows workflows. Console streams
+      remain distinct from independent exec; no WispCrew local-shell defaults.
+- [ ] **AI-04 — Longer conversations and provider polish.** Deliberate context
+      summarization, token/cost visibility, provider presets/reasoning controls,
+      history search/host filters, and richer attachment formats. Current context
+      limits are explicit. Add capabilities against representative providers;
+      preserve the small generic desktop network contract.
 - [ ] **SHIP-02 — Desktop release packages.** Optimized installers/app bundles
       for chosen Windows/Mac/Linux versions, launch/exit/uninstall, dependency and
       size/startup measurements, signing/notarization and update strategy. Include
@@ -243,6 +253,11 @@ are contract demonstrations, not production device support.
       systems, release notes, SDK distribution and public-repository readiness.
       Name/domain/trademark checks and launch timing remain decisions. Existing SDK
       starters and contributor guidance should be improved, not recreated.
+- [ ] **COMM-02 — Website and documentation at shellcanvas.com.** The user purchased
+      the domain and pointed it at evtinsait (2026-09-10). Build the site in a
+      private repository. Plan a later public release of the ShellCanvas app
+      repository. The standalone assistant repository is approved to be public
+      now so repository installation can work from any machine.
 - [ ] **POST-24 — Commercial boundaries. Decision.** Paid desktop/mobile/web or
       hosted offerings, private components and pricing remain undecided. Current
       MPL-2.0 core licensing and the private source repository are established; do

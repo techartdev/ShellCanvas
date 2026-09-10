@@ -25,6 +25,11 @@ support remains governed by its representative tests and compatibility matrix.
 These are development skills. They do not implement the optional in-desktop AI
 assistant or integrate WispCrew.
 
+The independent [Canvas Assistant](https://github.com/techartdev/ShellCanvas-Assistant)
+now supplies its own operating skill under `skills/canvas-assistant/SKILL.md`.
+App development guidance covers the generic network/credential service and
+direct GitHub packaging; the assistant's tool loop remains in its own repository.
+
 ## Validation
 
 All three entrypoints pass the skill-creator validator, and their linked files

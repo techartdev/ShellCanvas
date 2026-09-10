@@ -4,6 +4,13 @@ The Windows desktop now installs and runs self-contained app packages without re
 
 ## Install an app in the desktop
 
+**Install from GitHub** accepts a public repository/ref and verifies its root
+descriptor and prebuilt package before the same installation review. See
+[repository installation](repository-apps.md). Runtime app host services are
+optional: the window can open without a connected device, while unavailable
+remote methods remain disabled. Bundled apps with required host services retain
+their connection requirement.
+
 Open **Apps** from the dock or launcher, choose **Install package**, and select a `.shellcanvas.json` file. Review its version and requested permissions before choosing **Install app**. Installed apps appear in the launcher; running apps also appear in the dock. **Open app** in the manager creates a new window. A dock click restores an existing window; its context menu can create another.
 
 Runtime apps use the same desktop stacking, minimize, maximize, window menu, dirty-close confirmation and native quit protection as bundled apps. Their instance holds a fixed package generation and grant snapshot. Updating or disabling a package preserves its existing windows. Removing a package requires its windows to be closed.

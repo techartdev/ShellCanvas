@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 import type { SystemAPI } from "./system-api.js";
+import { appNetworkClient, type AppNetworkAPI } from "./network-client.js";
 import { RpcPeer, messagePortTransport, type Json } from "./rpc.js";
 import { appFileClient, type AppFilesAPI } from "./file-client.js";
 import { appConsoleClient, type AppConsoleAPI } from "./console-client.js";
@@ -25,6 +26,7 @@ import {
   type AppClipboardAPI,
 } from "./clipboard-client.js";
 export interface ExtensionClient {
+  readonly network: AppNetworkAPI;
   readonly system: SystemAPI;
   readonly files: AppFilesAPI;
   readonly console: AppConsoleAPI;
@@ -180,6 +182,7 @@ export function connectToShellCanvas(
             )) as unknown as StoragePage,
         } satisfies AppStorageAPI);
       resolve({
+        network: appNetworkClient(peer),
         system,
         files: appFileClient(peer),
         console: appConsoleClient(peer),

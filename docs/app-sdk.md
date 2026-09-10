@@ -1,5 +1,10 @@
 # Standalone app development
 
+Apps can now be [installed directly from a public GitHub repository](repository-apps.md)
+using a root manifest and verified prebuilt package. The optional
+[app connection API](app-network.md) provides user-configured HTTP endpoints and
+native credential storage without giving the isolated app unrestricted network access.
+
 The public [window API](app-window.md) provides window snapshots, focus, minimize,
 maximize, restore and guarded close requests, in addition to document state.
 

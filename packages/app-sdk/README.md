@@ -21,6 +21,25 @@ The generator requires a new directory and never overwrites an existing project.
 
 ## Public API
 
+To distribute through GitHub, build first and run
+`shellcanvas-app repository . --description "What your app does"`.
+Commit both the generated root `shellcanvas.repo.json` and its referenced package.
+Preserve package bytes with a final `dist/app.shellcanvas.json -text` rule in
+`.gitattributes`. Users choose **Apps → Install from GitHub** and review the exact
+downloaded package. Installation downloads files directly; it runs no npm scripts
+and requires no registry or GitHub API token. See the repository schema exported
+at `@shellcanvas/app-sdk/schemas/app-repository.schema.json`.
+
+For a user-configured HTTP service, declare `system.network` and use
+`network.configure({slot, suggestedEndpoint})` to open ShellCanvas's credential
+dialog. The returned connection contains endpoint/revision metadata, never the key.
+`network.postJSON({slot, revision, body}, signal?)` returns a response with
+`status`, `contentType`, `read()` and `close()`; always close it in `finally`.
+Only the configured endpoint receives the request; redirects are rejected.
+The host owns authentication and cancellation. Network permission does not grant
+remote host files or console access. Apps can open locally with unavailable host
+actions disabled.
+
 ```ts
 import { connectToShellCanvas, RpcError } from "@shellcanvas/app-sdk";
 

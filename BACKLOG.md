@@ -92,9 +92,9 @@ Scope is flexibility now, not implementing every protocol now. Pick the first re
 ## M5 — Optional AI assistant
 
 - [x] **AI-00 — WispCrew reuse assessment.** Inspect local source, runtime dependencies, tool defaults and approval interfaces; record findings and integration choices in docs/ai-integration.md. No WispCrew source copied, changed, or executed.
-- [ ] **AI-01 — Integration spike.** Compare an optional WispCrew connection with extraction of a portable agent kernel. Measure package size, startup, cancellation and desktop/mobile feasibility. Gate: fake-model streaming demo through a replaceable assistant service; decide runtime location before implementation. Requires BASE-05; do not ship a placeholder chat as functioning AI.
-- [ ] **AI-02 — Assistant app.** Explicit model setup, streaming, cancellation, conversation per host and user-selected context. Gate: Files/Terminal run with AI disabled; no terminal/file content sent automatically. Requires AI-01.
-- [ ] **AI-03 — Host tools and approvals.** Start with host info and file reads; add command/write actions with concrete previews, session-bound approval, audit results and step/time budgets. Gate: cancellation, host switch, expired approval and tool failure tests; never inherit WispCrew's local filesystem/shell defaults. Requires AI-02 and native operation broker.
+- [ ] **AI-01 — Optional WispCrew runtime integration.** Compare companion connection with portable extraction if later agent features justify it; measure startup/size and platform costs. The first assistant already uses an independent bounded app-side engine and needs no Node sidecar or WispCrew runtime.
+- [x] **AI-02 — Assistant app.** Independent public Canvas Assistant package with explicit model setup, Responses/compatible Chat Completions, streaming, cancellation, local conversation history/host context and selected text/image attachments. Files/Terminal remain independent. See [goal evidence](docs/assistant-goal.md).
+- [x] **AI-03 — Host tools and approvals.** Discovery/files, reviewed text writes and console input with retained bindings/revisions, cancellation and budgets. Native Windows model/tool tests and deterministic rejection/conflict tests passed. No hidden local filesystem or exec defaults; see [goal evidence](docs/assistant-goal.md).
 
 ## M6 — Distribution and community
 

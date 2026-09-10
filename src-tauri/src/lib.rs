@@ -9,6 +9,7 @@ use tauri::{ipc::Channel, Manager, State};
 use tokio::sync::{mpsc, Mutex};
 mod adapter_diagnostics;
 mod adapters;
+mod app_network;
 mod builtin_ssh;
 #[cfg(any(windows, test))]
 mod clipboard_move;
@@ -26,6 +27,7 @@ mod host_trust;
 mod native_ipc;
 mod prepared_source;
 mod profile_store;
+mod repository_install;
 #[cfg(test)]
 mod request_source_tests;
 mod session_registry;
@@ -728,6 +730,16 @@ pub fn run() {
                 return handler(invoke);
             }
             let handler: fn(tauri::ipc::Invoke<tauri::Wry>) -> bool = tauri::generate_handler![
+                repository_install::read_repository_file,
+                repository_install::prepare_repository_read,
+                repository_install::cancel_repository_read,
+                app_network::app_network_profile,
+                app_network::app_network_configure,
+                app_network::app_network_forget,
+                app_network::app_network_prepare,
+                app_network::app_network_start,
+                app_network::app_network_read,
+                app_network::app_network_close,
                 adapters::list_adapters,
                 adapter_diagnostics::adapter_diagnostics,
                 adapters::available_connections,

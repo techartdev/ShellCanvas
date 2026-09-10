@@ -1,0 +1,116 @@
+.app-connection-dialog {
+  color: #e3edef;
+  background: #1c303b;
+  border: 1px solid #506674;
+  border-radius: 20px;
+  box-shadow: 0 24px 90px #00131db0;
+  width: min(510px, calc(100vw - 40px));
+  padding: 32px;
+}
+.app-connection-dialog::backdrop {
+  background: #06131b99;
+  backdrop-filter: blur(5px);
+}
+.app-connection-icon {
+  width: 54px;
+  height: 54px;
+  display: grid;
+  place-items: center;
+  border-radius: 15px;
+  background: #355353;
+  color: #b4ddcd;
+  margin-bottom: 24px;
+}
+.app-connection-dialog .app-connection-eyebrow {
+  color: #9ec6b9;
+  font-size: 9px;
+  letter-spacing: 0.15em;
+  font-weight: 700;
+}
+.app-connection-dialog h2 {
+  font-size: 26px;
+  font-weight: 500;
+  margin: 12px 0;
+}
+.app-connection-dialog p {
+  color: #a6bcc7;
+  font-size: 13px;
+  line-height: 1.6;
+}
+.app-connection-dialog fieldset {
+  border: 0;
+  padding: 8px 0;
+  margin: 0;
+  display: grid;
+  gap: 18px;
+}
+.app-connection-dialog label {
+  display: grid;
+  gap: 8px;
+  color: #cbdae0;
+  font-size: 12px;
+}
+.app-connection-dialog input:not([type="checkbox"]) {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  color: #e3edef;
+  background: #122732;
+  border: 1px solid #455f6b;
+  padding: 12px;
+  border-radius: 9px;
+  font: inherit;
+}
+.app-connection-dialog input:focus-visible {
+  outline: 2px solid #a4cebe;
+  outline-offset: 2px;
+}
+.app-connection-dialog .app-connection-remember {
+  display: flex;
+  align-items: center;
+}
+.app-connection-dialog input[type="checkbox"] {
+  accent-color: #b4ddcd;
+}
+.app-connection-dialog .app-connection-note {
+  display: flex;
+  gap: 9px;
+  align-items: flex-start;
+  font-size: 11px;
+  margin-top: 20px;
+}
+.app-connection-note svg {
+  flex-shrink: 0;
+}
+.app-connection-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 9px;
+  margin-top: 24px;
+}
+.app-connection-actions button {
+  cursor: pointer;
+  padding: 11px 16px;
+  border-radius: 9px;
+  border: 1px solid #496673;
+  background: #28414e;
+  color: #e2ebed;
+  font: inherit;
+  font-size: 12px;
+}
+.app-connection-actions button[type="submit"] {
+  color: #15322d;
+  background: #b4ddcd;
+  border-color: #b4ddcd;
+  font-weight: 600;
+}
+.app-connection-actions button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.app-connection-dialog .app-connection-error {
+  color: #f0b6ae;
+}
+.app-connection-dialog .app-connection-warning {
+  color: #e2c691;
+}

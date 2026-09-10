@@ -41,6 +41,7 @@ function descriptor(
     title: entry.package.title,
     subtitle: `Version ${entry.package.version}`,
     scope: capabilities.length ? "host" : "local",
+    allowWithoutHost: true,
     requires: [],
     optional: capabilities,
     customPermissions: entry.grants.filter((grant) =>
@@ -115,6 +116,14 @@ function RuntimeDocument({
           ? "review-required"
           : "connected",
     binding: currentBinding(),
+    ...(context.session && accepted === context.system
+      ? {
+          host: {
+            name: context.session.info.hostname,
+            system: context.session.info.system,
+          },
+        }
+      : {}),
     visible: context.visible !== false,
     capabilities: context.session
       ? (Object.keys(capabilityLabels) as Capability[]).filter(

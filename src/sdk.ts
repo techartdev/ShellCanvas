@@ -453,6 +453,8 @@ export interface DesktopApp {
   title: string;
   subtitle: string;
   scope: "host" | "local";
+  /** Host-aware UI that can also work locally; required host capabilities still gate it. */
+  allowWithoutHost?: boolean;
   requires: readonly Capability[];
   /** Services the app may use when available, without blocking startup. */
   optional?: readonly Capability[];
@@ -523,7 +525,12 @@ export function unavailableReason(
   app: DesktopApp,
   session: Session | null,
 ): string | null {
-  if (app.scope === "host" && !session) return "Connect a host to get started";
+  if (
+    app.scope === "host" &&
+    !session &&
+    (!app.allowWithoutHost || app.requires.length)
+  )
+    return "Connect a host to get started";
   return session
     ? app.requires
         .map((cap) => capabilityReason(session, cap))

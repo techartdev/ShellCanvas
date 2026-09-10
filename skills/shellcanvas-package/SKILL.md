@@ -14,6 +14,12 @@ For an app, use the public `shellcanvas-app build` and `validate` commands from
 [the app SDK](../../packages/app-sdk/README.md). Bundle app code and styles with
 the declared manifest/permissions. External code consumes the SDK, not host IPC.
 
+For a GitHub-distributed app, generate the root descriptor with
+`shellcanvas-app repository` after building. Read [repository distribution](../../docs/repository-apps.md).
+Commit the descriptor and the exact prebuilt bytes; preserve those bytes with
+Git attributes. Verify an actual repository installation and reviewed update.
+Do not require users to build source or run package-manager scripts at install time.
+
 For an adapter, use `shellcanvas-adapter build` for a generated Rust project, or
 `pack SOURCE_JSON EXECUTABLE NEW_OUTPUT` for an existing executable. Then run
 `validate NEW_OUTPUT/adapter.json`. The [adapter SDK reference](../../crates/adapter-sdk/README.md)
