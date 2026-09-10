@@ -12,6 +12,19 @@ Include the dependencies' licensing/distribution limitations in that app.
 
 ## Current implementation
 
+- Windows timestamp handling is verified at bridge `3f66501`, CI run
+  `34524595837` (native suite 29.14 seconds). Missing creation/change timestamps
+  remain unavailable instead of copying modification time; missing/out-of-range
+  provider timestamps are not fabricated. Access/modification updates use the
+  contract's whole-second precision. Unsupported creation/change updates and
+  pre-Unix-epoch dates fail before other metadata is changed. Native WinFsp
+  verifies round-trip access/modification times and unchanged backing timestamps
+  and permissions after rejected mixed requests; prior native checks pass.
+  Linux/macOS builds/tests and Windows clippy pass. The live core SFTP probe also
+  passes single-field time updates preserving the other timestamp and rejection
+  of a date beyond SFTP v3's range with no partial permission change. Disposable
+  fixture `6862dc70-0b9b-482e-b09d-40c131de09b2` removal was independently verified.
+  This does not add creation/change-time storage to providers lacking it.
 - Windows existing-file read-only attributes now project through remote Unix
   permission bits at bridge `447b1c3`. Set removes write bits; clear restores owner
   write only. `SetBasicInfo` rejects unsupported DOS flags before mutating other
@@ -27,7 +40,7 @@ Include the dependencies' licensing/distribution limitations in that app.
   (37.15 seconds): read-only set/clear reaches backing metadata, new writes and
   deletion are blocked, and combined hidden/read-only rejection has no partial
   effects. This is separate bridge/provider evidence, not a desktop SFTP mapping.
-  Creation/overwrite attributes and creation/change-time semantics remain open;
+  Creation/overwrite attributes remain open; later timestamp handling is above;
   arbitrary DOS flags are not persisted by the present portable contract.
 - FUSE inode lifetime coverage passes at bridge `558d1f2`, CI run
   `34521983619`: lookup and open references retain an inode until both are gone,
@@ -365,8 +378,9 @@ Include the dependencies' licensing/distribution limitations in that app.
    warnings now pass native failure injection. Volume-wide flush and cross-handle rename
    are implemented with bookkeeping regression tests. Native directory alias
    rename and volume-wide flush checks now pass. Existing-file read-only changes
-   now pass native Windows and separate live SFTP checks; creation/overwrite
-   attributes and creation/change timestamps still need review.
+   now pass native Windows and separate live SFTP checks. Timestamp mapping and
+   explicit rejection of unavailable creation/change-time updates pass as recorded
+   above. Creation/overwrite attribute handling still needs review.
    Linux shared/private/read-only memory-mapping acceptance
    passes, as does Windows shared/private/read-only mapping against a disposable
    local provider. macOS mapped-file tests and concurrent remote-edit behavior
