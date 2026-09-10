@@ -33,6 +33,13 @@ Include the dependencies' licensing/distribution limitations in that app.
   binding health and bounded protocol cleanup. Published on `main`.
   Canonical local checkout: `D:\Mine\ShellCanvas-DriveBridge`.
   `.local/drive-bridge` is the initial build staging copy, not the canonical repo.
+- Public review branch `feat/graceful-detach` now includes `078e624`:
+  Windows volume flush visits all writable descriptors and reports the first
+  failure after attempting the others. Confirmed renames update related open
+  paths; failed renames preserve them. Dropping an open context closes remote
+  handles, including failure after acquisition. Two bookkeeping regressions pass;
+  Windows and Linux clippy pass. Live WinFsp acceptance remains required.
+  These changes are in PR #1, not public main; protocol v2 still awaits merge.
 - Bridge has native Windows callbacks and a shared Linux/macOS FUSE backend,
   plus an independently buildable vendored SDK. GPL-3.0-only bridge licensing
   leaves the main app MPL-2.0. README/THIRD-PARTY describe WinFsp/wrapper terms,
@@ -160,9 +167,9 @@ Include the dependencies' licensing/distribution limitations in that app.
    Do not claim an OS version/runtime works solely because Linux compiled.
 7. Resolve currently documented limits before calling the release ready:
    Windows cleanup-time deletion warnings and busy-detach control are implemented
-   but need native WinFsp acceptance. File attributes, volume-wide flush and
-   cross-handle directory rename need work/checks. Memory-mapped workflows need
-   explicit acceptance.
+   but need native WinFsp acceptance. Volume-wide flush and cross-handle rename
+   are implemented with bookkeeping regression tests; native checks and file
+   attribute work remain. Memory-mapped workflows need explicit acceptance.
 8. Review cancellation/late responses, bounded teardown and protocol errors with
    failure fixtures, then run the relevant core/desktop regression checks. Add
    reproducible release packages/notices and update bridge docs with exact verified
