@@ -5,8 +5,33 @@ use anyhow::{ensure, Context, Result};
 use shellcanvas_core::*;
 use shellcanvas_filesystem_sdk::bridge_control::{BridgeControl, BridgePhase};
 use shellcanvas_filesystem_sdk::wire::Server;
-use std::{path::PathBuf, process::Stdio, sync::Arc, time::Duration};
+use std::{path::PathBuf, process::Stdio, sync::{Arc, atomic::{AtomicBool, Ordering}}, time::Duration};
 use tokio::io::{AsyncBufReadExt, AsyncReadExt};
+
+// Fault injection for this probe's dedicated SFTP channel only. SSH keepalives,
+// other channels and the separate native-test control connection stay healthy.
+struct StalledSftp<S> {
+    stream: S,
+    stalled: Arc<AtomicBool>,
+}
+impl<S: tokio::io::AsyncRead + Unpin> tokio::io::AsyncRead for StalledSftp<S> {
+    fn poll_read(mut self: std::pin::Pin<&mut Self>, cx: &mut std::task::Context<'_>, buf: &mut tokio::io::ReadBuf<'_>) -> std::task::Poll<std::io::Result<()>> {
+        if self.stalled.load(Ordering::Acquire) { return std::task::Poll::Pending; }
+        std::pin::Pin::new(&mut self.stream).poll_read(cx, buf)
+    }
+}
+impl<S: tokio::io::AsyncWrite + Unpin> tokio::io::AsyncWrite for StalledSftp<S> {
+    fn poll_write(mut self: std::pin::Pin<&mut Self>, cx: &mut std::task::Context<'_>, buf: &[u8]) -> std::task::Poll<std::io::Result<usize>> {
+        if self.stalled.load(Ordering::Acquire) { return std::task::Poll::Ready(Ok(buf.len())); }
+        std::pin::Pin::new(&mut self.stream).poll_write(cx, buf)
+    }
+    fn poll_flush(mut self: std::pin::Pin<&mut Self>, cx: &mut std::task::Context<'_>) -> std::task::Poll<std::io::Result<()>> {
+        std::pin::Pin::new(&mut self.stream).poll_flush(cx)
+    }
+    fn poll_shutdown(mut self: std::pin::Pin<&mut Self>, cx: &mut std::task::Context<'_>) -> std::task::Poll<std::io::Result<()>> {
+        std::pin::Pin::new(&mut self.stream).poll_shutdown(cx)
+    }
+}
 fn quote(value: &str) -> String {
     format!("'{}'", value.replace('\'', "'\\''"))
 }
@@ -63,6 +88,8 @@ async fn main() -> Result<()> {
     );
     let transport_loss = std::env::var("SHELLCANVAS_PROBE_TRANSPORT_LOSS").as_deref() == Ok("1");
     let ssh_loss = std::env::var("SHELLCANVAS_PROBE_SSH_LOSS").as_deref() == Ok("1");
+    let sftp_stall = std::env::var("SHELLCANVAS_PROBE_SFTP_STALL").as_deref() == Ok("1");
+    let stalled = Arc::new(AtomicBool::new(false));
     let unprivileged = std::env::var("SHELLCANVAS_PROBE_UNPRIVILEGED").as_deref() == Ok("1");
     if unprivileged {
         let uid = run(&args, "/usr/sbin/runuser -u nobody -- id -u").await?;
@@ -73,7 +100,7 @@ async fn main() -> Result<()> {
         println!("UNPRIVILEGED_LOCAL_UID: {}", uid.trim());
     }
     ensure!(
-        !(transport_loss && ssh_loss),
+        [transport_loss, ssh_loss, sftp_stall].into_iter().filter(|mode| *mode).count() <= 1,
         "Select one connection-loss mode"
     );
     let connection = Arc::new(
@@ -113,7 +140,17 @@ async fn main() -> Result<()> {
         .await?;
     }
     let browser = SshFileBrowser::new(Arc::new(SftpBrowser(service.clone())), connection.clone());
-    let fs = browser.mount_root(&source, true).await?;
+    let fs: Arc<dyn MountedFileSystem> = if sftp_stall {
+        let channel = connection.handle.channel_open_session().await?;
+        channel.request_subsystem(true, "sftp").await?;
+        let raw = russh_sftp::client::RawSftpSession::new(StalledSftp {
+            stream: channel.into_stream(), stalled: stalled.clone(),
+        });
+        let isolated = Arc::new(SftpTextFiles::new(raw).await?);
+        mounted::SftpMount::new(isolated, &source, true).await?
+    } else {
+        browser.mount_root(&source, true).await?
+    };
     let remote = local_command(
         &format!("exec {} --mount {}", quote(&args[5]), quote(&target)),
         unprivileged,
@@ -142,27 +179,29 @@ async fn main() -> Result<()> {
             }
             anyhow::Ok(())
         }).await??;
-        if transport_loss || ssh_loss {
-            let script = r#"import os,sys,errno
-f=os.open(sys.argv[1]+'/loss.bin',os.O_CREAT|os.O_EXCL|os.O_RDWR,0o600)
+        if transport_loss || ssh_loss || sftp_stall {
+            let script = r#"import os,sys,errno,time
+f=os.open(sys.argv[1]+'/loss.bin',os.O_CREAT|os.O_EXCL|os.O_RDWR|os.O_SYNC,0o600)
 os.pwrite(f,b'confirmed',0)
 os.fsync(f)
 print('HELD',flush=True)
 sys.stdin.read()
+started=time.monotonic()
 try:
     os.pwrite(f,b'unconfirmed',0)
     raise AssertionError('write succeeded after loss of provider')
 except OSError as e:
-    assert e.errno in (errno.EIO,errno.ENOTCONN,errno.ENODEV), e
+    assert e.errno in (errno.EIO,errno.ENOTCONN,errno.ENODEV,errno.ETIMEDOUT), e
+    assert time.monotonic()-started < 25, 'lost write exceeded the deadline'
     print('LINUX_LOST_WRITE_PASS: errno='+str(e.errno),flush=True)
 finally:
     try:
         os.close(f)
     except OSError as e:
-        assert e.errno in (errno.EIO,errno.ENOTCONN,errno.ENODEV), e
+        assert e.errno in (errno.EIO,errno.ENOTCONN,errno.ENODEV,errno.ETIMEDOUT), e
         print('LINUX_LOST_CLOSE_ERROR: errno='+str(e.errno),flush=True)
 "#;
-            let mut holder = ssh(&args, &local_command(&format!("exec timeout 45s python3 -u -c {} {}", quote(script), quote(&target)), unprivileged))
+            let mut holder = ssh(&args, &local_command(&format!("exec timeout 70s python3 -u -c {} {}", quote(script), quote(&target)), unprivileged))
                 .stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::inherit()).spawn()?;
             let mut output = tokio::io::BufReader::new(holder.stdout.take().unwrap());
             let mut line = String::new();
@@ -170,7 +209,10 @@ finally:
             ensure!(line.trim() == "HELD", "Loss fixture did not open its file");
             // Drop the bridge's real transport endpoints, while the separate
             // SSH connection driving the local application remains available.
-            if ssh_loss {
+            if sftp_stall {
+                stalled.store(true, Ordering::Release);
+                println!("SFTP_STALLED: bridge pipes and other SSH channels remain connected");
+            } else if ssh_loss {
                 connection.disconnect().await?;
                 tokio::time::timeout(Duration::from_secs(5), async {
                     while connection.is_connected() { tokio::task::yield_now().await; }
@@ -182,13 +224,18 @@ finally:
             }
             drop(holder.stdin.take());
             line.clear();
-            tokio::time::timeout(Duration::from_secs(15), output.read_to_string(&mut line)).await??;
+            tokio::time::timeout(Duration::from_secs(if sftp_stall { 45 } else { 15 }), output.read_to_string(&mut line)).await??;
             print!("{line}");
             ensure!(tokio::time::timeout(Duration::from_secs(5), holder.wait()).await??.success(), "Lost-write fixture failed");
             let status = tokio::time::timeout(Duration::from_secs(15), child.wait()).await??;
             ensure!(!status.success(), "Transport loss reported a successful exit");
             let verify = "import sys; from pathlib import Path; assert Path(sys.argv[1]+'/loss.bin').read_bytes()==b'confirmed'; mounted=any(l.split()[4]==sys.argv[2] for l in open('/proc/self/mountinfo')); print('LINUX_LOSS_MOUNT_STATE: '+('retained' if mounted else 'removed')); print('LINUX_TRANSPORT_LOSS_PASS: failed write, preserved source, failure exit')";
             print!("{}",run(&args, &format!("python3 -c {} {} {}",quote(verify),quote(&source),quote(&target))).await?);
+            if sftp_stall {
+                ensure!(connection.is_connected(), "SFTP retirement disconnected the shared SSH connection");
+                browser.list(Some(&source)).await?;
+                println!("SFTP_STALL_ISOLATION_PASS: unrelated SFTP channel remains usable after mounted-channel timeout");
+            }
             return Ok(());
         }
         let hold = "import os,sys; f=os.open(sys.argv[1]+'/held',os.O_CREAT|os.O_RDWR,0o600); print('HELD',flush=True); sys.stdin.read(); os.close(f)";

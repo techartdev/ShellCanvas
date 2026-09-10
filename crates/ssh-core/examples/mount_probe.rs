@@ -47,6 +47,29 @@ async fn main() -> Result<()> {
             create: FsCreate::CreateNew,
             truncate: false,
         };
+        // Windows applies initial read-only attributes after exclusive OPEN,
+        // while the creating handle still has permission to write its content.
+        let attributes_path = MountPath::root().child("creation-attributes.txt")?;
+        let attributes_file = fs.open(&attributes_path, create).await?;
+        attributes_file.set_metadata(FsSetMetadata {
+            permissions: Some(0o444), ..Default::default()
+        }).await?;
+        attributes_file.write_at(0, b"initial readonly contents").await?;
+        attributes_file.flush().await?;
+        ensure!(attributes_file.read_at(0, 32).await? == b"initial readonly contents",
+            "Read-only creation lost the original handle's write access");
+        ensure!(attributes_file.metadata().await?.permissions.unwrap_or(0) & 0o777 == 0o444,
+            "Initial readonly permissions were not persisted");
+        attributes_file.set_metadata(FsSetMetadata {
+            size: Some(0), permissions: Some(0o444), ..Default::default()
+        }).await?;
+        attributes_file.write_at(0, b"replacement").await?;
+        attributes_file.flush().await?;
+        ensure!(attributes_file.read_at(0, 32).await? == b"replacement",
+            "Combined truncate/readonly overwrite did not preserve the handle");
+        attributes_file.close().await?;
+        fs.remove(&attributes_path, false).await?;
+        println!("SFTP_CREATION_ATTRIBUTES_PASS: initial read-only and combined truncate/permissions preserve the original writable handle");
         let file = fs.open(&path, create).await?;
         ensure!(
             fs.open(&path, create).await.is_err(),
@@ -109,6 +132,22 @@ async fn main() -> Result<()> {
         ensure!(reader.set_metadata(FsSetMetadata { size: Some(0), ..Default::default() }).await.is_err(),
             "Read handle permitted truncation");
         ensure!(reader.metadata().await?.size == 5, "Rejected truncation changed file size");
+        let previous_access = reader.metadata().await?.accessed;
+        reader.set_metadata(FsSetMetadata { modified: Some(1_600_000_123), ..Default::default() }).await?;
+        let times = reader.metadata().await?;
+        ensure!(times.modified == Some(1_600_000_123) && times.accessed == previous_access,
+            "Single-field modification-time update changed access time");
+        reader.set_metadata(FsSetMetadata { accessed: Some(1_600_000_000), ..Default::default() }).await?;
+        let times = reader.metadata().await?;
+        ensure!(times.accessed == Some(1_600_000_000) && times.modified == Some(1_600_000_123),
+            "Single-field access-time update changed modification time");
+        ensure!(reader.set_metadata(FsSetMetadata {
+            modified: Some(u64::from(u32::MAX) + 1), permissions: Some(0o444), ..Default::default()
+        }).await.is_err(), "SFTP v3 accepted an out-of-range timestamp");
+        let unchanged = reader.metadata().await?;
+        ensure!(unchanged.modified == times.modified && unchanged.accessed == times.accessed
+            && unchanged.permissions == times.permissions, "Rejected timestamp request partially changed metadata");
+        println!("SFTP_TIMES_PASS: single-field updates preserve the other timestamp; out-of-range mixed update has no partial effects");
         let temp = MountPath::root().child("save.tmp")?;
         let save = fs.open(&temp, create).await?;
         save.write_at(0, b"saved").await?;

@@ -1,6 +1,6 @@
 # Filesystem integration implementation checkpoint
 
-Updated 2026-09-10. Goal remains active. This is not a release/completion claim.
+Updated 2026-09-11. Goal remains active. This is not a release/completion claim.
 
 ## Accepted scope
 
@@ -12,6 +12,67 @@ Include the dependencies' licensing/distribution limitations in that app.
 
 ## Current implementation
 
+- Unconfirmed SFTP CLOSE now retains cleanup ownership in a guard until the
+  server acknowledges success. Caller cancellation, rejection, timeout, or a
+  dropped cleanup task retires the mount's dedicated channel, releasing remote
+  handles instead of leaving the mount healthy with an untracked ID. The
+  cancellation regression failed before this fix and now passes. Protocol
+  fixtures additionally verify successful CLOSE keeps its channel available,
+  and cancelled file/directory OPEN closes a late returned handle. All 37 core
+  unit tests and core lint checks pass; no SDK or wire changes were required.
+- Native Linux 6.8 FUSE acceptance as UID 65534 now covers a deliberately stalled
+  dedicated SFTP stream while SSH and bridge IPC stay healthy. The local
+  synchronous write reports ETIMEDOUT within the asserted 25-second deadline;
+  close reports failure, the helper exits with failure, and the mount is removed
+  before recovery. Independent backing-file inspection confirms prior bytes
+  remain intact, and the other SFTP channel still lists the source afterwards.
+  This uses bridge `0bf4b9a` from CI `34528217955`, SHA-256
+  `1e605de4345c8b13b20c033d52cb34d0a7e5ad17d4d90b21e85fd57242aea1f2`.
+  Fixture `194e224f-5e6e-4ea3-93e5-b7220a22054e` and staged binary directory removal
+  were independently verified. `SHELLCANVAS_PROBE_SFTP_STALL=1` injects dropped
+  SFTP traffic only in the opt-in probe; it does not change host networking.
+  Full TCP-network blackholes and remote disk-full behavior remain separate gates.
+- Windows creation/overwrite read-only projection passes at bridge `0bf4b9a`,
+  CI `34528217955` (native suite 28.95 seconds). The original creating/overwriting
+  handle can finish writing; later writes are blocked by the read-only flag.
+  CopyFileW of a read-only source preserves its flag and exact backing bytes.
+  Unsupported hidden creation leaves no entry, and unsupported overwrite does
+  not truncate the destination. The overwrite test uses `NtCreateFile` with
+  `FILE_OVERWRITE`, verified against a local Windows baseline; the ordinary Rust
+  reopen/truncate path does not forward supplied attributes to this callback.
+  Archive flags supplied during create/overwrite are advisory and not persisted;
+  other unsupported DOS flags are rejected before mutation. A post-create
+  metadata failure returns an error and warns about the possibly created entry,
+  rather than deleting a path another remote actor might have replaced.
+  All platform builds/tests, local Windows lint checks and prior native lifecycle
+  checks pass. No new required provider methods or protocol fields were added.
+- Ordinary Windows `CopyFileW` acceptance passes at bridge `f6e3ee8`, CI
+  `34526423658` (native suite 29.44 seconds): both copy directions, exact backing
+  bytes, modification-time preservation, exclusive creation and overwrite.
+  CopyFileW bundles metadata-change time with modification time and ignores a
+  rejected metadata update. The bridge therefore preserves supported access/
+  modification times in that combination, omits unavailable change time, and
+  warns the parent once per attachment. Change-time-only, creation-time and
+  pre-epoch requests still fail. This supersedes the earlier blanket rejection
+  of all mixed change-time requests below; it does not add new timestamp fields.
+- The core SFTP probe now separately verifies initial read-only permissions and
+  combined truncation/permissions while retaining the original writable handle.
+  Live acceptance on the authorized Linux test host passed; removal of disposable fixture
+  `e6cbf9a3-e45a-4e57-b3d5-2a83cb526056` was independently verified. This is provider
+  evidence, separate from native Windows and desktop-created mapping acceptance.
+- Windows timestamp handling is verified at bridge `3f66501`, CI run
+  `34524595837` (native suite 29.14 seconds). Missing creation/change timestamps
+  remain unavailable instead of copying modification time; missing/out-of-range
+  provider timestamps are not fabricated. Access/modification updates use the
+  contract's whole-second precision. Unsupported creation/change-only updates and
+  pre-Unix-epoch dates fail before other metadata is changed. Native WinFsp
+  verifies round-trip access/modification times and unchanged backing timestamps
+  and permissions after rejected mixed requests; prior native checks pass.
+  Linux/macOS builds/tests and Windows clippy pass. The live core SFTP probe also
+  passes single-field time updates preserving the other timestamp and rejection
+  of a date beyond SFTP v3's range with no partial permission change. Disposable
+  fixture `6862dc70-0b9b-482e-b09d-40c131de09b2` removal was independently verified.
+  This does not add creation/change-time storage to providers lacking it.
 - Windows existing-file read-only attributes now project through remote Unix
   permission bits at bridge `447b1c3`. Set removes write bits; clear restores owner
   write only. `SetBasicInfo` rejects unsupported DOS flags before mutating other
@@ -27,7 +88,7 @@ Include the dependencies' licensing/distribution limitations in that app.
   (37.15 seconds): read-only set/clear reaches backing metadata, new writes and
   deletion are blocked, and combined hidden/read-only rejection has no partial
   effects. This is separate bridge/provider evidence, not a desktop SFTP mapping.
-  Creation/overwrite attributes and creation/change-time semantics remain open;
+  Creation/overwrite attributes remain open; later timestamp handling is above;
   arbitrary DOS flags are not persisted by the present portable contract.
 - FUSE inode lifetime coverage passes at bridge `558d1f2`, CI run
   `34521983619`: lookup and open references retain an inode until both are gone,
@@ -336,13 +397,16 @@ Include the dependencies' licensing/distribution limitations in that app.
    and 400px light layouts with synthetic data. Desktop clippy and production
    build pass. Full desktop mapping recovery remains part of gate 1, including
    the platform launcher and native Unix mount-table runtime checks.
-3. Broaden failure acceptance to stalled/black-holed network and native SFTP-only
-   channel loss, and remote permission/disk-full errors. Idle channel EOF now has
+3. Broaden failure acceptance to full TCP-network blackholes, remote-initiated
+   native SFTP-only EOF and remote permission/disk-full errors. A stalled SFTP
+   channel with healthy SSH now passes native acceptance as recorded above.
+   Idle channel EOF now has
    protocol-level coverage with a second unaffected channel. Controlled SSH disconnect now
    passes over a native Linux mount, after fixing its connection-bound heartbeat.
    Native provider error/cleanup warning injection now passes. Unconfirmed
-   SFTP open timeout cleanup is fixed and protocol-fixture tested; verify late
-   responses/caller cancellation while preparing the root. Verify the
+   SFTP open timeout cleanup and late OPEN reply cancellation are protocol-fixture
+   tested. Cancelled/timed-out/rejected CLOSE cleanup is fixed and verified above.
+   Verify cancellation while preparing the root and the
    native chooser/source-retirement race without touching the normal user profile.
 4. Native Windows file API, replacement-save, capacity, basic error and busy-detach
    checks now pass in disposable WinFsp CI. Remaining: desktop-created SFTP mapping,
@@ -365,8 +429,10 @@ Include the dependencies' licensing/distribution limitations in that app.
    warnings now pass native failure injection. Volume-wide flush and cross-handle rename
    are implemented with bookkeeping regression tests. Native directory alias
    rename and volume-wide flush checks now pass. Existing-file read-only changes
-   now pass native Windows and separate live SFTP checks; creation/overwrite
-   attributes and creation/change timestamps still need review.
+   now pass native Windows and separate live SFTP checks. Timestamp mapping and
+   explicit rejection of unavailable creation/change-only updates pass as recorded
+   above. Creation/overwrite read-only handling and ordinary native copy now pass
+   as recorded above; full DOS-attribute/ACL persistence is not provided.
    Linux shared/private/read-only memory-mapping acceptance
    passes, as does Windows shared/private/read-only mapping against a disposable
    local provider. macOS mapped-file tests and concurrent remote-edit behavior
