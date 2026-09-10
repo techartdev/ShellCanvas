@@ -329,7 +329,7 @@ async fn chooser_download_selection_uses_one_queue_slot_and_one_stream_for_many_
         panic!("Expected transfer");
     };
     let mut last = (0, 0);
-    let result = execute(job, service, &claimed.cancel, &mut |event| {
+    let result = execute(*job, service, &claimed.cancel, &mut |event| {
         last = (event.bytes, event.total);
     })
     .await
@@ -569,7 +569,7 @@ async fn queued_transfer_keeps_its_provider_and_cannot_follow_source_replacement
     let Work::Transfer { job, service } = claimed.work else {
         panic!("Expected transfer");
     };
-    assert!(execute(job, service, &claimed.cancel, &mut |_| {})
+    assert!(execute(*job, service, &claimed.cancel, &mut |_| {})
         .await
         .is_err());
     assert_eq!(old_memory.commits.load(Ordering::SeqCst), 0);
@@ -587,7 +587,7 @@ async fn queued_transfer_keeps_its_provider_and_cannot_follow_source_replacement
     let Work::Transfer { job, service } = claimed.work else {
         panic!("Expected transfer");
     };
-    execute(job, service, &claimed.cancel, &mut |_| {})
+    execute(*job, service, &claimed.cancel, &mut |_| {})
         .await
         .unwrap();
     assert_eq!(fresh_memory.commits.load(Ordering::SeqCst), 1);
