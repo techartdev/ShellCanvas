@@ -47,6 +47,29 @@ async fn main() -> Result<()> {
             create: FsCreate::CreateNew,
             truncate: false,
         };
+        // Windows applies initial read-only attributes after exclusive OPEN,
+        // while the creating handle still has permission to write its content.
+        let attributes_path = MountPath::root().child("creation-attributes.txt")?;
+        let attributes_file = fs.open(&attributes_path, create).await?;
+        attributes_file.set_metadata(FsSetMetadata {
+            permissions: Some(0o444), ..Default::default()
+        }).await?;
+        attributes_file.write_at(0, b"initial readonly contents").await?;
+        attributes_file.flush().await?;
+        ensure!(attributes_file.read_at(0, 32).await? == b"initial readonly contents",
+            "Read-only creation lost the original handle's write access");
+        ensure!(attributes_file.metadata().await?.permissions.unwrap_or(0) & 0o777 == 0o444,
+            "Initial readonly permissions were not persisted");
+        attributes_file.set_metadata(FsSetMetadata {
+            size: Some(0), permissions: Some(0o444), ..Default::default()
+        }).await?;
+        attributes_file.write_at(0, b"replacement").await?;
+        attributes_file.flush().await?;
+        ensure!(attributes_file.read_at(0, 32).await? == b"replacement",
+            "Combined truncate/readonly overwrite did not preserve the handle");
+        attributes_file.close().await?;
+        fs.remove(&attributes_path, false).await?;
+        println!("SFTP_CREATION_ATTRIBUTES_PASS: initial read-only and combined truncate/permissions preserve the original writable handle");
         let file = fs.open(&path, create).await?;
         ensure!(
             fs.open(&path, create).await.is_err(),

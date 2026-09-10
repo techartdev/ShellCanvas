@@ -12,11 +12,25 @@ Include the dependencies' licensing/distribution limitations in that app.
 
 ## Current implementation
 
+- Ordinary Windows `CopyFileW` acceptance passes at bridge `f6e3ee8`, CI
+  `34526423658` (native suite 29.44 seconds): both copy directions, exact backing
+  bytes, modification-time preservation, exclusive creation and overwrite.
+  CopyFileW bundles metadata-change time with modification time and ignores a
+  rejected metadata update. The bridge therefore preserves supported access/
+  modification times in that combination, omits unavailable change time, and
+  warns the parent once per attachment. Change-time-only, creation-time and
+  pre-epoch requests still fail. This supersedes the earlier blanket rejection
+  of all mixed change-time requests below; it does not add new timestamp fields.
+- The core SFTP probe now separately verifies initial read-only permissions and
+  combined truncation/permissions while retaining the original writable handle.
+  Live evtinsait acceptance passed; removal of disposable fixture
+  `e6cbf9a3-e45a-4e57-b3d5-2a83cb526056` was independently verified. This is provider
+  evidence, separate from native Windows and desktop-created mapping acceptance.
 - Windows timestamp handling is verified at bridge `3f66501`, CI run
   `34524595837` (native suite 29.14 seconds). Missing creation/change timestamps
   remain unavailable instead of copying modification time; missing/out-of-range
   provider timestamps are not fabricated. Access/modification updates use the
-  contract's whole-second precision. Unsupported creation/change updates and
+  contract's whole-second precision. Unsupported creation/change-only updates and
   pre-Unix-epoch dates fail before other metadata is changed. Native WinFsp
   verifies round-trip access/modification times and unchanged backing timestamps
   and permissions after rejected mixed requests; prior native checks pass.
@@ -379,7 +393,7 @@ Include the dependencies' licensing/distribution limitations in that app.
    are implemented with bookkeeping regression tests. Native directory alias
    rename and volume-wide flush checks now pass. Existing-file read-only changes
    now pass native Windows and separate live SFTP checks. Timestamp mapping and
-   explicit rejection of unavailable creation/change-time updates pass as recorded
+   explicit rejection of unavailable creation/change-only updates pass as recorded
    above. Creation/overwrite attribute handling still needs review.
    Linux shared/private/read-only memory-mapping acceptance
    passes, as does Windows shared/private/read-only mapping against a disposable
