@@ -301,10 +301,11 @@ are contract demonstrations, not production device support.
       host authorization, private-network access, credentials and deployment model.
       Requires a design/threat review and prototype; the local browser design preview
       is not a working hosted SSH service.
-- [ ] **POST-23 — Hosted CI. Decision/implementation.** Choose provider/platform
-      matrix, secret handling and artifact retention. The local verification runner
-      is delivered; hosted workflows were not set up. Keep live-host/clipboard tests
-      explicitly opt-in. Maps to SHIP-01/02.
+- [x] **POST-23 — Hosted CI. Decision/implementation.** GitHub Actions provides a
+      manually dispatched Windows release-readiness check, tagged Windows installer
+      publication and explicit SDK publication. Routine pushes and pull requests do
+      not start hosted runners; macOS/Linux validation uses directly managed machines.
+      Live-host and clipboard tests remain explicitly opt-in. Maps to SHIP-01/02.
 - [ ] **COMM-01 — Community release.** Contribution/issue templates, supported
       systems, release notes, SDK distribution and public-repository readiness.
       Name/domain/trademark checks and launch timing remain decisions. Existing SDK

@@ -8,7 +8,7 @@ This repository publishes the Windows desktop through GitHub Releases, the TypeS
 2. Update `CHANGELOG.md` and confirm the README's platform boundaries.
 3. Run `npm ci`, `npm run verify`, `npm run verify:sdk`, `npm run verify:adapter-sdk`, `cargo package --locked` for each published crate, and `npm pack --workspace @shellcanvas/app-sdk --dry-run`.
 4. Build the Windows installers with `npm run tauri -- build --bundles nsis,msi`. Install and launch both formats on disposable Windows test environments before release.
-5. Create and push a signed `vX.Y.Z` tag only from a clean, reviewed commit. The release workflow attaches installers and SHA-256 checksums.
+5. Create and push an annotated `vX.Y.Z` tag only from a clean, reviewed commit. The release workflow attaches installers and SHA-256 checksums.
 
 The current installer pipeline does not apply Authenticode signing. Windows may warn about an unknown publisher. Add a protected Windows signing certificate before calling the desktop broadly trusted. Do not store certificate material in Git or workflow files.
 
