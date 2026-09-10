@@ -35,6 +35,10 @@ async fn request<T>(f: impl Future<Output = Result<T, SftpError>>) -> FsResult<T
         })?
         .map_err(error)
 }
+fn retire_channel(service: &SftpTextFiles) {
+    service.channel_closed.store(true, std::sync::atomic::Ordering::Release);
+    let _ = service.raw.close_session();
+}
 async fn acquire_handle(
     service: &SftpTextFiles,
     operation: impl Future<Output = Result<russh_sftp::protocol::Handle, SftpError>>,
@@ -47,10 +51,7 @@ async fn acquire_handle(
                 // lost or late. No handle ID means we cannot send CLOSE. Retire
                 // this mount's dedicated SFTP channel so the server releases it.
                 // Never retry OPEN: CREATE could already have changed the source.
-                service
-                    .channel_closed
-                    .store(true, std::sync::atomic::Ordering::Release);
-                let _ = service.raw.close_session();
+                retire_channel(service);
             }
             Err(error)
         }
@@ -211,11 +212,36 @@ struct RemoteHandle {
     service: Arc<SftpTextFiles>,
     id: RwLock<Option<String>>,
 }
+
+// Once an ID leaves RemoteHandle it must either receive a successful CLOSE or
+// remain owned by this guard. Cancellation, a rejected CLOSE, and a missing
+// runtime all retire this mount's dedicated channel to release unclaimed IDs.
+struct ClosingHandle {
+    service: Arc<SftpTextFiles>,
+    confirmed: bool,
+}
+impl ClosingHandle {
+    fn new(service: Arc<SftpTextFiles>) -> Self {
+        Self { service, confirmed: false }
+    }
+    async fn close(mut self, id: String) -> FsResult<()> {
+        request(self.service.raw.close(id)).await?;
+        self.confirmed = true;
+        Ok(())
+    }
+}
+impl Drop for ClosingHandle {
+    fn drop(&mut self) {
+        if !self.confirmed {
+            retire_channel(&self.service);
+        }
+    }
+}
 impl RemoteHandle {
     async fn close(&self) -> FsResult<()> {
         let mut id = self.id.write().await;
         if let Some(id) = id.take() {
-            request(self.service.raw.close(id)).await?;
+            ClosingHandle::new(self.service.clone()).close(id).await?;
         }
         Ok(())
     }
@@ -223,10 +249,10 @@ impl RemoteHandle {
 impl Drop for RemoteHandle {
     fn drop(&mut self) {
         if let Some(id) = self.id.get_mut().take() {
+            let closing = ClosingHandle::new(self.service.clone());
             if let Ok(runtime) = tokio::runtime::Handle::try_current() {
-                let service = self.service.clone();
                 runtime.spawn(async move {
-                    let _ = request(service.raw.close(id)).await;
+                    let _ = closing.close(id).await;
                 });
             }
         }
@@ -643,6 +669,68 @@ mod acquisition_tests {
         bytes
     }
 
+    async fn reply(stream: &mut DuplexStream, kind: u8, id: &[u8], body: &[u8]) {
+        stream.write_u32((5 + body.len()) as u32).await.unwrap();
+        stream.write_u8(kind).await.unwrap();
+        stream.write_all(id).await.unwrap();
+        stream.write_all(body).await.unwrap();
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn cancelled_open_closes_a_late_file_or_directory_handle() {
+        for directory in [false, true] {
+            let (client, mut remote) = tokio::io::duplex(4096);
+            let (opened, opening) = tokio::sync::oneshot::channel();
+            let (release, released) = tokio::sync::oneshot::channel();
+            let peer = tokio::spawn(async move {
+                assert_eq!(packet(&mut remote).await[0], 1);
+                remote.write_all(&[0, 0, 0, 5, 2, 0, 0, 0, 3]).await.unwrap();
+                let open = loop {
+                    let request = packet(&mut remote).await;
+                    if request[0] != 7 { break request; } // SSH_FXP_LSTAT
+                    let path = std::str::from_utf8(&request[9..]).unwrap();
+                    let mode: u32 = if path.ends_with("/file") { 0o100644 } else { 0o40755 };
+                    let mut attrs = 4u32.to_be_bytes().to_vec(); // PERMISSIONS
+                    attrs.extend_from_slice(&mode.to_be_bytes());
+                    reply(&mut remote, 105, &request[1..5], &attrs).await;
+                };
+                assert_eq!(open[0], if directory { 11 } else { 3 });
+                opened.send(()).unwrap();
+                released.await.unwrap(); // Caller has cancelled before HANDLE arrives.
+                reply(&mut remote, 102, &open[1..5], &[0, 0, 0, 4, b'l', b'a', b't', b'e']).await;
+                if !directory {
+                    let stat = packet(&mut remote).await;
+                    assert_eq!(stat[0], 8); // SSH_FXP_FSTAT
+                    let mut attrs = 4u32.to_be_bytes().to_vec();
+                    attrs.extend_from_slice(&0o100644u32.to_be_bytes());
+                    reply(&mut remote, 105, &stat[1..5], &attrs).await;
+                }
+                let close = packet(&mut remote).await;
+                assert_eq!(close[0], 4, "Cancelled OPEN did not close the late handle");
+                assert_eq!(&close[9..], b"late");
+                reply(&mut remote, 101, &close[1..5], &[0; 12]).await;
+            });
+            let service = Arc::new(SftpTextFiles::from_stream(client).await.unwrap());
+            let mount = Arc::new(SftpMount {
+                service, root: "/fixture".into(), writable: false, connection: None,
+            });
+            let opening_task = tokio::spawn(async move {
+                if directory {
+                    let _handle = mount.open_directory(&MountPath::root()).await.unwrap();
+                } else {
+                    let _handle = mount.open(&MountPath::root().child("file").unwrap(), FsOpenOptions {
+                        read: true, write: false, create: FsCreate::OpenExisting, truncate: false,
+                    }).await.unwrap();
+                }
+            });
+            opening.await.unwrap();
+            opening_task.abort();
+            assert!(opening_task.await.unwrap_err().is_cancelled());
+            release.send(()).unwrap();
+            tokio::time::timeout(std::time::Duration::from_secs(1), peer).await.unwrap().unwrap();
+        }
+    }
+
     async fn live_channel() -> (
         Arc<SftpTextFiles>,
         tokio::sync::oneshot::Sender<()>,
@@ -749,6 +837,70 @@ mod acquisition_tests {
                 .expect("Unclaimed remote handle channel stayed open")
                 .unwrap();
             drop(service);
+        }
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn cancelled_or_timed_out_close_retires_its_channel_without_losing_the_handle() {
+        for cancel in [true, false] {
+            let (client, mut remote) = tokio::io::duplex(4096);
+            let (received, receiving) = tokio::sync::oneshot::channel();
+            let peer = tokio::spawn(async move {
+                assert_eq!(packet(&mut remote).await[0], 1);
+                remote.write_all(&[0, 0, 0, 5, 2, 0, 0, 0, 3]).await.unwrap();
+                let close = packet(&mut remote).await;
+                assert_eq!(close[0], 4); // SSH_FXP_CLOSE
+                received.send(()).unwrap();
+                // The server has not acknowledged or released the handle.
+                let mut byte = [0];
+                assert_eq!(remote.read(&mut byte).await.unwrap(), 0,
+                    "Unconfirmed CLOSE left the dedicated channel open");
+            });
+            let service = Arc::new(SftpTextFiles::from_stream(client).await.unwrap());
+            let handle = Arc::new(RemoteHandle {
+                service: service.clone(), id: RwLock::new(Some("fixture-handle".into())),
+            });
+            let closing = {
+                let handle = handle.clone();
+                tokio::spawn(async move { handle.close().await })
+            };
+            receiving.await.unwrap();
+            if cancel {
+                closing.abort();
+                assert!(closing.await.unwrap_err().is_cancelled());
+            } else {
+                assert_eq!(closing.await.unwrap().unwrap_err().kind, FsErrorKind::TimedOut);
+            }
+            assert!(service.channel_closed.load(std::sync::atomic::Ordering::Acquire),
+                "Unconfirmed CLOSE left a healthy mount with an untracked remote handle");
+            tokio::time::timeout(std::time::Duration::from_secs(1), peer).await.unwrap().unwrap();
+            assert!(handle.id.read().await.is_none());
+        }
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn close_acknowledgement_controls_channel_retirement() {
+        for status in [0u32, 4u32] {
+            let (client, mut remote) = tokio::io::duplex(4096);
+            let peer = tokio::spawn(async move {
+                assert_eq!(packet(&mut remote).await[0], 1);
+                remote.write_all(&[0, 0, 0, 5, 2, 0, 0, 0, 3]).await.unwrap();
+                let close = packet(&mut remote).await;
+                assert_eq!(close[0], 4);
+                let mut body = status.to_be_bytes().to_vec();
+                body.extend_from_slice(&[0; 8]);
+                reply(&mut remote, 101, &close[1..5], &body).await;
+                let mut byte = [0];
+                assert_eq!(remote.read(&mut byte).await.unwrap(), 0);
+            });
+            let service = Arc::new(SftpTextFiles::from_stream(client).await.unwrap());
+            let handle = RemoteHandle { service: service.clone(), id: RwLock::new(Some("fixture".into())) };
+            let result = handle.close().await;
+            assert_eq!(result.is_ok(), status == 0);
+            assert_eq!(service.channel_closed.load(std::sync::atomic::Ordering::Acquire), status != 0);
+            // Acknowledged CLOSE keeps the channel usable until its owner closes it.
+            retire_channel(&service);
+            tokio::time::timeout(std::time::Duration::from_secs(1), peer).await.unwrap().unwrap();
         }
     }
 }

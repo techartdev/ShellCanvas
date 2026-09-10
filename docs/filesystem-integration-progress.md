@@ -1,6 +1,6 @@
 # Filesystem integration implementation checkpoint
 
-Updated 2026-09-10. Goal remains active. This is not a release/completion claim.
+Updated 2026-09-11. Goal remains active. This is not a release/completion claim.
 
 ## Accepted scope
 
@@ -12,6 +12,26 @@ Include the dependencies' licensing/distribution limitations in that app.
 
 ## Current implementation
 
+- Unconfirmed SFTP CLOSE now retains cleanup ownership in a guard until the
+  server acknowledges success. Caller cancellation, rejection, timeout, or a
+  dropped cleanup task retires the mount's dedicated channel, releasing remote
+  handles instead of leaving the mount healthy with an untracked ID. The
+  cancellation regression failed before this fix and now passes. Protocol
+  fixtures additionally verify successful CLOSE keeps its channel available,
+  and cancelled file/directory OPEN closes a late returned handle. All 37 core
+  unit tests and core lint checks pass; no SDK or wire changes were required.
+- Native Linux 6.8 FUSE acceptance as UID 65534 now covers a deliberately stalled
+  dedicated SFTP stream while SSH and bridge IPC stay healthy. The local
+  synchronous write reports ETIMEDOUT within the asserted 25-second deadline;
+  close reports failure, the helper exits with failure, and the mount is removed
+  before recovery. Independent backing-file inspection confirms prior bytes
+  remain intact, and the other SFTP channel still lists the source afterwards.
+  This uses bridge `0bf4b9a` from CI `34528217955`, SHA-256
+  `1e605de4345c8b13b20c033d52cb34d0a7e5ad17d4d90b21e85fd57242aea1f2`.
+  Fixture `194e224f-5e6e-4ea3-93e5-b7220a22054e` and staged binary directory removal
+  were independently verified. `SHELLCANVAS_PROBE_SFTP_STALL=1` injects dropped
+  SFTP traffic only in the opt-in probe; it does not change host networking.
+  Full TCP-network blackholes and remote disk-full behavior remain separate gates.
 - Windows creation/overwrite read-only projection passes at bridge `0bf4b9a`,
   CI `34528217955` (native suite 28.95 seconds). The original creating/overwriting
   handle can finish writing; later writes are blocked by the read-only flag.
@@ -377,13 +397,16 @@ Include the dependencies' licensing/distribution limitations in that app.
    and 400px light layouts with synthetic data. Desktop clippy and production
    build pass. Full desktop mapping recovery remains part of gate 1, including
    the platform launcher and native Unix mount-table runtime checks.
-3. Broaden failure acceptance to stalled/black-holed network and native SFTP-only
-   channel loss, and remote permission/disk-full errors. Idle channel EOF now has
+3. Broaden failure acceptance to full TCP-network blackholes, remote-initiated
+   native SFTP-only EOF and remote permission/disk-full errors. A stalled SFTP
+   channel with healthy SSH now passes native acceptance as recorded above.
+   Idle channel EOF now has
    protocol-level coverage with a second unaffected channel. Controlled SSH disconnect now
    passes over a native Linux mount, after fixing its connection-bound heartbeat.
    Native provider error/cleanup warning injection now passes. Unconfirmed
-   SFTP open timeout cleanup is fixed and protocol-fixture tested; verify late
-   responses/caller cancellation while preparing the root. Verify the
+   SFTP open timeout cleanup and late OPEN reply cancellation are protocol-fixture
+   tested. Cancelled/timed-out/rejected CLOSE cleanup is fixed and verified above.
+   Verify cancellation while preparing the root and the
    native chooser/source-retirement race without touching the normal user profile.
 4. Native Windows file API, replacement-save, capacity, basic error and busy-detach
    checks now pass in disposable WinFsp CI. Remaining: desktop-created SFTP mapping,
