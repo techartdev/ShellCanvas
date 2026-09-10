@@ -233,7 +233,7 @@ finally:
         if unprivileged {
             // Inspect backing bytes as the source owner, without making the
             // remote files directly readable by the local mount account.
-            let verify = "import sys; from pathlib import Path; p=Path(sys.argv[1]); payload=bytes(range(256))*49; expected=payload[:4093]+b'cross-page'+payload[4103:]; assert (p/'mapped.bin').read_bytes()==expected; assert (p/'seek.bin').read_bytes()==b'replacement'; assert (p/'renamed'/'item-000').read_bytes()==b'changed'; print('UNPRIVILEGED_SOURCE_PASS: independent source bytes verified by source owner')";
+            let verify = "import sys; from pathlib import Path; p=Path(sys.argv[1]); payload=bytes(range(256))*49; expected=payload[:4093]+b'cross-page'+payload[4103:]; assert (p/'mapped.bin').read_bytes()==expected; assert (p/'seek.bin').read_bytes()==b'replacement'; assert (p/'reused.bin').read_bytes()==b'new-object'; assert (p/'renamed'/'item-000').read_bytes()==b'changed'; print('UNPRIVILEGED_SOURCE_PASS: independent source bytes verified by source owner')";
             print!("{}",run(&args,&format!("python3 -c {} {}",quote(verify),quote(&source))).await?);
         }
         control.request_detach()?;
@@ -306,6 +306,22 @@ try:
     assert (p/'seek.bin').read_bytes() == b'replacement'
 finally:
     os.close(f)
+(p/'reused.bin').write_bytes(b'old-object')
+old = os.open(p/'reused.bin', os.O_RDWR)
+try:
+    old_inode = os.fstat(old).st_ino
+    os.unlink(p/'reused.bin')
+    (p/'reused.bin').write_bytes(b'new-object')
+    assert os.stat(p/'reused.bin').st_ino != old_inode, 'recreated path reused a live inode'
+    assert os.pread(old, 30, 0) == b'old-object', 'old descriptor migrated to replacement'
+    os.pwrite(old, b'OLD', 0)
+    os.fsync(old)
+    assert os.pread(old, 30, 0) == b'OLD-object'
+    assert (p/'reused.bin').read_bytes() == b'new-object', 'old descriptor overwrote replacement'
+finally:
+    os.close(old)
+assert (p/'reused.bin').read_bytes() == b'new-object', 'old close retired replacement path'
+print('LINUX_UNLINKED_HANDLE_PASS: recreated path has distinct inode; old descriptor reads/writes its original object and closes without affecting replacement', flush=True)
 (p/'directory').mkdir()
 for i in range(70):
     (p/'directory'/f'item-{i:03}').write_bytes(bytes([i]))

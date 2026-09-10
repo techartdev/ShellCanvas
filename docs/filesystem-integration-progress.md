@@ -12,6 +12,20 @@ Include the dependencies' licensing/distribution limitations in that app.
 
 ## Current implementation
 
+- FUSE inode lifetime coverage passes at bridge `558d1f2`, CI run
+  `34521983619`: lookup and open references retain an inode until both are gone,
+  in either cleanup order; retiring an old inode cannot remove a recreated path.
+  Its Linux artifact (SHA-256
+  `f13570f87abe01de5268eedb96de86ae52e9c0eb43f76c712042a6b70dc980ec`)
+  also passes native Linux 6.8 acceptance as UID 65534 through the core SFTP
+  provider. Unlinking an open file and recreating its path yields a distinct inode;
+  the old descriptor still reads/writes the old object and its close leaves the
+  replacement intact. Source-owner inspection independently verifies replacement
+  bytes. Prior directory rewind, mmap, busy detach and ordinary unmount checks
+  pass. Fixture `62945821-3521-4387-bae4-d16d1117b9f7`, mount and staged binary
+  were independently confirmed removed. All platform CI jobs pass, including
+  native Windows acceptance (29.24 seconds). This closes the inode retention/forget
+  coverage item; it does not establish concurrent edits by another remote client.
 - Native Windows volume-wide flush now passes at bridge `9c4fbe1`, CI run
   `34521265017` (full native suite: 28.88 seconds). The fixture opens the actual
   disposable volume through the Windows device path and calls FlushFileBuffers
@@ -322,7 +336,8 @@ Include the dependencies' licensing/distribution limitations in that app.
    mapped files, busy detach and ordinary unmount now pass as root and as an
    unprivileged user on Linux 6.8. Pipe loss with an open file also passes in both
    contexts, including source preservation and confirmed mount disappearance.
-   Remaining: inode retention/forget coverage, the permission-error matrix and
+   Inode retention/forget coverage now passes as recorded above.
+   Remaining: the permission-error matrix and
    other supported runtimes. Do not infer those from one kernel/runtime.
 6. Verify modern macOS compilation and native runtime as available. fuser's
    kernel/libfuse backend is implemented; FSKit operation is not established.
