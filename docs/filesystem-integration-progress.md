@@ -12,6 +12,17 @@ Include the dependencies' licensing/distribution limitations in that app.
 
 ## Current implementation
 
+- Native Linux 6.8 acceptance now also passes as the existing unprivileged
+  account `nobody` (UID 65534), using bridge `87a28c9`. The opt-in harness mode
+  `SHELLCANVAS_PROBE_UNPRIVILEGED=1` runs the bridge and local file operations
+  without root. The source owner independently verifies confirmed backing bytes.
+  File operations, directory rewind/rename, mmap, busy-detach protection and
+  ordinary unmount pass. A second run with `SHELLCANVAS_PROBE_TRANSPORT_LOSS=1`
+  returns ENOTCONN for write/close, preserves confirmed source data, reports a
+  failure exit and removes the mount before privileged recovery is attempted.
+  Both disposable fixtures (`ed155bc7-c391-4767-927d-9b0018847016` and
+  `882ecebf-e1b7-4adf-a56b-7f56686a6afb`) and the staged binary were independently
+  confirmed removed. No accounts, FUSE configuration or driver setup changed.
 - Bridge `87a28c9` fixes FUSE directory rewind recovery: retired handles and
   buffered entries are cleared before reopening. A failed close/reopen or invalid
   reply cannot leave a later seek using a closed handle. Two regression tests
@@ -23,7 +34,7 @@ Include the dependencies' licensing/distribution limitations in that app.
   The fixture `d7d47df5-69e2-4b6b-a9b6-70e2b6615214` and staged binary directory
   were independently confirmed removed, with no remaining mount-table entry.
   Failure recovery is regression-fixture evidence; native injected reopen failure
-  and non-root FUSE remain separate checks.
+  remains a separate check; non-root acceptance is recorded above.
 - Bridge `e58d386` passes native Windows acceptance in CI run `34518237898`
   (32.21 seconds), including directory rename with two open directory aliases.
   An open descendant correctly blocks rename with error 5 and preserves source
@@ -130,7 +141,7 @@ Include the dependencies' licensing/distribution limitations in that app.
   The first attempt exposed a test expectation issue: close also returned the
   connection error; after explicitly validating that result the full replay passed.
   Example compilation/clippy pass. This verifies the Linux 6.8/root runtime used;
-  non-root helper fallback, modern macOS and actual SSH outages remain separate.
+  modern macOS and actual SSH outages remain separate; non-root Linux is verified above.
 - Native Linux controlled SSH-disconnect acceptance exposed and fixed a heartbeat
   gap: failed file I/O did not itself make the underlying SFTP mount's cheap health
   check fail. Production SSH mounts now retain the exact original connection's
@@ -300,13 +311,12 @@ Include the dependencies' licensing/distribution limitations in that app.
    Explorer/ordinary editor acceptance (native directory rename/open-handle
    semantics are now verified above),
    disconnect behavior and failure recovery. Local driver setup is still pending.
-5. Native Linux FUSE tests using a CI binary and a disposable directory. Directory
-   cursor rewind, including an open renamed directory, now passes. Validate
-   inode retention/forget behavior, create/rename/
-   truncate, permissions, flush, detach and helper failure. Specifically exercise
-   pipe loss with an open file now passes on Linux 6.8 as root, including source
-   preservation and confirmed mount disappearance. Validate non-root helper
-   fallback and other supported runtimes separately; no cross-platform inference.
+5. Native Linux FUSE file operations, directory rewind/rename, truncate, flush,
+   mapped files, busy detach and ordinary unmount now pass as root and as an
+   unprivileged user on Linux 6.8. Pipe loss with an open file also passes in both
+   contexts, including source preservation and confirmed mount disappearance.
+   Remaining: inode retention/forget coverage, the permission-error matrix and
+   other supported runtimes. Do not infer those from one kernel/runtime.
 6. Verify modern macOS compilation and native runtime as available. fuser's
    kernel/libfuse backend is implemented; FSKit operation is not established.
    Do not claim an OS version/runtime works solely because Linux compiled.

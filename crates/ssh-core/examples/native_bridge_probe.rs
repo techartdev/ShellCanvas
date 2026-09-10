@@ -10,6 +10,16 @@ use tokio::io::{AsyncBufReadExt, AsyncReadExt};
 fn quote(value: &str) -> String {
     format!("'{}'", value.replace('\'', "'\\''"))
 }
+fn local_command(command: &str, unprivileged: bool) -> String {
+    if unprivileged {
+        format!(
+            "exec /usr/sbin/runuser -u nobody -- sh -c {}",
+            quote(command)
+        )
+    } else {
+        command.to_owned()
+    }
+}
 fn ssh(args: &[String], remote: &str) -> tokio::process::Command {
     let mut command = tokio::process::Command::new("ssh");
     command.args([
@@ -53,6 +63,15 @@ async fn main() -> Result<()> {
     );
     let transport_loss = std::env::var("SHELLCANVAS_PROBE_TRANSPORT_LOSS").as_deref() == Ok("1");
     let ssh_loss = std::env::var("SHELLCANVAS_PROBE_SSH_LOSS").as_deref() == Ok("1");
+    let unprivileged = std::env::var("SHELLCANVAS_PROBE_UNPRIVILEGED").as_deref() == Ok("1");
+    if unprivileged {
+        let uid = run(&args, "/usr/sbin/runuser -u nobody -- id -u").await?;
+        ensure!(
+            uid.trim().parse::<u32>()? != 0,
+            "Fixture account must be unprivileged"
+        );
+        println!("UNPRIVILEGED_LOCAL_UID: {}", uid.trim());
+    }
     ensure!(
         !(transport_loss && ssh_loss),
         "Select one connection-loss mode"
@@ -81,9 +100,24 @@ async fn main() -> Result<()> {
     let source = service.make_directory(&root, "source").await?;
     let target = service.make_directory(&root, "mount").await?;
     println!("NATIVE_FIXTURE: {root}");
+    if unprivileged {
+        run(
+            &args,
+            &format!(
+                "chmod 711 -- {} && chown nobody -- {} && chmod 700 -- {}",
+                quote(&root),
+                quote(&target),
+                quote(&target)
+            ),
+        )
+        .await?;
+    }
     let browser = SshFileBrowser::new(Arc::new(SftpBrowser(service.clone())), connection.clone());
     let fs = browser.mount_root(&source, true).await?;
-    let remote = format!("exec {} --mount {}", quote(&args[5]), quote(&target));
+    let remote = local_command(
+        &format!("exec {} --mount {}", quote(&args[5]), quote(&target)),
+        unprivileged,
+    );
     let mut child = ssh(&args, &remote)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
@@ -97,7 +131,7 @@ async fn main() -> Result<()> {
         run(
             &args,
             &format!(
-                "for i in $(seq 1 50); do mountpoint -q {} && exit 0; sleep .1; done; exit 1",
+                "for i in $(seq 1 50); do grep -F -- {} /proc/self/mountinfo >/dev/null && exit 0; sleep .1; done; exit 1",
                 quote(&target)
             ),
         )
@@ -128,7 +162,7 @@ finally:
         assert e.errno in (errno.EIO,errno.ENOTCONN,errno.ENODEV), e
         print('LINUX_LOST_CLOSE_ERROR: errno='+str(e.errno),flush=True)
 "#;
-            let mut holder = ssh(&args, &format!("exec timeout 45s python3 -u -c {} {}", quote(script), quote(&target)))
+            let mut holder = ssh(&args, &local_command(&format!("exec timeout 45s python3 -u -c {} {}", quote(script), quote(&target)), unprivileged))
                 .stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::inherit()).spawn()?;
             let mut output = tokio::io::BufReader::new(holder.stdout.take().unwrap());
             let mut line = String::new();
@@ -158,7 +192,7 @@ finally:
             return Ok(());
         }
         let hold = "import os,sys; f=os.open(sys.argv[1]+'/held',os.O_CREAT|os.O_RDWR,0o600); print('HELD',flush=True); sys.stdin.read(); os.close(f)";
-        let mut holder = ssh(&args, &format!("exec timeout 60s python3 -u -c {} {}", quote(hold), quote(&target)))
+        let mut holder = ssh(&args, &local_command(&format!("exec timeout 60s python3 -u -c {} {}", quote(hold), quote(&target)), unprivileged))
             .stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::inherit()).spawn()?;
         let mut ready = tokio::io::BufReader::new(holder.stdout.take().unwrap());
         let mut line = String::new();
@@ -174,25 +208,34 @@ finally:
             }
             anyhow::Ok(())
         }).await??;
-        run(&args, &format!("mountpoint -q {}", quote(&target))).await?;
+        run(&args, &local_command(&format!("mountpoint -q {}", quote(&target)), unprivileged)).await?;
         drop(holder.stdin.take());
         let status = tokio::time::timeout(Duration::from_secs(10), holder.wait()).await??;
         ensure!(status.success(), "Busy-file fixture did not close cleanly");
         println!("BUSY_DETACH_PASS: held file prevented unmount; attachment stayed available");
         let script = service.create_text(&root, "test.py", TEST).await?;
+        if unprivileged {
+            run(&args, &format!("chmod 644 -- {}", quote(&script.path))).await?;
+        }
         print!(
             "{}",
             run(
                 &args,
-                &format!(
+                &local_command(&format!(
                     "timeout 240s python3 {} {} {}",
                     quote(&script.path),
                     quote(&target),
-                    quote(&source)
-                )
+                    quote(if unprivileged { "-" } else { &source })
+                ), unprivileged)
             )
             .await?
         );
+        if unprivileged {
+            // Inspect backing bytes as the source owner, without making the
+            // remote files directly readable by the local mount account.
+            let verify = "import sys; from pathlib import Path; p=Path(sys.argv[1]); payload=bytes(range(256))*49; expected=payload[:4093]+b'cross-page'+payload[4103:]; assert (p/'mapped.bin').read_bytes()==expected; assert (p/'seek.bin').read_bytes()==b'replacement'; assert (p/'renamed'/'item-000').read_bytes()==b'changed'; print('UNPRIVILEGED_SOURCE_PASS: independent source bytes verified by source owner')";
+            print!("{}",run(&args,&format!("python3 -c {} {}",quote(verify),quote(&source))).await?);
+        }
         control.request_detach()?;
         tokio::time::timeout(Duration::from_secs(25), async {
             loop {
@@ -309,7 +352,8 @@ try:
 finally:
     mapped.close()
 expected = payload[:4093] + b'cross-page' + payload[4103:]
-assert (Path(sys.argv[2])/'mapped.bin').read_bytes() == expected, 'mapped write did not reach SFTP source'
+if sys.argv[2] != '-':
+    assert (Path(sys.argv[2])/'mapped.bin').read_bytes() == expected, 'mapped write did not reach SFTP source'
 fd = os.open(p/'mapped.bin', os.O_RDONLY)
 try:
     with mmap.mmap(fd, len(expected), access=mmap.ACCESS_READ) as readonly:
@@ -319,7 +363,8 @@ try:
         private.flush()
 finally:
     os.close(fd)
-assert (Path(sys.argv[2])/'mapped.bin').read_bytes() == expected, 'private mapping modified source'
+if sys.argv[2] != '-':
+    assert (Path(sys.argv[2])/'mapped.bin').read_bytes() == expected, 'private mapping modified source'
 print('LINUX_MMAP_PASS: shared cross-page writes flushed to source, descriptor-close lifetime, read-only and private mappings', flush=True)
 print('LINUX_NATIVE_MOUNT_PASS: sparse offset, truncate, atomic editor save, old handle identity, paged enumeration, directory rename with open file, capacity and errors', flush=True)
 "#;
