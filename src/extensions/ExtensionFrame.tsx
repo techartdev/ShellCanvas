@@ -116,7 +116,17 @@ export function ExtensionFrame({
   const documentState = useRef(onDocumentState);
   const controls = useRef(windowControls);
   controls.current = windowControls;
-  const [fallbackEnvironment] = useState(() => new RuntimeEnvironment());
+  const [fallbackEnvironment] = useState(
+    () =>
+      new RuntimeEnvironment({
+        apiVersion: 1,
+        connection: "local",
+        binding: null,
+        visible: true,
+        capabilities: [],
+        client: lease?.client ?? { platform: "unknown" },
+      }),
+  );
   const environment = suppliedEnvironment ?? fallbackEnvironment;
   documentState.current = onDocumentState;
   useEffect(() => {
@@ -132,7 +142,8 @@ export function ExtensionFrame({
     ]);
     let stopEnvironment: (() => void) | undefined;
     const clipboardOwner = clipboard ? new AppClipboard(clipboard) : undefined;
-    const network = new AppNetwork(app.id, app.title, (request) =>
+    const principal = lease?.installed.principal ?? app.id;
+    const network = new AppNetwork(principal, app.title, (request) =>
       configureConnection.current(request),
     );
     const directories = fileSource ? new AppDirectories(fileSource) : undefined;
@@ -248,7 +259,7 @@ export function ExtensionFrame({
       );
       methods.set("system.services.call", customService.call);
       if (storage)
-        for (const [name, method] of appStorageMethods(app.id, storage))
+        for (const [name, method] of appStorageMethods(principal, storage))
           methods.set(name, method);
       if (clipboardOwner)
         for (const [name, method] of clipboardOwner.methods())

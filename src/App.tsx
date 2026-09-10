@@ -257,6 +257,33 @@ export default function App({
   const [connectOpen, setConnectOpen] = useState(false);
   const [adapterConnectOpen, setAdapterConnectOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsInitialSection, setSettingsInitialSection] = useState<
+    "desktop" | "files"
+  >("desktop");
+  useEffect(() => {
+    if (!native) return;
+    let disposed = false;
+    let stop: (() => void) | undefined;
+    void import("@tauri-apps/api/event")
+      .then(async ({ listen }) => {
+        const unlisten = await listen("drive-mappings-close-blocked", () => {
+          closeAllowed.current = false;
+          setCloseApp(false);
+          setToast(
+            "Detach local drives in Settings → Files before quitting ShellCanvas.",
+          );
+          setSettingsInitialSection("files");
+          setSettingsOpen(true);
+        });
+        if (disposed) unlisten();
+        else stop = unlisten;
+      })
+      .catch((e) => setToast(String(e)));
+    return () => {
+      disposed = true;
+      stop?.();
+    };
+  }, []);
   const [editingProfile, setEditingProfile] = useState<HostProfile>();
   const [launcherOpen, setLauncherOpen] = useState(false);
   const [error, setError] = useState("");
@@ -639,14 +666,11 @@ export default function App({
     if (Object.values(desktop.instances).some((instance) => instance.busy))
       return;
     if (connected) {
-      // Release remote access immediately; local windows and drafts stay mounted.
-      update({ type: "lost", sessionId: id });
       try {
         await releaseSession(id);
+        update({ type: "lost", sessionId: id });
       } catch (error) {
-        setToast(
-          `Connection cleanup failed: ${error}. Your workspace is preserved.`,
-        );
+        setToast(`Could not disconnect: ${error}`);
       }
       return;
     }
@@ -674,10 +698,9 @@ export default function App({
       Object.values(current.desktop.instances).some((instance) => instance.busy)
     )
       return;
-    update({ type: "remove", sessionId: id });
-    if (current.connected === false) return;
     try {
       await releaseSession(id);
+      update({ type: "remove", sessionId: id });
     } catch (e) {
       setToast(String(e));
     }
@@ -1090,6 +1113,7 @@ export default function App({
       )}
       {settingsOpen && (
         <SettingsDialog
+          initialSection={settingsInitialSection}
           close={() => setSettingsOpen(false)}
           profiles={profiles}
           session={session}

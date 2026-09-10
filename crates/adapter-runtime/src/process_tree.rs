@@ -2,7 +2,8 @@
 use std::io;
 use tokio::process::{Child, Command};
 
-pub(crate) struct ProcessTree {
+/// Ownership of a trusted native helper. This is lifecycle control, not a sandbox.
+pub struct ProcessTree {
     #[cfg(windows)]
     job: windows::Job,
 }

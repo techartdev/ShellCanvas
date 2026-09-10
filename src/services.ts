@@ -19,6 +19,8 @@ type SourcePins = {
   custom: Readonly<Record<string, ConnectionIdentity>>;
 };
 const commandRoles: Record<string, "files" | "console" | "settings"> = {
+  drive_mapping_available: "files",
+  attach_drive: "files",
   file_volumes: "files",
   set_volume_mounted: "files",
   paste_system_files: "files",
@@ -67,6 +69,10 @@ function createNativeServices(pins?: SourcePins): HostServices {
     return nativeInvoke<T>(...parameters);
   };
   return {
+    driveMappingAvailable: (sessionId) =>
+      invoke("drive_mapping_available", { sessionId }),
+    attachDrive: (sessionId, path, writable, drive, hostLabel) =>
+      invoke("attach_drive", { sessionId, path, writable, drive, hostLabel }),
     volumes: (sessionId) => invoke("file_volumes", { sessionId }),
     setVolumeMounted: (sessionId, id, revision, mounted) =>
       invoke("set_volume_mounted", { sessionId, id, revision, mounted }),

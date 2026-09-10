@@ -55,6 +55,20 @@ it("requires distinct read/write grants before touching the native backend", asy
   expect(fixture.backend.writeText).not.toHaveBeenCalled();
   fixture.close();
 });
+it("rejects text streams above the host memory budget before staging", async () => {
+  const fixture = setup();
+  try {
+    await expect(
+      fixture.peer.call("system.clipboard.writeStart", {
+        id: "too-large",
+        length: 4 * 1024 * 1024 + 1,
+      }),
+    ).rejects.toMatchObject({ code: "invalid" });
+    expect(fixture.backend.writeText).not.toHaveBeenCalled();
+  } finally {
+    fixture.close();
+  }
+});
 it("captures a read snapshot and refuses foreign handles, reordering and incomplete commits", async () => {
   const first = setup(),
     second = setup();

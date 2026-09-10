@@ -113,6 +113,7 @@ it("enforces image dimensions, exact ordering, complete publication and window o
       [0, 1],
       [-1, 1],
       [1.5, 1],
+      [4097, 4096],
       [0xffffffff, 0xffffffff],
     ])
       await expect(

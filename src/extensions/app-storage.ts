@@ -2,6 +2,24 @@
 import { isJsonValue, RpcError, type Json, type RpcMethod } from "./rpc";
 import type { AppStorageBackend, AppValue, StorageBucket } from "./storage-api";
 
+const maxNamespaceKeys = 256;
+const maxNamespaceUnits = 16 * 1024 * 1024;
+export function enforceStorageQuota(
+  count: number,
+  units: number,
+  currentUnits: number,
+  nextUnits: number,
+) {
+  if (
+    count + (currentUnits ? 0 : 1) > maxNamespaceKeys ||
+    units - currentUnits + nextUnits > maxNamespaceUnits
+  )
+    throw new RpcError(
+      "unavailable",
+      "This app storage namespace reached its 256-key or 16 Mi unit quota.",
+    );
+}
+
 function key(value: unknown): asserts value is string {
   if (
     typeof value !== "string" ||
@@ -257,13 +275,43 @@ export function indexedAppStorage(
               "busy",
               "This value changed in another window or app version. Read it again before saving.",
             );
-          const next =
-            value === undefined
-              ? null
-              : { revision: crypto.randomUUID(), value };
-          if (next) store.put(next, path);
-          else store.delete(path);
-          result(next);
+          if (value === undefined) {
+            store.delete(path);
+            result(null);
+            return;
+          }
+          const next = { revision: crypto.randomUUID(), value };
+          const range = IDBKeyRange.bound(
+            [owner, bucket],
+            [owner, bucket, []],
+            true,
+            true,
+          );
+          let count = 0;
+          let units = 0;
+          const inventory = store.openCursor(range);
+          inventory.onsuccess = () => {
+            try {
+              const cursor = inventory.result;
+              if (cursor) {
+                const item = stored(cursor.value);
+                count++;
+                units += JSON.stringify(item!.value).length;
+                cursor.continue();
+                return;
+              }
+              enforceStorageQuota(
+                count,
+                units,
+                current ? JSON.stringify(current.value).length : 0,
+                JSON.stringify(value).length,
+              );
+              store.put(next, path);
+              result(next);
+            } catch (error) {
+              fail(error);
+            }
+          };
         } catch (error) {
           fail(error);
         }

@@ -23,5 +23,22 @@
       "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' asset: http://asset.localhost data: blob:; font-src 'self' data:; connect-src ipc: http://ipc.localhost; object-src 'none'; frame-src shellcanvas-app: http://shellcanvas-app.localhost; base-uri 'self'"
     }
   },
-  "bundle": { "active": false }
+  "bundle": {
+    "active": true,
+    "targets": ["nsis", "msi"],
+    "publisher": "ShellCanvas",
+    "homepage": "https://shellcanvas.com/",
+    "shortDescription": "A graphical desktop for remote and headless systems",
+    "longDescription": "ShellCanvas turns remote and headless systems into graphical workspaces with files, terminals, editors and extensible apps.",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.ico",
+      "icons/icon.icns"
+    ],
+    "windows": {
+      "nsis": { "installMode": "currentUser" }
+    }
+  }
 }

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 import { expect, it, vi } from "vitest";
 import { directoryLocation, scanDirectory } from "./directory-scan";
-import type { Directory, DirectoryPage } from "./sdk";
+import type { Directory, DirectoryPage, DirectoryReader } from "./sdk";
 
 const directory = (start: number, count: number): Directory => ({
   path: "opaque:root",
@@ -95,10 +95,7 @@ it("closes a canceled scan and never publishes a late page from the old location
 });
 
 it("releases a late open without reading and reports cleanup failure without publishing completion", async () => {
-  const pending = deferred<{
-    next: ReturnType<typeof vi.fn>;
-    close: ReturnType<typeof vi.fn>;
-  }>();
+  const pending = deferred<DirectoryReader>();
   const reader = { next: vi.fn(), close: vi.fn(async () => {}) };
   const controller = new AbortController();
   const publish = vi.fn();

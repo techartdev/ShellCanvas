@@ -1,0 +1,155 @@
+/* SPDX-License-Identifier: MPL-2.0 */
+.drive-bridge-settings {
+  margin-top: 2rem;
+  padding: 1.4rem;
+  border: 1px solid var(--sc-border);
+  border-radius: 1rem;
+  background: var(--sc-inset);
+}
+.drive-bridge-settings header {
+  display: flex;
+  align-items: center;
+  gap: 0.9rem;
+}
+.drive-bridge-settings header > div {
+  flex: 1;
+  min-width: 0;
+}
+.drive-bridge-settings h3,
+.drive-bridge-settings h4,
+.drive-bridge-settings header p {
+  margin: 0;
+}
+.drive-bridge-settings p {
+  color: var(--sc-muted);
+  font-size: 0.9rem;
+  line-height: 1.65;
+}
+.drive-bridge-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 3rem;
+  height: 3rem;
+  flex: 0 0 3rem;
+  border-radius: 0.85rem;
+  background: var(--sc-raised);
+  color: var(--sc-accent);
+}
+.drive-bridge-badge {
+  padding: 0.25rem 0.6rem;
+  border: 1px solid var(--sc-border);
+  border-radius: 1rem;
+  color: var(--sc-muted);
+  font-size: 0.75rem;
+}
+.drive-bridge-installation {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1rem 0;
+}
+.drive-bridge-installation > div {
+  min-width: 0;
+}
+.drive-bridge-installation p {
+  margin: 0.3rem 0 0;
+  overflow-wrap: anywhere;
+}
+.drive-bridge-settings button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.65rem 0.9rem;
+  border: 1px solid var(--sc-border);
+  border-radius: 0.6rem;
+  background: var(--sc-raised);
+  color: var(--sc-text);
+  font: inherit;
+  cursor: pointer;
+}
+.drive-bridge-settings .drive-bridge-primary {
+  background: var(--sc-accent);
+  color: var(--sc-onAccent);
+}
+.drive-bridge-settings button:focus-visible,
+.drive-bridge-settings summary:focus-visible {
+  outline: 2px solid var(--sc-accent);
+  outline-offset: 3px;
+}
+.drive-bridge-settings details {
+  border-top: 1px solid var(--sc-border);
+  padding-top: 1rem;
+  margin-top: 0.5rem;
+}
+.drive-bridge-settings summary {
+  cursor: pointer;
+  font-size: 0.9rem;
+}
+.drive-bridge-notices ul {
+  padding-left: 1.2rem;
+  color: var(--sc-muted);
+  font-size: 0.85rem;
+  line-height: 1.7;
+}
+.drive-bridge-notices li + li {
+  margin-top: 0.5rem;
+}
+.drive-bridge-notices a {
+  color: var(--sc-accent);
+}
+.drive-bridge-review {
+  padding: 1rem;
+  border: 1px solid var(--sc-border);
+  border-radius: 0.75rem;
+  background: var(--sc-surface);
+}
+.drive-bridge-review h4 {
+  display: flex;
+  gap: 0.6rem;
+  align-items: center;
+}
+.drive-bridge-review dl {
+  display: grid;
+  grid-template-columns: 5rem minmax(0, 1fr);
+  gap: 0.7rem;
+  font-size: 0.85rem;
+}
+.drive-bridge-review dt {
+  color: var(--sc-muted);
+}
+.drive-bridge-review dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.drive-bridge-review .drive-bridge-note {
+  font-size: 0.8rem;
+}
+.drive-bridge-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.7rem;
+  flex-wrap: wrap;
+}
+.drive-bridge-settings .drive-bridge-error {
+  color: var(--sc-danger);
+  overflow-wrap: anywhere;
+}
+@media (max-width: 680px) {
+  .drive-bridge-installation {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .drive-bridge-settings {
+    padding: 1rem;
+  }
+  .drive-bridge-review dl {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0.3rem;
+  }
+  .drive-bridge-review dd {
+    margin-bottom: 0.5rem;
+  }
+}

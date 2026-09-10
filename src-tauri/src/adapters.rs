@@ -175,6 +175,9 @@ pub async fn replace_adapter_source(
             .ok_or("Workspace is closed")?;
         let replaces_files =
             workspace.is_source_for(&expected, &crate::workspace_services::ServiceRole::Files);
+        state
+            .mappings
+            .ensure_releasable(session_id, Some(&expected))?;
         let retired = workspace.replace_source(&expected, candidate)?;
         if replaces_files {
             transfers.close_session(session_id);

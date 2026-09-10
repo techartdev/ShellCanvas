@@ -18,6 +18,6 @@ The subsequent [workspace binding layer](workspace-bindings.md) implements expli
 
 Four native resource tests cover shared callers, canceled waiters, independent connections, cached teardown failures, fresh reconnect identity, adapter panic and bounded stalled teardown. Existing session-registry tests continue to cover terminal ownership and cleanup. The live `terminal_probe` now exercises the production connection resource around its two SSH consoles, verifies local health and distinct identity, and calls disconnect twice after terminal cleanup.
 
-The 2026-09-08 validation passed all 46 Rust tests, 65 frontend tests, all-target Clippy and the standard Windows debug build. The authorized evtinsait probe passed two independent consoles, PTY resize, surviving-console I/O after one closes, stale/cross-session refusal, neutral lifecycle health and repeated disconnect. It changed no remote files.
+The 2026-09-08 validation passed all 46 Rust tests, 65 frontend tests, all-target Clippy and the standard Windows debug build. An authorized Linux-host probe passed two independent consoles, PTY resize, surviving-console I/O after one closes, stale/cross-session refusal, neutral lifecycle health and repeated disconnect. It changed no remote files.
 
 No visual change or new protocol support is claimed by this slice.

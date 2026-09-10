@@ -243,6 +243,22 @@ are contract demonstrations, not production device support.
 
 ## Extensions, AI and distribution
 
+- [ ] **BRIDGE-01 — Attach remote folders as local drives: Windows proof.**
+      Proposed built-in action with an optional WinFsp native component and a
+      small, optional handle-based Files capability. Verify read-only SFTP access
+      through Explorer/local apps on an existing Linux or Mac host. A Windows
+      remote host is not needed. Driver setup and license packaging need validation.
+      See [design and acceptance gates](local-drive-bridge.md).
+- [ ] **BRIDGE-02 — Writable local-drive release.** Offset writes, ordinary editor
+      saves/replace, errors, bounded caches, disconnect handling, mappings UI and
+      detach/quit lifecycle. A read-only prototype alone does not complete this.
+- [ ] **BRIDGE-03 — Linux/macOS local mounts.** FUSE/platform backends and exact OS
+      verification; decide Catalina runtime support separately from using it as
+      a remote SSH host.
+- [ ] **BRIDGE-04 — Optional adapter/app integration.** Prove a second file
+      provider, then expose only the optional contracts needed. Keep native mount
+      ownership and credentials in the desktop; limited adapters stay unchanged.
+
 - [ ] **EXT-03 — Package distribution.** Publisher authentication, signatures,
       explicit rollback tooling and marketplace/catalog distribution. Existing
       install/update/remove, integrity checks and retained generations are complete.
@@ -294,13 +310,13 @@ are contract demonstrations, not production device support.
       Name/domain/trademark checks and launch timing remain decisions. Existing SDK
       starters and contributor guidance should be improved, not recreated.
 - [ ] **COMM-02 — Website and documentation at shellcanvas.com.** The user purchased
-      the domain and pointed it at evtinsait (2026-09-10). Build the site in a
-      private repository. Plan a later public release of the ShellCanvas app
-      repository. The standalone assistant repository is approved to be public
-      now so repository installation can work from any machine.
+      the domain and published the landing site (2026-09-10). Maintain the site
+      separately. The ShellCanvas app repository has its own public-release
+      process. The standalone assistant repository is public so repository
+      installation can work from any machine.
 - [ ] **POST-24 — Commercial boundaries. Decision.** Paid desktop/mobile/web or
       hosted offerings, private components and pricing remain undecided. Current
-      MPL-2.0 core licensing and the private source repository are established; do
+      MPL-2.0 core licensing and the public source repository are established; do
       not change them or promise a paid tier as part of closing this backlog.
 
 ## Boundaries to preserve

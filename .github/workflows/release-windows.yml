@@ -1,0 +1,42 @@
+name: Release Windows installers
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  installers:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run release:check -- "${{ github.ref_name }}"
+      - run: npm run public:check
+      - run: npm run verify
+      - run: npm run release:windows
+      - name: Generate SHA-256 checksums
+        shell: pwsh
+        run: |
+          $files = Get-ChildItem target/release/bundle/nsis/*-setup.exe,target/release/bundle/msi/*.msi
+          $lines = $files | ForEach-Object { "{0}  {1}" -f (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant(), $_.Name }
+          $lines | Set-Content target/release/bundle/SHA256SUMS.txt -Encoding ascii
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: pwsh
+        run: |
+          gh release create "${{ github.ref_name }}" `
+            target/release/bundle/nsis/*-setup.exe `
+            target/release/bundle/msi/*.msi `
+            target/release/bundle/SHA256SUMS.txt `
+            --repo "${{ github.repository }}" `
+            --title "ShellCanvas ${{ github.ref_name }}" `
+            --generate-notes `
+            --verify-tag

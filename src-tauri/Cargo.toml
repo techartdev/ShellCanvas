@@ -18,6 +18,7 @@ tauri-plugin-dialog = "2"
 anyhow = "1"
 async-trait = "0.1"
 serde_json = "1"
+sha2 = "0.10"
 reqwest = { version = "0.13.4", default-features = false, features = ["native-tls", "system-proxy"] }
 keyring = { version = "3.6.3", features = ["apple-native", "windows-native", "sync-secret-service", "crypto-rust"] }
 tempfile = "3"
@@ -36,4 +37,7 @@ rand = "0.10"
 
 [target.'cfg(windows)'.dependencies]
 windows-core = "0.61.2"
-windows = { version = "0.61.3", features = ["Win32_Foundation", "Win32_Graphics_Gdi", "Win32_System_Com", "Win32_System_Com_StructuredStorage", "Win32_System_Ole", "Win32_System_Memory", "Win32_System_DataExchange", "Win32_UI_Shell", "Win32_UI_WindowsAndMessaging"] }
+windows = { version = "0.61.3", features = ["Win32_Foundation", "Win32_Graphics_Gdi", "Win32_Storage_FileSystem", "Win32_System_Com", "Win32_System_Com_StructuredStorage", "Win32_System_Ole", "Win32_System_Memory", "Win32_System_DataExchange", "Win32_UI_Shell", "Win32_UI_WindowsAndMessaging"] }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+libc = "0.2"

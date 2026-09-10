@@ -285,7 +285,7 @@ enum Job {
 }
 enum Work {
     Transfer {
-        job: Job,
+        job: Box<Job>,
         service: Arc<dyn FileTransferService>,
     },
     #[cfg(any(windows, test))]
@@ -330,7 +330,7 @@ impl TransferRegistry {
                 .map(|(job, name, size, direction)| {
                     (
                         Work::Transfer {
-                            job,
+                            job: Box::new(job),
                             service: service.clone(),
                         },
                         name,
@@ -1330,7 +1330,7 @@ pub async fn run_transfer(
                 let relocation = claim.run(&cancel, &tracked.unwrap_or_default()).await?;
                 Ok((relocation.path.clone(), Some(relocation)))
             }
-            Work::Transfer { job, service } => execute(job, service, &cancel, &mut |event| {
+            Work::Transfer { job, service } => execute(*job, service, &cancel, &mut |event| {
                 if event.phase != last.phase
                     || sent.elapsed().as_millis() >= 100
                     || event.bytes == event.total

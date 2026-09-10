@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { usePreferences, type Preferences } from "../preferences";
 import { Appearance } from "../themes/Appearance";
+import { DriveBridgeSettings } from "./DriveBridgeSettings";
 import type { HostProfile, Session } from "../sdk";
 import "./SettingsDialog.css";
 
@@ -80,6 +81,7 @@ export function SettingsDialog({
   connected,
   manageHost,
   hostDetails,
+  initialSection = "desktop",
 }: {
   close(): void;
   profiles: HostProfile[];
@@ -87,9 +89,11 @@ export function SettingsDialog({
   connected: boolean;
   manageHost(profile?: HostProfile): void;
   hostDetails(): void;
+  initialSection?: Section;
 }) {
   const { values, set, error, blocked, reset } = usePreferences();
-  const [section, setSection] = useState<Section>("desktop");
+  const [section, setSection] = useState<Section>(initialSection);
+  useEffect(() => setSection(initialSection), [initialSection]);
   const [resetOpen, setResetOpen] = useState(false);
   const dialog = useRef<HTMLDialogElement>(null);
   const panel = useRef<HTMLDivElement>(null);
@@ -344,6 +348,7 @@ export function SettingsDialog({
                 These preferences apply across Files windows. Each window keeps
                 its own folder and selection.
               </p>
+              <DriveBridgeSettings />
             </>
           )}
           {section === "hosts" && (

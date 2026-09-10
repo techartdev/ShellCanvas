@@ -1,0 +1,138 @@
+/* SPDX-License-Identifier: MPL-2.0 */
+.drive-mappings {
+  margin-top: 1.3rem;
+}
+.drive-mappings h4 {
+  margin: 0 0 0.8rem;
+}
+.drive-mapping {
+  padding: 1rem;
+  border: 1px solid var(--sc-border);
+  border-radius: 0.75rem;
+  background: var(--sc-surface);
+}
+.drive-mapping + .drive-mapping {
+  margin-top: 0.7rem;
+}
+.drive-mapping-heading,
+.drive-mapping-status {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  flex-wrap: wrap;
+}
+.drive-mapping-heading > svg {
+  color: var(--sc-accent);
+}
+.drive-mapping-heading strong {
+  flex: 1;
+  overflow-wrap: anywhere;
+}
+.drive-mapping-heading span,
+.drive-mapping small {
+  color: var(--sc-muted);
+  font-size: 0.75rem;
+}
+.drive-mapping-path {
+  overflow-wrap: anywhere;
+  margin: 0.6rem 0 0.3rem;
+}
+.drive-mapping-status {
+  justify-content: space-between;
+  margin-top: 0.85rem;
+  font-size: 0.85rem;
+}
+.drive-mapping-status > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.drive-mapping-notice {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  padding-top: 0.65rem;
+  border-top: 1px solid var(--sc-border);
+}
+.drive-mapping-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+.drive-mapping-actions button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+}
+.attach-drive-dialog {
+  width: min(500px, calc(100vw - 32px));
+}
+.attach-drive-dialog .file-action-target {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  overflow-wrap: anywhere;
+}
+.attach-drive-options {
+  display: grid;
+  grid-template-columns: 1fr 1.4fr;
+  gap: 1rem;
+  margin-top: 1.3rem;
+}
+.attach-drive-options label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  font-size: 0.85rem;
+}
+.attach-drive-options select {
+  width: 100%;
+  padding: 0.7rem;
+  border: 1px solid var(--sc-border);
+  border-radius: 0.5rem;
+  background: var(--sc-inset);
+  color: var(--sc-text);
+  font: inherit;
+}
+.attach-drive-options p {
+  grid-column: 1 / -1;
+  margin: 0;
+  font-size: 0.85rem;
+  line-height: 1.6;
+  color: var(--sc-muted);
+}
+.attach-drive-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.75rem;
+  margin-top: 1.5rem;
+}
+.attach-drive-dialog button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.65rem 1rem;
+  border: 1px solid var(--sc-border);
+  border-radius: 0.55rem;
+  background: var(--sc-raised);
+  color: var(--sc-text);
+  cursor: pointer;
+}
+.attach-drive-dialog button.primary {
+  background: var(--sc-accent);
+  color: var(--sc-onAccent);
+}
+.attach-drive-dialog :is(button, select):focus-visible {
+  outline: 2px solid var(--sc-accent);
+  outline-offset: 3px;
+}
+.attach-drive-dialog button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+@media (max-width: 420px) {
+  .attach-drive-options {
+    grid-template-columns: 1fr;
+  }
+}

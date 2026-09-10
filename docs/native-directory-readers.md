@@ -129,7 +129,7 @@ This fixture uses no remote host or
 system clipboard; native adapter integration is recorded separately in
 [adapter packages](adapter-packages.md).
 
-The authorized read-only `root@evtinsait` probe on 2026-09-09 also passed the new
+The authorized read-only Linux-host probe on 2026-09-09 also passed the new
 SFTP reader's first page and early close, complete home/root/parent browsing,
 canonical text locations, UTF-8 preview, PTY input/output/resize and disconnect.
 It changed no remote files. This is Linux-host integration from Windows; it does

@@ -4808,12 +4808,14 @@ dependencies = [
  "anyhow",
  "async-trait",
  "keyring",
+ "libc",
  "rand 0.10.2",
  "reqwest",
  "rusqlite",
  "russh",
  "serde",
  "serde_json",
+ "sha2 0.10.9",
  "shellcanvas-adapter-runtime",
  "shellcanvas-core",
  "shellcanvas-services",
@@ -4877,10 +4879,21 @@ dependencies = [
  "serde_json",
  "sha1 0.11.0",
  "sha2 0.10.9",
+ "shellcanvas-filesystem-sdk",
  "shellcanvas-services",
  "tempfile",
  "tokio",
  "uuid",
+]
+
+[[package]]
+name = "shellcanvas-filesystem-sdk"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "serde",
+ "serde_json",
+ "tokio",
 ]
 
 [[package]]
@@ -4891,6 +4904,7 @@ dependencies = [
  "async-trait",
  "serde",
  "serde_json",
+ "shellcanvas-filesystem-sdk",
 ]
 
 [[package]]

@@ -17,6 +17,56 @@ const raw = (version = "1.0.0", permissions = ["system.dialogs"]) =>
     script: `console.log('${version}')`,
     style: "",
   });
+
+it("enforces client compatibility for install, updates, enable and persisted launches", async () => {
+  const saved = storage();
+  const desktop = new AppCatalog(saved.api, async () => ({
+    platform: "windows",
+  }));
+  const android = new AppCatalog(saved.api, async () => ({
+    platform: "android",
+  }));
+  await Promise.all([desktop.load(), android.load()]);
+  const restricted = JSON.stringify({
+    ...JSON.parse(raw()),
+    clientPlatforms: ["windows", "macos", "linux"],
+  });
+  const review = await android.review(restricted);
+  expect(android.compatibilityReason(review.package)).toContain(
+    "Not available on Android",
+  );
+  await expect(android.install(review, [])).rejects.toThrow(
+    "Not available on Android",
+  );
+  expect(saved.api.compareAndSet).not.toHaveBeenCalled();
+  const entry = await desktop.install(await desktop.review(restricted), []);
+  const lease = await desktop.launch(entry.package.id);
+  expect(lease.client).toEqual({ platform: "windows" });
+  lease.close();
+  await android.load();
+  expect(android.snapshot()).toHaveLength(1);
+  await expect(android.launch(entry.package.id)).rejects.toThrow(
+    "Not available on Android",
+  );
+  await android.setEnabled(entry.package.id, entry.generation, false);
+  await expect(
+    android.setEnabled(entry.package.id, entry.generation, true),
+  ).rejects.toThrow("Not available on Android");
+  // Portable replacement can be installed and launched on either client.
+  const portable = await android.install(
+    await android.review(raw("2.0.0")),
+    [],
+  );
+  const mobileLease = await android.launch(portable.package.id);
+  expect(mobileLease.client.platform).toBe("android");
+  mobileLease.close();
+  await expect(
+    android.install(await android.review(restricted), []),
+  ).rejects.toThrow("Not available on Android");
+  expect(android.snapshot()[0].package.version).toBe("2.0.0");
+  await android.remove(portable.package.id, portable.generation);
+  expect(android.snapshot()).toHaveLength(0);
+});
 function storage() {
   let value: unknown = null;
   const api: CatalogStorage = {
@@ -142,6 +192,7 @@ it("persists installed packages and grants, and pins existing windows across upd
     [],
   );
   expect(updated.generation).not.toBe(first.generation);
+  expect(updated.principal).toBe(first.principal);
   expect(window.installed.package.version).toBe("1.0.0");
   expect(window.installed.grants).toEqual(["system.dialogs"]);
   expect(window.closed).toBe(false);
@@ -154,6 +205,19 @@ it("persists installed packages and grants, and pins existing windows across upd
   expect(Object.isFrozen(reopened.snapshot()[0].package)).toBe(true);
   window.close();
   next.close();
+});
+it("preserves an installation principal across updates and rotates it after removal", async () => {
+  const catalog = new AppCatalog(storage().api);
+  await catalog.load();
+  const first = await catalog.install(await catalog.review(raw()), []);
+  const updated = await catalog.install(
+    await catalog.review(raw("2.0.0")),
+    [],
+  );
+  expect(updated.principal).toBe(first.principal);
+  await catalog.remove(updated.package.id, updated.generation);
+  const reinstalled = await catalog.install(await catalog.review(raw()), []);
+  expect(reinstalled.principal).not.toBe(first.principal);
 });
 it("disables new launches without destroying existing work and refuses removal until all generations close", async () => {
   const catalog = new AppCatalog(storage().api);

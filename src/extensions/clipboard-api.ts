@@ -4,6 +4,8 @@ import { RpcError, type Json, type RpcMethod } from "./rpc";
 import { AppImageClipboard } from "./image-clipboard-api";
 export type { AppClipboardAPI } from "../../packages/app-sdk/src/clipboard-client";
 const chunkSize = 64 * 1024;
+/** Prevent a granted app from staging an unbounded string in the host frame. */
+const maxTextLength = 4 * 1024 * 1024;
 function identity(value: unknown): asserts value is string {
   if (typeof value !== "string" || !/^[a-zA-Z0-9-]{1,100}$/.test(value))
     throw new RpcError("invalid", "Invalid clipboard operation identity.");
@@ -130,9 +132,13 @@ export class AppClipboard {
           if (
             typeof args.length !== "number" ||
             !Number.isSafeInteger(args.length) ||
-            args.length < 0
+            args.length < 0 ||
+            args.length > maxTextLength
           )
-            throw new RpcError("invalid", "Invalid clipboard text length.");
+            throw new RpcError(
+              "invalid",
+              "Clipboard text must not exceed 4 Mi UTF-16 units.",
+            );
           if (this.writer || this.committing)
             throw new RpcError(
               "busy",

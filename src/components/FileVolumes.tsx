@@ -22,6 +22,7 @@ export function FileVolumes({
   navigate,
   back,
   setBusy,
+  attach,
 }: {
   services: SessionServices;
   connected: boolean;
@@ -29,6 +30,7 @@ export function FileVolumes({
   navigate(path: string): void;
   back(): void;
   setBusy(busy: boolean): void;
+  attach?(path: string): void;
 }) {
   const [inventory, setInventory] = useState<Inventory | null>(null);
   const [error, setError] = useState("");
@@ -146,15 +148,25 @@ export function FileVolumes({
               {volume.locations.length ? (
                 <div className="file-volume-paths">
                   {volume.locations.map((location) => (
-                    <button
-                      key={location.path}
-                      title={`Browse ${location.path}`}
-                      disabled={!connected || working}
-                      onClick={() => navigate(location.path)}
-                    >
-                      <FolderOpen size={15} />
-                      <span>{location.name}</span>
-                    </button>
+                    <div key={location.path} className="file-volume-location">
+                      <button
+                        title={`Browse ${location.path}`}
+                        disabled={!connected || working}
+                        onClick={() => navigate(location.path)}
+                      >
+                        <FolderOpen size={15} />
+                        <span>{location.name}</span>
+                      </button>
+                      {attach && (
+                        <button
+                          disabled={!connected || working}
+                          title={`Attach ${location.path} to this computer`}
+                          onClick={() => attach(location.path)}
+                        >
+                          Attach…
+                        </button>
+                      )}
+                    </div>
                   ))}
                 </div>
               ) : (

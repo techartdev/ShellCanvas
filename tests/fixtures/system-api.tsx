@@ -48,12 +48,12 @@ function Sample({ system }: AppContext) {
             system!.dialogs.messageBox({
               title: "Choose the conversation host",
               message:
-                "This conversation belongs to SSH host. You are now on evtinsait-host1. Start a new chat, return to the original host, or create a separate continuation. No request has been sent.",
+                "This conversation belongs to SSH host. You are now on example-host-1. Start a new chat, return to the original host, or create a separate continuation. No request has been sent.",
               kind: "warning",
               buttons: [
-                { id: "new", label: "New chat on evtinsait-host1" },
+                { id: "new", label: "New chat on example-host-1" },
                 { id: "back", label: "Use original host" },
-                { id: "branch", label: "Create continuation on evtinsait-host1" },
+                { id: "branch", label: "Create continuation on example-host-1" },
                 { id: "cancel", label: "Cancel" },
               ],
               defaultId: "new",

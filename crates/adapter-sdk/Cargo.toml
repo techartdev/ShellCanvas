@@ -5,6 +5,12 @@ edition = "2021"
 license = "MPL-2.0"
 description = "Versioned process protocol and concurrent server for ShellCanvas connection adapters"
 readme = "README.md"
+repository = "https://github.com/techartdev/ShellCanvas"
+homepage = "https://shellcanvas.com/docs/adapter-sdk/quickstart.html"
+documentation = "https://docs.rs/shellcanvas-adapter-sdk"
+keywords = ["shellcanvas", "adapter", "remote", "device", "protocol"]
+categories = ["api-bindings", "asynchronous"]
+rust-version = "1.93"
 
 [dependencies]
 anyhow = "1"

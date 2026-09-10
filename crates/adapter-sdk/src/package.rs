@@ -4,6 +4,8 @@ use anyhow::{bail, Context, Result};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::HashSet;
+const MAX_PACKAGE_FILES: usize = 4096;
+const MAX_PACKAGE_BYTES: u64 = 512 * 1024 * 1024;
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct PackageFile {
@@ -99,6 +101,9 @@ impl Manifest {
         if self.arguments.iter().any(|arg| arg.contains('\0')) {
             bail!("Invalid adapter launch argument");
         }
+        if self.files.is_empty() || self.files.len() > MAX_PACKAGE_FILES {
+            bail!("Adapter packages must contain 1 to 4096 files");
+        }
         let mut paths = HashSet::new();
         let mut size = 0u64;
         for entry in &self.files {
@@ -115,6 +120,9 @@ impl Manifest {
             size = size
                 .checked_add(entry.size)
                 .context("Adapter package size overflow")?;
+            if size > MAX_PACKAGE_BYTES {
+                bail!("Adapter package exceeds the 512 MiB payload budget");
+            }
         }
         if !self
             .files
@@ -172,6 +180,7 @@ impl Manifest {
         Ok(Value::Object(output))
     }
 }
+
 impl ConfigField {
     fn accepts(&self, value: &Value) -> bool {
         match self.kind {
@@ -179,5 +188,46 @@ impl ConfigField {
             FieldKind::Number => value.is_number(),
             FieldKind::Boolean => value.is_boolean(),
         }
+    }
+}
+
+#[cfg(test)]
+mod package_limits {
+    use super::*;
+
+    fn manifest(files: Vec<PackageFile>) -> Manifest {
+        Manifest {
+            schema_version: 1,
+            id: "org.example.adapter".into(),
+            name: "Example".into(),
+            version: "1.0.0".into(),
+            description: String::new(),
+            platform: "windows-x86_64".into(),
+            entrypoint: "adapter.exe".into(),
+            arguments: vec![],
+            files,
+            configuration: vec![],
+        }
+    }
+
+    fn file(size: u64) -> PackageFile {
+        PackageFile {
+            path: "adapter.exe".into(),
+            size,
+            sha256: "a".repeat(64),
+            executable: true,
+        }
+    }
+
+    #[test]
+    fn bounds_review_payload_before_staging() {
+        assert!(manifest(vec![]).validate().is_err());
+        assert!(manifest(vec![file(MAX_PACKAGE_BYTES)]).validate().is_ok());
+        assert!(manifest(vec![file(MAX_PACKAGE_BYTES + 1)])
+            .validate()
+            .is_err());
+        assert!(manifest((0..=MAX_PACKAGE_FILES).map(|_| file(0)).collect())
+            .validate()
+            .is_err());
     }
 }

@@ -4,7 +4,7 @@
 
 The probe creates one `/tmp/shellcanvas-permissions-UUID` directory. Root-owned readable and private files exercise refusals; a separate subdirectory is owned by the existing unprivileged account for allowed operations. Only this new directory's ownership and modes change. Independent SSH exec channels run the existing SFTP server as `nobody`; production connection setup is unchanged.
 
-The authorized evtinsait run on 2026-09-08 verified:
+The authorized Linux-host run on 2026-09-08 verified:
 
 - Directory listing and public preview remain usable, while private preview, editor reads and downloads return the SFTP PermissionDenied status.
 - Folder creation, text creation, editor save, rename, delete and upload fail with actual permission-denied responses in the root-owned parent. Original contents remain unchanged and no temporary files remain.

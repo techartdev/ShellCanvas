@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 import { RpcError } from "./rpc.js";
+import { clientPlatforms, type ClientPlatform } from "./client-platform.js";
 /** Experimental self-contained UI package. Native adapters use a separate executable kind. */
 export interface AppPackage {
   readonly format: 1;
@@ -8,6 +9,8 @@ export interface AppPackage {
   readonly version: string;
   readonly title: string;
   readonly permissions: readonly string[];
+  /** Allowed ShellCanvas client targets. Omit for an unrestricted portable app. */
+  readonly clientPlatforms?: readonly ClientPlatform[];
   readonly script: string;
   readonly style: string;
 }
@@ -59,6 +62,14 @@ export function parseAppPackage(raw: string): AppPackage {
         !/^[a-z][a-z0-9-]*(?:\.[a-z][a-z0-9-]*)+$/.test(permission),
     ) ||
     new Set(item.permissions).size !== item.permissions.length ||
+    (item.clientPlatforms !== undefined &&
+      (!Array.isArray(item.clientPlatforms) ||
+        !item.clientPlatforms.length ||
+        item.clientPlatforms.some(
+          (platform: unknown) =>
+            !clientPlatforms.some((known) => known === platform),
+        ) ||
+        new Set(item.clientPlatforms).size !== item.clientPlatforms.length)) ||
     Object.keys(item).some(
       (key) =>
         ![
@@ -68,6 +79,7 @@ export function parseAppPackage(raw: string): AppPackage {
           "version",
           "title",
           "permissions",
+          "clientPlatforms",
           "script",
           "style",
         ].includes(key),
@@ -78,5 +90,8 @@ export function parseAppPackage(raw: string): AppPackage {
   return Object.freeze({
     ...item,
     permissions: Object.freeze([...item.permissions]),
+    ...(item.clientPlatforms === undefined
+      ? {}
+      : { clientPlatforms: Object.freeze([...item.clientPlatforms]) }),
   });
 }

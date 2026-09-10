@@ -6,6 +6,15 @@
   "additionalProperties": false,
   "required": ["format", "kind", "id", "version", "title", "permissions"],
   "properties": {
+    "clientPlatforms": {
+      "description": "Allowed ShellCanvas client targets, independent of remote host OS. Omit for no platform restriction.",
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "enum": ["windows", "macos", "linux", "android", "ios", "web"]
+      }
+    },
     "format": {
       "const": 1
     },

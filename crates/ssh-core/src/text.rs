@@ -7,6 +7,7 @@ use russh_sftp::{
     protocol::{FileAttributes, OpenFlags, Packet, StatusCode},
 };
 use sha2::{Digest, Sha256};
+use std::sync::{atomic::AtomicBool, Arc};
 use tokio::sync::Mutex;
 
 pub const TEXT_LIMIT: usize = 256 * 1024;
@@ -49,8 +50,21 @@ pub struct SftpTextFiles {
     atomic_replace: bool,
     pub(crate) fsync: bool,
     pub(crate) save_lock: Mutex<()>,
+    pub(crate) channel_closed: Arc<AtomicBool>,
 }
 impl SftpTextFiles {
+    pub(crate) async fn from_stream<S>(stream: S) -> Result<Self>
+    where
+        S: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin + Send + 'static,
+    {
+        let closed = Arc::new(AtomicBool::new(false));
+        let raw = RawSftpSession::new(crate::sftp_transport::Observed::new(stream, closed.clone()));
+        let mut service = Self::new(raw).await?;
+        service.channel_closed = closed;
+        Ok(service)
+    }
+    /// Wrap an externally managed raw session. Its owner supplies connection
+    /// lifetime; desktop connections use `from_stream` to observe idle EOF too.
     pub async fn new(raw: RawSftpSession) -> Result<Self> {
         let version = raw.init().await?;
         Ok(Self {
@@ -64,6 +78,7 @@ impl SftpTextFiles {
                 .is_some_and(|v| v == "1"),
             raw,
             save_lock: Mutex::new(()),
+            channel_closed: Arc::new(AtomicBool::new(false)),
         })
     }
     pub fn can_save(&self) -> bool {

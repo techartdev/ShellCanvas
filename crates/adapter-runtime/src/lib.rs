@@ -7,6 +7,7 @@ mod custom;
 mod diagnostics;
 mod process;
 mod process_tree;
+pub use process_tree::ProcessTree;
 mod services;
 mod standard;
 mod transfers;

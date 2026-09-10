@@ -8,6 +8,9 @@ import {
   type ClipboardImage,
 } from "../../packages/app-sdk/src/clipboard-image";
 
+/** 4096 x 4096 RGBA; large enough for normal clipboard images, bounded in host memory. */
+const maxImageBytes = 64 * 1024 * 1024;
+
 function options(value: Json, fields: readonly string[]) {
   if (
     !value ||
@@ -135,6 +138,11 @@ export class AppImageClipboard {
         method("write", (params) => {
           const args = options(params, ["id", "width", "height"]);
           const length = imageByteLength(args.width, args.height);
+          if (length > maxImageBytes)
+            throw new RpcError(
+              "invalid",
+              "Clipboard images must not exceed 64 MiB of RGBA data.",
+            );
           if (this.writer || this.committing)
             throw new RpcError(
               "busy",

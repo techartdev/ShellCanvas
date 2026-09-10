@@ -47,6 +47,13 @@ test("schemas and the host parser agree on executable packages and source manife
   );
   for (const [patch, valid] of [
     [{}, true],
+    [{ clientPlatforms: ["windows", "macos", "linux"] }, true],
+    [{ clientPlatforms: ["android", "ios", "web"] }, true],
+    [{ clientPlatforms: [] }, false],
+    [{ clientPlatforms: ["windows", "windows"] }, false],
+    [{ clientPlatforms: ["unknown"] }, false],
+    [{ clientPlatforms: "android" }, false],
+    [{ clientPlatforms: null }, false],
     [{ format: 2 }, false],
     [{ kind: "adapter" }, false],
     [{ id: "../escape" }, false],
@@ -115,7 +122,7 @@ test("packer preserves the last valid artifact after bad source, manifest or ver
   const directory = await fixture(t, "shellcanvas-sdk-packer-");
   await writeFile(
     join(directory, "shellcanvas.json"),
-    JSON.stringify(manifest),
+    JSON.stringify({ ...manifest, clientPlatforms: ["windows", "android"] }),
   );
   await writeFile(
     join(directory, "main.ts"),
@@ -125,6 +132,9 @@ test("packer preserves the last valid artifact after bad source, manifest or ver
   const output = await packApp(directory);
   const before = await readFile(output, "utf8");
   assert.equal(parseAppPackage(before).id, manifest.id);
+  const platforms = parseAppPackage(before).clientPlatforms;
+  assert.deepEqual(platforms, ["windows", "android"]);
+  assert.ok(Object.isFrozen(platforms));
   await assert.rejects(packApp(directory, "bad"));
   await writeFile(join(directory, "main.ts"), 'import "./missing-file.js";');
   await assert.rejects(packApp(directory));
