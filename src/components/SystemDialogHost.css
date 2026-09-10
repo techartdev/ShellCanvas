@@ -28,6 +28,13 @@
   font-size: 1.692308rem;
   font-weight: 500;
   margin: 0.615385rem 0 0;
+  overflow-wrap: anywhere;
+}
+.system-dialog-header > div {
+  min-width: 0;
+}
+.system-dialog-header > button {
+  flex-shrink: 0;
 }
 .system-dialog-header .eyebrow {
   font-size: 0.615385rem;
@@ -59,6 +66,7 @@
 .system-dialog-actions {
   padding: 1.384615rem 1.846154rem;
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: flex-end;
   gap: 0.769231rem;
@@ -67,7 +75,18 @@
 .system-dialog-actions button {
   border-color: var(--sc-border, #9cbcb633);
   padding: 0.769231rem 1.230769rem;
-  white-space: nowrap;
+  min-width: 0;
+  max-width: 100%;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.system-dialog-choices {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+}
+.system-dialog-choices button {
+  width: 100%;
+  min-height: 2.923077rem;
 }
 .system-dialog-actions > span {
   margin-right: auto;

@@ -97,7 +97,9 @@ function Dialog({ request }: { request: DialogRequest }) {
             )}
           </div>
           <p className="system-message-text">{request.options.message}</p>
-          <footer className="system-dialog-actions">
+          <footer
+            className={`system-dialog-actions${request.options.buttons!.length > 2 ? " system-dialog-choices" : ""}`}
+          >
             {request.options.buttons!.map((button, index) => (
               <button
                 key={button.id}

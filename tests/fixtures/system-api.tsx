@@ -45,6 +45,28 @@ function Sample({ system }: AppContext) {
       <button
         onClick={() =>
           void run(() =>
+            system!.dialogs.messageBox({
+              title: "Choose the conversation host",
+              message:
+                "This conversation belongs to SSH host. You are now on evtinsait-host1. Start a new chat, return to the original host, or create a separate continuation. No request has been sent.",
+              kind: "warning",
+              buttons: [
+                { id: "new", label: "New chat on evtinsait-host1" },
+                { id: "back", label: "Use original host" },
+                { id: "branch", label: "Create continuation on evtinsait-host1" },
+                { id: "cancel", label: "Cancel" },
+              ],
+              defaultId: "new",
+              cancelId: "cancel",
+            }),
+          )
+        }
+      >
+        Multi-action message
+      </button>
+      <button
+        onClick={() =>
+          void run(() =>
             system!.dialogs.openFile({
               title: "Open a document",
               multiple: true,
