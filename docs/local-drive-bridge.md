@@ -121,8 +121,8 @@ unbounded whole-file caching.
 2. Dialog shows host and remote path, local target, access mode and any missing
    native component. Installation is a deliberate setup action.
 3. Settings → Files shows host, remote/local path, access and attachment state,
-   with explicit Detach and completed-result Dismiss actions. Open-local-location
-   and recovery convenience actions remain backlog. Failed setup must leave no
+   with explicit Detach, Open folder, Retry cleanup and completed-result Dismiss
+   actions. Failed setup must leave no
    phantom drive; unconfirmed cleanup remains visible.
 4. Disconnect/quit explains which mappings are affected and allows cancellation
    when files remain in use.
@@ -150,4 +150,6 @@ unbounded whole-file caching.
 
 The design assessment installed no driver or remote software. Subsequent live
 implementation tests use newly created disposable directories; see the checkpoint
-for evidence, pending administrator setup and unfinished release gates.
+for evidence and unfinished release gates. Native Windows API tests now pass with
+WinFsp on disposable CI runners; driver setup on the developer PC and desktop UI
+acceptance remain pending.

@@ -38,7 +38,8 @@ Include the dependencies' licensing/distribution limitations in that app.
   failure after attempting the others. Confirmed renames update related open
   paths; failed renames preserve them. Dropping an open context closes remote
   handles, including failure after acquisition. Two bookkeeping regressions pass;
-  Windows and Linux clippy pass. Live WinFsp acceptance remains required.
+  Windows and Linux clippy pass. Native coverage is described below; these
+  specific failure/volume-flush/cross-handle cases still need native acceptance.
   These changes are in PR #1, not public main; protocol v2 still awaits merge.
   CI run `34507333272` for `078e624` passed builds and tests on Windows,
   Ubuntu and macOS 14. This is build evidence, not native Windows/macOS mount evidence.
@@ -56,6 +57,18 @@ Include the dependencies' licensing/distribution limitations in that app.
   plus an independently buildable vendored SDK. GPL-3.0-only bridge licensing
   leaves the main app MPL-2.0. README/THIRD-PARTY describe WinFsp/wrapper terms,
   separate macFUSE installation and commercial binary-bundling restrictions.
+- Bridge `30c4125` passes native WinFsp 2.1.25156 acceptance in CI run
+  `34511425152`, Windows job `102986233383`. The opt-in `tests/native_windows.rs`
+  launches the real executable and mounts an unused drive letter over a disposable
+  local provider. Windows file APIs verify offsets above 4 GiB, flush/truncate,
+  temporary-file replacement saves, exact directory enumeration across pages,
+  rename/deletion, missing/denied/nonempty errors and provider capacity. Shared
+  cross-page mapped writes reach the independently inspected source; mappings
+  survive descriptor close; read-only and private copy-on-write maps pass.
+  A held file prevents detach; an explicit retry after close removes the drive.
+  All four native markers pass, with one test passing in 27.93 seconds. Windows,
+  Ubuntu and macOS 14 build/test jobs pass. This is real WinFsp acceptance with
+  a local provider, not desktop UI or an end-to-end SFTP mapping test.
 - Main desktop has reviewed optional bridge installation in Settings → Files.
   The native chooser stages exact bytes; approval is window-owned, single-use and
   expires. Installed versions are immutable content-addressed files under the
@@ -96,7 +109,7 @@ Include the dependencies' licensing/distribution limitations in that app.
   contains the detach changes. Native Linux acceptance passed against `32d0c79`:
   held file prevented unmount, attachment remained usable, releasing it allowed
   an explicit clean detach, and the full file-operation/cleanup test passed.
-  Latest review-branch commit `6edb2a9` adds structured cleanup warnings and
+  Review-branch commit `6edb2a9` adds structured cleanup warnings and
   retired-channel refinements. All Windows/Ubuntu/macOS 14 checks pass on that
   commit (run `34502539007`); the PR is ready but requires repository review.
   Main `dac05fa`
@@ -152,7 +165,9 @@ Include the dependencies' licensing/distribution limitations in that app.
   disposable FUSE test rather than changing the server's installed toolchain.
 - Verified the official WinFsp 2.1.25156 MSI signature (Navimatics). Installation
   failed with Windows Installer 1925 / exit 1603: administrator privileges needed.
-  No successful driver installation has been established. The async UAC question
+  No successful driver installation on this PC has been established. CI now
+  installs the official runtime on its disposable Windows runner, checking the
+  pinned MSI SHA-256 and Authenticode signer before native tests. The local UAC question
   is pending. This is an OS privilege issue, not an automatic approval rejection.
   Installer/log are under `.local/bridge-tools`. Workspace-only libclang 18.1.1
   is available at `.local/bridge-tools/python/clang/native` for Windows builds.
@@ -177,9 +192,10 @@ Include the dependencies' licensing/distribution limitations in that app.
 3. Broaden failure acceptance to real network loss, permission/disk-full errors,
    late SFTP open responses and cancellation while preparing the root. Verify the
    native chooser/source-retirement race without touching the normal user profile.
-4. Native Windows mount tests after administrator setup: Explorer and actual
-   local file APIs, ordinary editor/temporary-file replacement saves, directory
-   rename with open handles, capacity, errors and disconnect behavior.
+4. Native Windows file API, replacement-save, capacity, basic error and busy-detach
+   checks now pass in disposable WinFsp CI. Remaining: desktop-created SFTP mapping,
+   Explorer/ordinary editor acceptance, directory rename with open handles,
+   disconnect behavior and failure recovery. Local driver setup is still pending.
 5. Native Linux FUSE tests using a CI binary and a disposable directory. Validate
    directory cursor/rewind and inode retention/forget behavior, create/rename/
    truncate, permissions, flush, detach and helper failure.
@@ -188,10 +204,12 @@ Include the dependencies' licensing/distribution limitations in that app.
    Do not claim an OS version/runtime works solely because Linux compiled.
 7. Resolve currently documented limits before calling the release ready:
    Windows cleanup-time deletion warnings and busy-detach control are implemented
-   but need native WinFsp acceptance. Volume-wide flush and cross-handle rename
+   with busy detach now passing native WinFsp acceptance. Cleanup-time failure
+   warnings still need native failure injection. Volume-wide flush and cross-handle rename
    are implemented with bookkeeping regression tests; native checks and file
    attribute work remain. Linux shared/private/read-only memory-mapping acceptance
-   now passes; Windows/macOS mapped-file tests and concurrent remote-edit behavior
+   passes, as does Windows shared/private/read-only mapping against a disposable
+   local provider. macOS mapped-file tests and concurrent remote-edit behavior
    remain unverified. This is not database or VM-image compatibility evidence.
 8. Review cancellation/late responses, bounded teardown and protocol errors with
    failure fixtures, then run the relevant core/desktop regression checks. Add
