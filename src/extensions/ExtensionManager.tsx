@@ -5,6 +5,7 @@ import { capabilityLabels, type Capability } from "../sdk";
 import { AppCatalog, type AppLease, type InstallReview } from "./catalog";
 import "./ExtensionManager.css";
 import { inspectRepository } from "./repository";
+import { clientPlatformLabels } from "../../packages/app-sdk/src/client-platform";
 
 function permissionName(name: string) {
   if (name === "system.network")
@@ -138,7 +139,10 @@ export function ExtensionManager({
         <div>
           <p className="extension-eyebrow">YOUR WORKSPACE, EXTENDED</p>
           <h2>Apps</h2>
-          <p>Add tools that make this desktop yours.</p>
+          <p>
+            Add tools that make this desktop yours. Client:{" "}
+            {clientPlatformLabels[catalog.client.platform]}.
+          </p>
         </div>
         <div className="extension-actions">
           <button
@@ -286,6 +290,17 @@ export function ExtensionManager({
               {review.source.ref}
             </p>
           )}
+          <p>
+            Client support:{" "}
+            {review.package.clientPlatforms
+              ?.map((platform) => clientPlatformLabels[platform])
+              .join(", ") ?? "No platform restriction declared"}
+          </p>
+          {catalog.compatibilityReason(review.package) && (
+            <p className="extension-error" role="status">
+              {catalog.compatibilityReason(review.package)}
+            </p>
+          )}
           {review.replaces?.source &&
             (!review.source ||
               review.replaces.source.owner !== review.source.owner ||
@@ -355,7 +370,7 @@ export function ExtensionManager({
             </button>
             <button
               className="extension-primary"
-              disabled={busy}
+              disabled={busy || !!catalog.compatibilityReason(review.package)}
               onClick={() =>
                 void run(async () => {
                   await catalog.install(review, grants);
@@ -381,12 +396,21 @@ export function ExtensionManager({
             <div className="extension-description">
               <h3>
                 {entry.package.title}
-                <span>{entry.enabled ? "Ready" : "Disabled"}</span>
+                <span>
+                  {catalog.compatibilityReason(entry.package)
+                    ? "Incompatible"
+                    : entry.enabled
+                      ? "Ready"
+                      : "Disabled"}
+                </span>
               </h3>
               <p>
                 Version {entry.package.version} · {entry.package.id}
               </p>
               <small>{entry.grants.length} approved permissions</small>
+              {catalog.compatibilityReason(entry.package) && (
+                <p>{catalog.compatibilityReason(entry.package)}</p>
+              )}
               {entry.source && (
                 <p>
                   {entry.source.owner}/{entry.source.repository} ·{" "}
@@ -410,7 +434,12 @@ export function ExtensionManager({
                 </button>
               )}
               <button
-                disabled={busy || loading || !entry.enabled}
+                disabled={
+                  busy ||
+                  loading ||
+                  !entry.enabled ||
+                  !!catalog.compatibilityReason(entry.package)
+                }
                 onClick={async () => {
                   let lease: AppLease | undefined;
                   try {
@@ -434,7 +463,12 @@ export function ExtensionManager({
                 Open app
               </button>
               <button
-                disabled={busy || loading}
+                disabled={
+                  busy ||
+                  loading ||
+                  (!entry.enabled &&
+                    !!catalog.compatibilityReason(entry.package))
+                }
                 onClick={() =>
                   void run(() =>
                     catalog.setEnabled(

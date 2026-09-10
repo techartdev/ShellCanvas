@@ -380,6 +380,25 @@ Include the dependencies' licensing/distribution limitations in that app.
   Installer/log are under `.local/bridge-tools`. Workspace-only libclang 18.1.1
   is available at `.local/bridge-tools/python/clang/native` for Windows builds.
 
+## Client boundary and desktop wrapper follow-up
+
+The desktop mounted-filesystem wrapper now permits timestamp/permission changes
+through read handles on writable mounts, matching the provider contract used by
+Windows attribute-only opens. Truncation still requires a writable data handle;
+read-only mounts and retired workspace bindings reject changes before reaching
+the provider. The production wrapper regression test passes locally.
+
+Runtime app manifests now declare optional client platform compatibility. The
+package manager enforces it for installs, updates, enabling, and launch, and the
+SDK exposes client identity independently of the remote host. Drive Bridge also
+gates its native installation and attach commands to Windows/Linux/macOS clients.
+See [client platform compatibility](client-platform-compatibility.md) for the
+contract and deferred mobile work. This does not claim an Android/iOS app build.
+Local SDK packaging/schema tests, targeted catalog/runtime tests, native bridge
+installation/reservation tests, and the production frontend build passed. No CI
+run was triggered for this follow-up. Batch future CI changes and use local
+verification where possible to respect the user's GitHub plan.
+
 ## Remaining completion gates
 
 1. Native end-to-end installation verification and an actual desktop-created

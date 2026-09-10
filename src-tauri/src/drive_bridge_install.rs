@@ -15,6 +15,16 @@ use tempfile::TempDir;
 
 const MAX_BINARY: u64 = 128 * 1024 * 1024;
 const REVIEW_LIFETIME: Duration = Duration::from_secs(15 * 60);
+pub fn supported_client(platform: &str) -> bool {
+    matches!(platform, "windows" | "linux" | "macos")
+}
+pub fn require_supported_client() -> Result<(), String> {
+    if supported_client(std::env::consts::OS) {
+        Ok(())
+    } else {
+        Err("Drive Bridge requires a Windows, Linux or macOS ShellCanvas client.".into())
+    }
+}
 #[cfg(windows)]
 const BINARY: &str = "shellcanvas-drive-bridge.exe";
 #[cfg(not(windows))]
@@ -278,6 +288,7 @@ pub async fn review_drive_bridge(
     window: tauri::WebviewWindow,
     state: tauri::State<'_, Reviews>,
 ) -> Result<Option<Review>, String> {
+    require_supported_client()?;
     use tauri::Manager;
     use tauri_plugin_dialog::DialogExt;
     let app = window.app_handle().clone();
@@ -320,6 +331,7 @@ pub async fn install_drive_bridge(
     window: tauri::WebviewWindow,
     state: tauri::State<'_, Reviews>,
 ) -> Result<Installation, String> {
+    require_supported_client()?;
     use tauri::Manager;
     let storage = crate::profile_store::storage_dir(window.app_handle())?;
     let owner = window.label().to_string();
@@ -332,6 +344,15 @@ pub async fn install_drive_bridge(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn bridge_support_is_a_client_platform_decision() {
+        for platform in ["windows", "linux", "macos"] {
+            assert!(supported_client(platform));
+        }
+        for platform in ["android", "ios", "web", "unknown"] {
+            assert!(!supported_client(platform));
+        }
+    }
     #[test]
     fn review_pins_bytes_is_window_owned_and_install_survives_restart() {
         let profile = tempfile::tempdir().unwrap();

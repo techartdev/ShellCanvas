@@ -230,6 +230,14 @@ pub async fn drive_mapping_available(
     app: tauri::AppHandle,
     state: State<'_, DesktopState>,
 ) -> Result<Availability, String> {
+    if !crate::drive_bridge_install::supported_client(std::env::consts::OS) {
+        return Ok(Availability {
+            supported: false,
+            installed: false,
+            windows: false,
+            available_drives: None,
+        });
+    }
     let files = crate::filesystem(&state, session_id, Some(&binding)).await?;
     let supported = files.supports_local_mount();
     let storage = crate::profile_store::storage_dir(&app)?;
@@ -283,6 +291,7 @@ pub async fn attach_drive(
     window: tauri::WebviewWindow,
     state: State<'_, DesktopState>,
 ) -> Result<Option<String>, String> {
+    crate::drive_bridge_install::require_supported_client()?;
     let app = window.app_handle().clone();
     let storage = crate::profile_store::storage_dir(&app)?;
     let installation = tauri::async_runtime::spawn_blocking(move || {
