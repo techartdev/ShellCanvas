@@ -124,7 +124,8 @@ function RuntimeDocument({
     ...(context.session && accepted === context.system
       ? {
           host: {
-            name: context.session.info.hostname,
+            name: context.workspaceLabel || context.session.info.hostname,
+            target: context.workspaceTarget,
             system: context.session.info.system,
           },
         }

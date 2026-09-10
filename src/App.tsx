@@ -212,6 +212,22 @@ export default function App({
   useEffect(closeMenu, [workspace.key, closeMenu]);
   const switcher = useRef<HTMLDivElement>(null);
   const [profiles, setProfiles] = useState<HostProfile[]>([]);
+  const [profilesError, setProfilesError] = useState("");
+  const [profilesLoading, setProfilesLoading] = useState(false);
+  const profileRequest = useRef(0);
+  const reloadProfiles = useCallback(async () => {
+    const request = ++profileRequest.current;
+    setProfilesLoading(true);
+    setProfilesError("");
+    try {
+      const saved = await services.profiles();
+      if (request === profileRequest.current) setProfiles(saved);
+    } catch (error) {
+      if (request === profileRequest.current) setProfilesError(String(error));
+    } finally {
+      if (request === profileRequest.current) setProfilesLoading(false);
+    }
+  }, [services]);
   const [connecting, setConnecting] = useState(false);
   const attempt = useRef<AbortController | null>(null);
   const [reconnectTarget, setReconnectTarget] = useState<{
@@ -271,13 +287,12 @@ export default function App({
   const { values: preferences } = usePreferences();
   useDesktopTheme();
   useEffect(() => {
-    void services
-      .profiles()
-      .then(setProfiles)
-      .catch((e) => setToast(String(e)));
     const timer = setInterval(() => setClock(new Date()), 1000);
     return () => clearInterval(timer);
   }, [services]);
+  useEffect(() => {
+    void reloadProfiles();
+  }, [connectOpen, reloadProfiles]);
   useEffect(() => {
     if (!toast) return;
     const timer = setTimeout(() => setToast(""), 8000);
@@ -1237,6 +1252,9 @@ export default function App({
       {connectOpen && (
         <ConnectDialog
           profiles={profiles}
+          profilesError={profilesError}
+          profilesLoading={profilesLoading}
+          reloadProfiles={() => void reloadProfiles()}
           initialProfile={editingProfile}
           busy={connecting}
           hostKeyReview={hostKeyReview}
@@ -1246,12 +1264,12 @@ export default function App({
           preview={!isNative}
           save={async (profile) => {
             const saved = await services.saveProfile(profile);
-            setProfiles(await services.profiles());
+            await reloadProfiles();
             return saved;
           }}
           remove={async (id) => {
             await services.removeProfile(id);
-            setProfiles(await services.profiles());
+            await reloadProfiles();
           }}
           close={() => setConnectOpen(false)}
           submit={(options, name) => void connect(options, name)}

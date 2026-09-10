@@ -10,7 +10,12 @@ export interface AppEnvironment {
    * or routing authority. Null/absent means unknown. Compare opaque values only. */
   readonly workspaceId?: string | null;
   /** Display metadata only; never use labels as routing identities. */
-  readonly host?: { readonly name: string; readonly system: string };
+  readonly host?: {
+    readonly name: string;
+    readonly system: string;
+    /** Non-secret configured destination for distinguishing duplicate names. */
+    readonly target?: string;
+  };
   readonly visible: boolean;
   readonly capabilities: readonly string[];
   /** Optional supported operations within a capability; absent keys are legacy metadata. */

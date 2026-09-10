@@ -424,6 +424,9 @@ export interface SessionServices {
 export interface AppContext {
   /** Stable configured target identity; never a service routing token. */
   workspaceId?: string | null;
+  /** User-facing workspace name and non-secret target description. */
+  workspaceLabel?: string;
+  workspaceTarget?: string;
   /** Host-owned controls scoped to this window. */
   window?: import("./extensions/window-api").WindowControls;
   /** True only when this window is visible in the current workspace. */

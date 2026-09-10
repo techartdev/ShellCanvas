@@ -19,6 +19,7 @@ function Fixture() {
       : [],
   );
   const [open, setOpen] = useState(true);
+  const [loadError, setLoadError] = useState(new URLSearchParams(location.search).has("load-error") ? "Fixture read failed" : "");
   const [leaked, setLeaked] = useState(false);
   const [submitted, setSubmitted] = useState(0);
   return (
@@ -33,6 +34,11 @@ function Fixture() {
       {open && (
         <ConnectDialog
           profiles={profiles}
+          profilesError={loadError}
+          reloadProfiles={() => {
+            setLoadError("");
+            setProfiles([{ id: "fixture-recovered", name: "Recovered Mac", host: "mac.example.test", port: 22, username: "user", keyPath: "" }]);
+          }}
           busy={false}
           preview={false}
           error=""

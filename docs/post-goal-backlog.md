@@ -9,6 +9,17 @@ is started by this list.
 
 ## Where we stopped
 
+- **Investigate reported saved-host disappearance after restart (2026-09-10):**
+  user reported a saved SSH host missing from both the workspace switcher and
+  connection picker. Its record was present in the native profile store with an
+  earlier timestamp; no lost-write cause has been reproduced. The connection
+  dialog now refreshes the list on opening, preserves previous results on load
+  failure, and shows a persistent error with Retry. Storage persistence and
+  concurrent-save tests pass. Keep the original visibility report open until its
+  trigger is reproduced; active workspace restoration is separate from saved
+  profiles. Assistant display names now use the chosen workspace label and target,
+  and legacy conversations correctly describe their original identity as unknown.
+
 Later appearance milestone: [installable themes and user appearance controls](theme-goal.md)
 are now implemented. Follow-up work is isolated-app content theme propagation,
 additional wallpaper/icon package formats, authenticated/private repositories,

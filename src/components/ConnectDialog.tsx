@@ -14,6 +14,9 @@ import { HostProfilePicker } from "./HostProfilePicker";
 import { HostKeyReviewPanel } from "./HostKeyReviewPanel";
 export function ConnectDialog({
   profiles,
+  profilesError,
+  profilesLoading,
+  reloadProfiles,
   busy,
   error,
   close,
@@ -36,6 +39,9 @@ export function ConnectDialog({
   openAdapters?(): void;
   initialProfile?: HostProfile;
   profiles: HostProfile[];
+  profilesError?: string;
+  profilesLoading?: boolean;
+  reloadProfiles?(): void;
   busy: boolean;
   error: string;
   close(): void;
@@ -264,6 +270,23 @@ export function ConnectDialog({
               >
                 Use connection adapters
               </button>
+            )}
+            {profilesLoading && (
+              <p className="profile-message" role="status">
+                Loading saved hosts…
+              </p>
+            )}
+            {profilesError && (
+              <div className="inline-error" role="alert">
+                <span>Saved hosts could not be refreshed. {profilesError}</span>
+                <button
+                  type="button"
+                  disabled={profilesLoading}
+                  onClick={reloadProfiles}
+                >
+                  Retry
+                </button>
+              </div>
             )}
             <fieldset disabled={locked || preview}>
               {!reconnecting && (

@@ -5,7 +5,7 @@ import type { DesktopRuntime } from "../extensions/desktop-runtime";
 import { focusedApp, instanceTitle, type DesktopAction } from "../desktop";
 import { WorkspaceBindings } from "../workspace-bindings";
 import type { AppContext, HostServices } from "../sdk";
-import type { Workspace } from "../workspaces";
+import { isAdapterProfile, type Workspace } from "../workspaces";
 import { AppWindow } from "./AppWindow";
 
 export function WorkspaceWindows({
@@ -66,6 +66,11 @@ export function WorkspaceWindows({
   }, [bindings, plan, workspace.connected]);
   useLayoutEffect(() => () => bindings.dispose(), [bindings]);
   const context: Omit<AppContext, "services"> = {
+    workspaceLabel: workspace.label,
+    workspaceTarget:
+      workspace.connection && !isAdapterProfile(workspace.connection)
+        ? `${workspace.connection.username}@${workspace.connection.host.includes(":") ? `[${workspace.connection.host}]` : workspace.connection.host}:${workspace.connection.port}`
+        : undefined,
     workspaceId: !workspace.session
       ? "local"
       : identity?.connection === workspace.connection
