@@ -33,11 +33,13 @@ pub struct MappingInfo {
     pub status: BridgeSnapshot,
     pub running: bool,
     pub cleanup_warning: Option<String>,
+    pub can_retry_cleanup: bool,
 }
 struct Mapping {
     info: MappingInfo,
     control: Arc<BridgeControl>,
     _lease: Option<ConnectionLease>,
+    recovery: Arc<crate::drive_recovery::Recovery>,
 }
 #[derive(Clone, Default)]
 pub struct Mappings(Arc<Mutex<BTreeMap<String, Mapping>>>);
@@ -53,6 +55,9 @@ impl Mappings {
             .map(|m| {
                 let mut info = m.info.clone();
                 info.status = m.control.snapshot().map_err(|e| e.to_string())?;
+                let (warning, can_retry) = m.recovery.snapshot()?;
+                info.cleanup_warning = warning.or(info.cleanup_warning);
+                info.can_retry_cleanup = can_retry;
                 Ok(info)
             })
             .collect()
@@ -95,6 +100,7 @@ impl Mappings {
                 info,
                 control,
                 _lease: lease,
+                recovery: Arc::new(crate::drive_recovery::Recovery::default()),
             },
         );
         Ok(())
@@ -111,6 +117,30 @@ impl Mappings {
         let items = self.lock()?;
         let mapping = items.get(id).ok_or("Attachment no longer exists")?;
         mapping.control.request_detach().map_err(|e| e.to_string())
+    }
+    fn recovery(&self, id: &str) -> Result<Arc<crate::drive_recovery::Recovery>, String> {
+        Ok(self
+            .lock()?
+            .get(id)
+            .ok_or("Attachment no longer exists")?
+            .recovery
+            .clone())
+    }
+    fn open_target(&self, id: &str) -> Result<PathBuf, String> {
+        let items = self.lock()?;
+        let mapping = items.get(id).ok_or("Attachment no longer exists")?;
+        if !mapping.info.running
+            || mapping.control.snapshot().map_err(|e| e.to_string())?.phase != BridgePhase::Attached
+        {
+            return Err("The attachment is not ready to open.".into());
+        }
+        #[cfg(windows)]
+        {
+            windows_target(&mapping.info.local_path)?;
+            Ok(PathBuf::from(format!("{}\\", mapping.info.local_path)))
+        }
+        #[cfg(not(windows))]
+        Ok(PathBuf::from(&mapping.info.local_path))
     }
 }
 
@@ -130,6 +160,58 @@ pub fn dismiss_drive(id: String, state: State<'_, DesktopState>) -> Result<(), S
     }
     items.remove(&id);
     Ok(())
+}
+
+#[tauri::command]
+pub fn retry_drive_cleanup(id: String, state: State<'_, DesktopState>) -> Result<(), String> {
+    state.mappings.recovery(&id)?.request()
+}
+
+#[tauri::command]
+pub async fn open_drive_location(id: String, state: State<'_, DesktopState>) -> Result<(), String> {
+    // The caller supplies an attachment ID, never an arbitrary path or program.
+    let target = state.mappings.open_target(&id)?;
+    tauri::async_runtime::spawn_blocking(move || open_local_folder(&target))
+        .await
+        .map_err(|e| e.to_string())?
+}
+fn open_local_folder(target: &std::path::Path) -> Result<(), String> {
+    #[cfg(windows)]
+    {
+        use windows::{
+            core::{w, HSTRING},
+            Win32::UI::{Shell::ShellExecuteW, WindowsAndMessaging::SW_SHOWNORMAL},
+        };
+        let path = HSTRING::from(target.as_os_str());
+        let result =
+            unsafe { ShellExecuteW(None, w!("explore"), &path, None, None, SW_SHOWNORMAL) };
+        if result.0 as isize <= 32 {
+            return Err(format!(
+                "Windows could not open the attachment (code {}).",
+                result.0 as isize
+            ));
+        }
+        Ok(())
+    }
+    #[cfg(not(windows))]
+    {
+        #[cfg(target_os = "macos")]
+        let mut command = std::process::Command::new("/usr/bin/open");
+        #[cfg(not(target_os = "macos"))]
+        let mut command = std::process::Command::new("/usr/bin/xdg-open");
+        let mut child = command
+            .arg(target)
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .map_err(|e| e.to_string())?;
+        // Reap the desktop launcher without blocking IPC on the file manager.
+        std::thread::spawn(move || {
+            let _ = child.wait();
+        });
+        Ok(())
+    }
 }
 
 #[derive(Serialize)]
@@ -226,6 +308,10 @@ pub async fn attach_drive(
     // Reserve while holding the registry lock: disconnect/replacement use the same
     // order and cannot retire this source between validation and grant ownership.
     let _transition = state.mount_transition.lock().await;
+    // Read the local OS table before reserving, without probing filesystem contents.
+    if crate::local_mounts::occupied(&target)? {
+        return Err("That local location is already mounted. Choose another location.".into());
+    }
     let registry = state.registry.lock().await;
     let session = registry
         .sessions
@@ -261,8 +347,10 @@ pub async fn attach_drive(
         status: control.snapshot().map_err(|e| e.to_string())?,
         running: true,
         cleanup_warning: None,
+        can_retry_cleanup: false,
     };
     state.mappings.reserve(info, control.clone(), Some(lease))?;
+    let recovery = state.mappings.recovery(&id)?;
     let mappings = state.mappings.clone();
     let task_id = id.clone();
     // A canceled UI invocation does not drop a live mapping or its connection lease.
@@ -276,6 +364,7 @@ pub async fn attach_drive(
             writable,
             control.clone(),
             safe.clone(),
+            recovery,
         )
         .await;
         if let Err(error) = result {
@@ -295,6 +384,7 @@ pub async fn attach_drive(
     Ok(Some(id))
 }
 
+#[allow(clippy::too_many_arguments)] // One task owns the root, process and recovery state.
 async fn run(
     installation: (crate::drive_bridge_install::Installation, PathBuf),
     target: PathBuf,
@@ -303,6 +393,7 @@ async fn run(
     writable: bool,
     control: Arc<BridgeControl>,
     safe: Arc<AtomicBool>,
+    recovery: Arc<crate::drive_recovery::Recovery>,
 ) -> Result<(), String> {
     let root = tokio::time::timeout(Duration::from_secs(30), files.mount_root(&path, writable))
         .await
@@ -318,8 +409,17 @@ async fn run(
     .await
     .map_err(|e| e.to_string())??;
     let mut command = Command::new(executable);
-    command.arg("--mount").arg(target);
-    supervise(command, root, control, safe, Duration::from_secs(30)).await
+    command.arg("--mount").arg(&target);
+    supervise(
+        command,
+        root,
+        control,
+        safe,
+        Duration::from_secs(30),
+        recovery,
+        Some(target),
+    )
+    .await
 }
 
 async fn supervise(
@@ -328,6 +428,8 @@ async fn supervise(
     control: Arc<BridgeControl>,
     safe: Arc<AtomicBool>,
     startup_timeout: Duration,
+    recovery: Arc<crate::drive_recovery::Recovery>,
+    target: Option<PathBuf>,
 ) -> Result<(), String> {
     command
         .stdin(Stdio::piped())
@@ -390,7 +492,9 @@ async fn supervise(
     };
     // User detach only arrives here after the native backend confirms unmount.
     // A crashed/stalled startup or broken transport is failure, never a busy retry.
-    let cleanup = tokio::time::timeout(Duration::from_secs(10), tree.cleanup(&mut child)).await;
+    // Start cleanup immediately to break blocked reads/writes in the pipe server.
+    let first_cleanup =
+        tokio::time::timeout(Duration::from_secs(10), tree.cleanup(&mut child)).await;
     if !server_done
         && tokio::time::timeout(Duration::from_secs(35), &mut server)
             .await
@@ -399,10 +503,39 @@ async fn supervise(
         server.abort();
     }
     drain.abort();
-    match cleanup {
-        Ok(Ok(())) => { safe.store(true, Ordering::Release); result },
-        _ => Err("Attachment process cleanup is unconfirmed. Check the local mount before using that location again.".into()),
+    let mut process_stopped = matches!(first_cleanup, Ok(Ok(())));
+    loop {
+        let cleanup = if !process_stopped {
+            Err("The attachment helper has not confirmed shutdown. Close local applications using this drive, then retry cleanup.".into())
+        } else {
+            check_mount_removed(target.as_deref())
+        };
+        match cleanup {
+            Ok(()) => break,
+            Err(message) => {
+                control.fail(message.clone());
+                recovery.wait_for_retry(message).await;
+                if !process_stopped {
+                    process_stopped = matches!(
+                        tokio::time::timeout(Duration::from_secs(10), tree.cleanup(&mut child))
+                            .await,
+                        Ok(Ok(()))
+                    );
+                }
+            }
+        }
     }
+    recovery.finished();
+    safe.store(true, Ordering::Release);
+    result
+}
+fn check_mount_removed(target: Option<&std::path::Path>) -> Result<(), String> {
+    if let Some(target) = target {
+        if crate::local_mounts::occupied(target)? {
+            return Err(format!("The helper has stopped, but {} is still mounted. Unmount it using your system's disk tools, then retry cleanup. ShellCanvas is keeping the connection reserved.", target.display()));
+        }
+    }
+    Ok(())
 }
 fn diagnostic_tail(bytes: &Mutex<Vec<u8>>) -> String {
     bytes
@@ -474,6 +607,8 @@ mod tests {
                     control,
                     safe.clone(),
                     Duration::from_millis(500),
+                    Arc::new(crate::drive_recovery::Recovery::default()),
+                    None,
                 ),
             )
             .await
@@ -484,6 +619,47 @@ mod tests {
                 "{mode} process was not reaped"
             );
         }
+        // Read-only occupancy fixture: the system volume must never be treated
+        // as removed merely because a helper exited. No mount/unmount is performed.
+        let recovery = Arc::new(crate::drive_recovery::Recovery::default());
+        let safe = Arc::new(AtomicBool::new(true));
+        let control = Arc::new(BridgeControl::default());
+        #[cfg(windows)]
+        let occupied = PathBuf::from(std::env::var_os("SystemDrive").unwrap());
+        #[cfg(not(windows))]
+        let occupied = PathBuf::from("/");
+        let mut command = Command::new(&fixture);
+        command.arg("invalid");
+        let retained = tokio::spawn(supervise(
+            command,
+            Arc::new(EmptyRoot),
+            control.clone(),
+            safe.clone(),
+            Duration::from_secs(5),
+            recovery.clone(),
+            Some(occupied),
+        ));
+        for _ in 0..2 {
+            tokio::time::timeout(Duration::from_secs(5), async {
+                while !recovery.snapshot().unwrap().1 {
+                    tokio::task::yield_now().await;
+                }
+            })
+            .await
+            .unwrap();
+            assert!(recovery
+                .snapshot()
+                .unwrap()
+                .0
+                .unwrap()
+                .contains("still mounted"));
+            assert_eq!(control.snapshot().unwrap().phase, BridgePhase::Failed);
+            assert!(!safe.load(Ordering::Acquire));
+            assert!(!retained.is_finished());
+            recovery.request().unwrap();
+        }
+        retained.abort();
+        assert!(retained.await.unwrap_err().is_cancelled());
         let control = Arc::new(BridgeControl::default());
         let safe = Arc::new(AtomicBool::new(true));
         let mut command = Command::new(fixture);
@@ -494,6 +670,8 @@ mod tests {
             control.clone(),
             safe.clone(),
             Duration::from_secs(5),
+            Arc::new(crate::drive_recovery::Recovery::default()),
+            None,
         ));
         async fn phase(control: &BridgeControl, expected: BridgePhase) {
             tokio::time::timeout(Duration::from_secs(5), async {
@@ -561,6 +739,7 @@ mod tests {
                     status: control.snapshot().unwrap(),
                     running: true,
                     cleanup_warning: None,
+                    can_retry_cleanup: false,
                 },
                 control,
                 Some(resource.lease().unwrap()),
@@ -597,10 +776,13 @@ mod tests {
             status: control.snapshot().unwrap(),
             running: true,
             cleanup_warning: None,
+            can_retry_cleanup: false,
         };
         mappings
             .reserve(info.clone(), control.clone(), None)
             .unwrap();
+        assert!(mappings.open_target("a").is_err());
+        assert!(mappings.recovery("missing").is_err());
         assert!(mappings.ensure_releasable(7, None).is_err());
         assert!(mappings.ensure_releasable(8, None).is_ok());
         let other = ConnectionIdentity {
@@ -612,7 +794,12 @@ mod tests {
         control
             .report(shellcanvas_services::bridge_control::BridgeEvent::Ready)
             .unwrap();
+        assert!(mappings.open_target("a").is_ok());
+        #[cfg(windows)]
+        assert_eq!(mappings.open_target("a").unwrap(), PathBuf::from("Z:\\"));
+        assert!(mappings.recovery("a").unwrap().request().is_err());
         mappings.detach("a").unwrap();
+        assert!(mappings.open_target("a").is_err());
         control
             .report(shellcanvas_services::bridge_control::BridgeEvent::Detached)
             .unwrap();

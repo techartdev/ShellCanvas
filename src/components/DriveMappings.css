@@ -53,6 +53,17 @@
   padding-top: 0.65rem;
   border-top: 1px solid var(--sc-border);
 }
+.drive-mapping-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+.drive-mapping-actions button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+}
 .attach-drive-dialog {
   width: min(500px, calc(100vw - 32px));
 }

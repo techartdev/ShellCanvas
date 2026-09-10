@@ -22,6 +22,8 @@ mod custom_services;
 mod directories;
 mod drive_bridge_install;
 mod drive_mappings;
+mod drive_recovery;
+mod local_mounts;
 mod extension_frames;
 #[cfg(debug_assertions)]
 mod extension_probe;
@@ -793,6 +795,8 @@ pub fn run() {
                 drive_mappings::attach_drive,
                 drive_mappings::detach_drive,
                 drive_mappings::dismiss_drive,
+                drive_mappings::retry_drive_cleanup,
+                drive_mappings::open_drive_location,
                 repository_install::read_repository_file,
                 repository_install::prepare_repository_read,
                 repository_install::cancel_repository_read,

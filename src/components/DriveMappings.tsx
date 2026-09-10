@@ -1,7 +1,14 @@
 // SPDX-License-Identifier: MPL-2.0
 import { useEffect, useState } from "react";
 import { invoke, isTauri } from "@tauri-apps/api/core";
-import { HardDrive, LoaderCircle, Unplug, X } from "lucide-react";
+import {
+  FolderOpen,
+  HardDrive,
+  LoaderCircle,
+  RotateCw,
+  Unplug,
+  X,
+} from "lucide-react";
 import "./DriveMappings.css";
 
 export interface DriveMapping {
@@ -18,6 +25,7 @@ export interface DriveMapping {
   };
   running: boolean;
   cleanupWarning?: string | null;
+  canRetryCleanup?: boolean;
 }
 export function DriveMappings({ only }: { only?: string }) {
   const [items, setItems] = useState<DriveMapping[]>([]);
@@ -42,17 +50,18 @@ export function DriveMappings({ only }: { only?: string }) {
       clearTimeout(timer);
     };
   }, []);
-  async function action(item: DriveMapping) {
+  async function action(item: DriveMapping, command: string) {
     if (working) return;
-    const detach = item.running;
     setWorking(item.id);
     setError("");
     try {
-      await invoke(detach ? "detach_drive" : "dismiss_drive", {
+      await invoke(command, {
         id: item.id,
       });
-      if (!detach)
+      if (command === "dismiss_drive")
         setItems((values) => values.filter((value) => value.id !== item.id));
+      else if (command !== "open_drive_location")
+        setItems(await invoke<DriveMapping[]>("drive_mappings"));
     } catch (e) {
       setError(String(e));
     } finally {
@@ -96,17 +105,43 @@ export function DriveMappings({ only }: { only?: string }) {
                     ? " · finishing cleanup"
                     : ""}
                 </span>
-                <button
-                  type="button"
-                  disabled={
-                    !!working ||
-                    (item.running && item.status.phase !== "Attached")
-                  }
-                  onClick={() => void action(item)}
-                >
-                  {item.running ? <Unplug size={14} /> : <X size={14} />}
-                  {item.running ? "Detach" : "Dismiss"}
-                </button>
+                <div className="drive-mapping-actions">
+                  {item.running && item.status.phase === "Attached" && (
+                    <button
+                      type="button"
+                      disabled={!!working}
+                      onClick={() => void action(item, "open_drive_location")}
+                    >
+                      <FolderOpen size={14} /> Open folder
+                    </button>
+                  )}
+                  {item.canRetryCleanup ? (
+                    <button
+                      type="button"
+                      disabled={!!working}
+                      onClick={() => void action(item, "retry_drive_cleanup")}
+                    >
+                      <RotateCw size={14} /> Retry cleanup
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      disabled={
+                        !!working ||
+                        (item.running && item.status.phase !== "Attached")
+                      }
+                      onClick={() =>
+                        void action(
+                          item,
+                          item.running ? "detach_drive" : "dismiss_drive",
+                        )
+                      }
+                    >
+                      {item.running ? <Unplug size={14} /> : <X size={14} />}
+                      {item.running ? "Detach" : "Dismiss"}
+                    </button>
+                  )}
+                </div>
               </div>
               {(item.cleanupWarning || item.status.message) && (
                 <p className="drive-mapping-notice" role="status">

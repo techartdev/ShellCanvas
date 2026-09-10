@@ -40,6 +40,8 @@ Include the dependencies' licensing/distribution limitations in that app.
   handles, including failure after acquisition. Two bookkeeping regressions pass;
   Windows and Linux clippy pass. Live WinFsp acceptance remains required.
   These changes are in PR #1, not public main; protocol v2 still awaits merge.
+  CI run `34507333272` for `078e624` passed builds and tests on Windows,
+  Ubuntu and macOS 14. This is build evidence, not native Windows/macOS mount evidence.
 - Bridge has native Windows callbacks and a shared Linux/macOS FUSE backend,
   plus an independently buildable vendored SDK. GPL-3.0-only bridge licensing
   leaves the main app MPL-2.0. README/THIRD-PARTY describe WinFsp/wrapper terms,
@@ -151,8 +153,17 @@ Include the dependencies' licensing/distribution limitations in that app.
    mapping, including chooser cancel, missing driver and changed executable.
    The manager/UI/source leases are implemented; native user-flow verification
    remains, including disconnect/source replacement/quit with busy local files.
-2. Add mapping Open-local-location convenience and an explicit recovery workflow
-   for unconfirmed cleanup. Do not silently clear ownership or claim detach.
+2. Open folder and explicit Retry cleanup controls are implemented. Retry retains
+   the original helper/job ownership and connection reservation. After process
+   shutdown, native OS mount-table checks must confirm the location is unmounted;
+   if not, the UI asks for system unmount followed by another explicit check. No
+   force/unmount command is added to the core. The native helper fixture proves
+   a stopped process does not release a still-occupied location. Native Windows
+   mount-table and Linux parser tests pass; Linux/macOS mount-table code compiles
+   separately for those targets. Open/retry/dismiss UI checks pass at normal dark
+   and 400px light layouts with synthetic data. Desktop clippy and production
+   build pass. Full desktop mapping recovery remains part of gate 1, including
+   the platform launcher and native Unix mount-table runtime checks.
 3. Broaden failure acceptance to real network loss, permission/disk-full errors,
    late SFTP open responses and cancellation while preparing the root. Verify the
    native chooser/source-retirement race without touching the normal user profile.

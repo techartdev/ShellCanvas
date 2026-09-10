@@ -23,6 +23,15 @@ dependency footprint. The bridge repository documents its GPL license and the
 dependencies' separate terms. Modern supported client systems are the priority;
 legacy Catalina client compatibility is outside this goal.
 
+Settings → Files lists active attachments. **Open folder** opens the registered
+local location in the system file manager; it is available only while attached.
+**Detach** requests ordinary native unmount and keeps a busy mapping available.
+If shutdown cannot be confirmed, **Retry cleanup** retains the original helper
+ownership and checks it again. A stopped process alone is insufficient: the local
+OS mount table must also show that the location is unmounted. If a stale mount
+remains, remove it using system disk tools, then retry the check. ShellCanvas keeps
+the connection reserved until confirmation and does not force-unmount the path.
+
 ## Local platform backends
 
 | Client OS | Recommended starting point | Setup and scope |
