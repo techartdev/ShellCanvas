@@ -470,7 +470,7 @@ export function ExtensionManager({
       )}
       <p className="extension-footnote">
         Disabling stops new launches. Close an app’s running windows before
-        removing it. Removing an app keeps its local data.
+        removing it. Removal retires access to that installation's local data.
       </p>
     </section>
   );

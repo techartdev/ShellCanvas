@@ -142,6 +142,7 @@ it("persists installed packages and grants, and pins existing windows across upd
     [],
   );
   expect(updated.generation).not.toBe(first.generation);
+  expect(updated.principal).toBe(first.principal);
   expect(window.installed.package.version).toBe("1.0.0");
   expect(window.installed.grants).toEqual(["system.dialogs"]);
   expect(window.closed).toBe(false);
@@ -154,6 +155,19 @@ it("persists installed packages and grants, and pins existing windows across upd
   expect(Object.isFrozen(reopened.snapshot()[0].package)).toBe(true);
   window.close();
   next.close();
+});
+it("preserves an installation principal across updates and rotates it after removal", async () => {
+  const catalog = new AppCatalog(storage().api);
+  await catalog.load();
+  const first = await catalog.install(await catalog.review(raw()), []);
+  const updated = await catalog.install(
+    await catalog.review(raw("2.0.0")),
+    [],
+  );
+  expect(updated.principal).toBe(first.principal);
+  await catalog.remove(updated.package.id, updated.generation);
+  const reinstalled = await catalog.install(await catalog.review(raw()), []);
+  expect(reinstalled.principal).not.toBe(first.principal);
 });
 it("disables new launches without destroying existing work and refuses removal until all generations close", async () => {
   const catalog = new AppCatalog(storage().api);

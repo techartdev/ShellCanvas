@@ -10,6 +10,8 @@ import {
 export interface InstalledApp {
   readonly source?: RepositorySource;
   readonly package: AppPackage;
+  /** Unpredictable installation lineage used to isolate retained local state. */
+  readonly principal: string;
   readonly generation: string;
   readonly grants: readonly string[];
   readonly enabled: boolean;
@@ -72,6 +74,8 @@ export function parseCatalog(value: unknown): CatalogSnapshot | null {
       ids.has(app.id) ||
       typeof entry.generation !== "string" ||
       !identity.test(entry.generation) ||
+      (entry.principal !== undefined &&
+        (typeof entry.principal !== "string" || !identity.test(entry.principal))) ||
       generations.has(entry.generation) ||
       typeof entry.enabled !== "boolean" ||
       !Array.isArray(entry.grants) ||
@@ -85,6 +89,12 @@ export function parseCatalog(value: unknown): CatalogSnapshot | null {
     generations.add(entry.generation);
     return Object.freeze({
       package: app,
+      // Older catalogs predate principals. Their current generation becomes the
+      // lineage once and is then preserved by subsequent updates.
+      principal:
+        typeof entry.principal === "string"
+          ? entry.principal
+          : entry.generation,
       generation: entry.generation,
       grants: grantsFor(app, entry.grants as string[]),
       enabled: entry.enabled,
@@ -274,6 +284,7 @@ export class AppCatalog {
         );
       const installed: InstalledApp = Object.freeze({
         package: review.package,
+        principal: current?.principal ?? crypto.randomUUID(),
         generation: crypto.randomUUID(),
         grants,
         enabled: true,

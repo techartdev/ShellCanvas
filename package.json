@@ -13,6 +13,9 @@
     "test:sdk": "npm run build:sdk && npm test --workspace @shellcanvas/app-sdk",
     "verify:sdk": "node scripts/verify-sdk.mjs",
     "verify:adapter-sdk": "node scripts/verify-adapter-sdk.mjs",
+    "release:check": "node scripts/check-release-version.mjs",
+    "release:windows": "npm run tauri -- build --bundles nsis,msi",
+    "public:check": "node scripts/check-public-repo.mjs",
     "dev": "vite --host 127.0.0.1",
     "build": "npm run build:sdk && tsc -b && vite build",
     "test": "vitest run",
@@ -40,6 +43,6 @@
     "prettier": "^3.9.6",
     "typescript": "~5.8.3",
     "vite": "^6.4.3",
-    "vitest": "^3.2.0"
+    "vitest": "^4.1.11"
   }
 }

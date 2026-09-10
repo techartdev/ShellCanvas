@@ -111,7 +111,7 @@ Include the dependencies' licensing/distribution limitations in that app.
   initial commit `0cc04ad2e0c31f7e30e39960ea9536e0d0d324f9`.
   Follow-up `dac05fa` adds executable help/notices, build/native-test status,
   binding health and bounded protocol cleanup. Published on `main`.
-  Canonical local checkout: `D:\Mine\ShellCanvas-DriveBridge`.
+  Canonical source repository: `ShellCanvas-DriveBridge`, maintained separately from this desktop checkout.
   `.local/drive-bridge` is the initial build staging copy, not the canonical repo.
 - Public review branch `feat/graceful-detach` now includes `078e624`:
   Windows volume flush visits all writable descriptors and reports the first

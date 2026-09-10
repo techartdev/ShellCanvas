@@ -13,7 +13,7 @@ The session registry owns a cancellation sender for each terminal. Removing a wi
 - Runtime fixtures cover output during blocked input, explicit close with a retained input handle, split multibyte output, independent consoles, non-resizable consoles, dimension clamping, invalid chunk sizes and provider read/write errors. Cleanup runs once in those fixtures.
 - Registry checks preserve ownership across session removal and reject stale/cross-session input.
 - `cargo run -p shellcanvas --example terminal_probe -- HOST USER KEY_PATH` exercises the production SSH terminal adapter, native pump and registry. It opens two shells, uses only temporary shell variables and terminal-size queries, closes one while retaining its input handle, verifies the other still responds, then closes both and disconnects. It does not print credentials or remote terminal contents.
-- The authorized `root@evtinsait` run passed independent variables, 120×40 and 90×25 dimensions, survivor input/output, stale/cross-session refusal and cleanup. This is a native Rust integration probe, not a Windows GUI clipboard/keyboard walkthrough or a physical serial test.
+- The authorized Linux-host run passed independent variables, 120×40 and 90×25 dimensions, survivor input/output, stale/cross-session refusal and cleanup. This is a native Rust integration probe, not a Windows GUI clipboard/keyboard walkthrough or a physical serial test.
 
 Connection identity and established-resource lifecycle now use the [neutral connection contract](connection-lifecycle.md), including live console cleanup verification. Composite service bindings, connector-specific settings and per-binding availability remain open. No automatic fallback from SSH to an insecure protocol is introduced.
 

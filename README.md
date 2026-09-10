@@ -4,6 +4,12 @@ A desktop canvas for remote devices. Built with **Tauri 2, Rust, and TypeScript/
 
 This is an early working prototype, not a complete file manager or a hardened public release.
 
+[User documentation](https://shellcanvas.com/docs/) · [Engineering documentation](docs/README.md) · [Security policy](SECURITY.md) · [Contributing](CONTRIBUTING.md) · [Changelog](CHANGELOG.md)
+
+## Downloads
+
+Windows NSIS and MSI installers are attached to versioned [GitHub Releases](https://github.com/techartdev/ShellCanvas/releases). The public preview is unsigned, so Windows may show an unknown-publisher warning. Check the release's `SHA256SUMS.txt` before installing. Other native platforms remain development targets with the validation limits described below.
+
 The architecture is evolving toward a connection-neutral desktop: SSH is the first/default adapter. [Installed native adapters](docs/adapter-packages.md) can provide files, consoles, optional text/file changes and remote settings through independently assigned connections in one workspace, alongside **SSH (built in)**. These assignments can be stored in [saved workspace profiles](docs/workspace-profiles.md), with credentials omitted and revision-checked updates. See [the composition design](docs/connections.md). Production Serial, Telnet, FTP and device API adapters are not implemented yet.
 
 ## Run
@@ -97,7 +103,7 @@ Canvas variants, local wallpapers, interface scaling and toolbar/dock sizing.
 Theme authors can start from [Canvas Study](examples/themes/canvas-study) without
 an SDK or build step.
 
-Start with [the roadmap](ROADMAP.md), [development backlog](BACKLOG.md), and [kernel/API roadmap](docs/kernel-roadmap.md). Build independent apps with the [standalone app SDK and starter](docs/app-sdk.md). See [the architecture](docs/architecture.md), [bundled app guide](docs/apps.md), [runtime app guide](docs/runtime-apps.md), [remote support matrix](docs/providers.md), [WispCrew AI integration assessment](docs/ai-integration.md), and [contribution guide](CONTRIBUTING.md). The public SDK remains provisional and is distributed as a local tarball; it has not been published to npm. Commercial packaging is intentionally undecided.
+Start with [the documentation map](docs/README.md), [roadmap](ROADMAP.md), [development backlog](BACKLOG.md), and [kernel/API roadmap](docs/kernel-roadmap.md). Build independent apps with the [standalone app SDK and starter](docs/app-sdk.md). See [the architecture](docs/architecture.md), [bundled app guide](docs/apps.md), [runtime app guide](docs/runtime-apps.md), [remote support matrix](docs/providers.md), [WispCrew AI integration assessment](docs/ai-integration.md), and [contribution guide](CONTRIBUTING.md). The public SDK remains provisional while the interfaces settle. Commercial packaging is intentionally undecided.
 
 Device integrations can use the [standalone Rust adapter SDK and CLI](docs/adapter-sdk.md).
 The repository's [AI development skills](docs/ai-development-skills.md) guide

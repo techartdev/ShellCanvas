@@ -94,6 +94,34 @@ it("chunks large selections, snapshots revisions and exports once without exposi
     t.close();
   }
 });
+it("bounds the aggregate number of staged file references", async () => {
+  const t = setup();
+  try {
+    await t.peer.call("system.clipboard.files.start", {
+      id: "bounded-copy",
+      binding: "first",
+    });
+    for (let offset = 0; offset < 4096; offset += 128)
+      await t.peer.call("system.clipboard.files.append", {
+        id: "bounded-copy",
+        offset,
+        entries: Array.from({ length: 128 }, (_, index) => ({
+          path: `entry:${offset + index}`,
+          revision: "r1",
+        })),
+      });
+    await expect(
+      t.peer.call("system.clipboard.files.append", {
+        id: "bounded-copy",
+        offset: 4096,
+        entries: [{ path: "entry:overflow", revision: "r1" }],
+      }),
+    ).rejects.toMatchObject({ code: "invalid" });
+    expect(t.services.copyToSystem).not.toHaveBeenCalled();
+  } finally {
+    t.close();
+  }
+});
 it("publishes Cut with move and clipboard-write grants without requiring download support", async () => {
   const t = setup(["system.clipboard.files.write", "files.move"]);
   try {
@@ -243,10 +271,10 @@ it("requires separate export and file-download permissions before accessing the 
     }
   }
 });
-it("keeps long opaque references below the RPC envelope without a total selection cap", async () => {
+it("keeps long opaque references below the RPC envelope and aggregate budget", async () => {
   const t = setup();
   try {
-    const files = Array.from({ length: 140 }, (_, i) => ({
+    const files = Array.from({ length: 20 }, (_, i) => ({
       ...entries[0],
       path: `entry-${i}:` + "a".repeat(40000),
     }));

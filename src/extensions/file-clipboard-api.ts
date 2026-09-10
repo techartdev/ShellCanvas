@@ -283,6 +283,20 @@ export class AppFileClipboard {
               );
             return { path: entry.path, revision: entry.revision };
           });
+          if (staged.entries.length + entries.length > 4096)
+            throw new RpcError(
+              "invalid",
+              "Copy at most 4096 root entries in one clipboard operation.",
+            );
+          const metadataUnits = [...staged.entries, ...entries].reduce(
+            (total, entry) => total + entry.path.length + entry.revision.length,
+            0,
+          );
+          if (metadataUnits > 1024 * 1024)
+            throw new RpcError(
+              "invalid",
+              "Clipboard file references must not exceed 1 Mi UTF-16 units.",
+            );
           staged.entries.push(...entries);
           return null;
         }),

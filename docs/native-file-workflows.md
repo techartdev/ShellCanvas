@@ -19,7 +19,7 @@ The helper accepts `setup`, `verify` or `cleanup` and one exact UUID path. Run i
 
 ## Earlier clipboard and editor walkthrough
 
-Verified 2026-09-08 against the production Tauri frontend and SSH/SFTP services at code checkpoint `0843068`, using the native workspace fixture and the authorized root connection to evtinsait. A new `/tmp/shellcanvas-ui-UUID` directory contained only two generated text files and an empty destination folder. No existing host files were edited.
+Verified 2026-09-08 against the production Tauri frontend and SSH/SFTP services at code checkpoint `0843068`, using the native workspace fixture and an authorized Linux test host. A new `/tmp/shellcanvas-ui-UUID` directory contained only two generated text files and an empty destination folder. No existing host files were edited.
 
 ## Clipboard and independent Files windows
 

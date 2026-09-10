@@ -2,7 +2,7 @@
 
 ShellCanvas is at the prototype stage. Small, focused contributions and compatibility reports will be most useful while the interfaces settle.
 
-Use [the roadmap](ROADMAP.md) for priorities and [the backlog](BACKLOG.md) for task IDs and completion gates. Keep the backlog current with implementation and validation; do not mark an entire platform supported from a fixture or browser preview alone.
+Use [the documentation map](docs/README.md), [roadmap](ROADMAP.md) and [backlog](BACKLOG.md) for priorities and completion gates. Keep the backlog current with implementation and validation; do not mark an entire platform supported from a fixture or browser preview alone. Security reports follow [the private reporting policy](SECURITY.md), not the public issue tracker.
 
 ## Development
 

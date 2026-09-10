@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 import { expect, it, vi } from "vitest";
-import { appStorageMethods } from "./app-storage";
+import { appStorageMethods, enforceStorageQuota } from "./app-storage";
 import type { AppStorageBackend } from "./storage-api";
 import { RpcPeer, messagePortTransport, type Json } from "./rpc";
 
@@ -20,6 +20,16 @@ function setup() {
     signal: new AbortController().signal,
   };
 }
+it("enforces cumulative per-app key and storage quotas", () => {
+  expect(() => enforceStorageQuota(255, 100, 0, 100)).not.toThrow();
+  expect(() => enforceStorageQuota(256, 100, 0, 1)).toThrow("256-key");
+  expect(() =>
+    enforceStorageQuota(1, 16 * 1024 * 1024, 1, 2),
+  ).toThrow("16 Mi");
+  expect(() =>
+    enforceStorageQuota(1, 16 * 1024 * 1024, 2, 1),
+  ).not.toThrow();
+});
 it("binds data and settings to the host-owned app identity and keeps the buckets separate", async () => {
   const { backend, methods, signal } = setup();
   await methods

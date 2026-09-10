@@ -49,8 +49,10 @@ try {
   The application owns protocol parsing, error handling and retry decisions.
 
 Slots contain 1–64 ASCII letters, digits, underscores or hyphens. Profiles belong
-to the app identity, shared by its windows/versions, not a host session. The
-desktop supplies that identity; a caller cannot name another app. Changing an
+to an unpredictable installation principal, shared by its windows and updates,
+not a host session. A removal retires that principal, so a later package reusing
+the same app ID cannot inherit its saved connection. The desktop supplies the
+principal; a caller cannot name another app. Changing an
 endpoint requires a newly entered key rather than reusing the former endpoint's
 key. The native host adds the bearer header. HTTP redirects are not followed.
 

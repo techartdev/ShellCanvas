@@ -13,6 +13,24 @@ use std::{
     time::SystemTime,
 };
 
+const MAX_CATALOG_ITEMS: u64 = 250_000;
+const MAX_CATALOG_METADATA_BYTES: u64 = 128 * 1024 * 1024;
+fn checked_catalog_totals(
+    count: u64,
+    metadata_bytes: u64,
+    next_bytes: usize,
+) -> Result<(u64, u64)> {
+    let count = count
+        .checked_add(1)
+        .filter(|value| *value <= MAX_CATALOG_ITEMS)
+        .context("Transfer catalog exceeded the 250,000-item discovery budget")?;
+    let metadata_bytes = metadata_bytes
+        .checked_add(next_bytes as u64)
+        .filter(|value| *value <= MAX_CATALOG_METADATA_BYTES)
+        .context("Transfer catalog exceeded the 128 MiB metadata budget")?;
+    Ok((count, metadata_bytes))
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub(crate) struct Stamp {
     pub size: u64,
@@ -53,6 +71,7 @@ pub(crate) struct Catalog {
     _directory: tempfile::TempDir,
     count: AtomicU64,
     size: AtomicU64,
+    metadata_bytes: AtomicU64,
     portable: bool,
 }
 impl Catalog {
@@ -72,6 +91,7 @@ impl Catalog {
             _directory: directory,
             count: AtomicU64::new(0),
             size: AtomicU64::new(0),
+            metadata_bytes: AtomicU64::new(0),
             portable,
         })
     }
@@ -118,6 +138,7 @@ impl Catalog {
         let tx = db.transaction()?;
         let mut count = self.len();
         let mut size = self.size();
+        let mut metadata_bytes = self.metadata_bytes.load(Ordering::Relaxed);
         for (entry, local) in entries {
             if !matches!(entry.kind.as_str(), "file" | "directory") {
                 bail!("Folder contains a link or special file: {}", entry.name);
@@ -136,17 +157,16 @@ impl Catalog {
             if self.portable {
                 super::download_name(&entry.name).map_err(anyhow::Error::msg)?;
             }
-            count = count
-                .checked_add(1)
-                .filter(|v| *v <= i64::MAX as u64)
-                .context("Transfer catalog is too large")?;
             if entry.kind == "file" {
                 size = size
                     .checked_add(entry.size)
                     .context("Transfer size overflow")?;
             }
+            let next_id = count
+                .checked_add(1)
+                .context("Transfer catalog is too large")?;
             let node = Node {
-                id: count,
+                id: next_id,
                 parent: parent.map_or(0, |p| p.id),
                 display: parent
                     .map(|p| format!("{}\\{}", p.display, entry.name))
@@ -159,12 +179,16 @@ impl Catalog {
             } else {
                 node.entry.name.clone()
             };
-            tx.execute("INSERT INTO nodes(id,parent,path,name_key,directory,data) VALUES(?1,?2,?3,?4,?5,?6)", params![node.id, node.parent, node.entry.path, key, node.entry.kind == "directory", serde_json::to_string(&node)?])
+            let data = serde_json::to_string(&node)?;
+            (count, metadata_bytes) = checked_catalog_totals(count, metadata_bytes, data.len())?;
+            debug_assert_eq!(count, next_id);
+            tx.execute("INSERT INTO nodes(id,parent,path,name_key,directory,data) VALUES(?1,?2,?3,?4,?5,?6)", params![node.id, node.parent, node.entry.path, key, node.entry.kind == "directory", data])
                 .with_context(|| format!("Duplicate, cyclic, or conflicting folder entry: {}", node.entry.name))?;
         }
         tx.commit()?;
         self.count.store(count, Ordering::Relaxed);
         self.size.store(size, Ordering::Relaxed);
+        self.metadata_bytes.store(metadata_bytes, Ordering::Relaxed);
         Ok(())
     }
     pub fn get(&self, id: u64) -> Result<Node> {
@@ -220,5 +244,18 @@ impl Catalog {
     #[cfg(test)]
     pub fn scratch_path(&self) -> &std::path::Path {
         self._directory.path()
+    }
+}
+
+#[cfg(test)]
+mod budget_tests {
+    use super::*;
+
+    #[test]
+    fn rejects_item_and_metadata_budget_overflow() {
+        assert!(checked_catalog_totals(MAX_CATALOG_ITEMS - 1, 0, 1).is_ok());
+        assert!(checked_catalog_totals(MAX_CATALOG_ITEMS, 0, 1).is_err());
+        assert!(checked_catalog_totals(0, MAX_CATALOG_METADATA_BYTES - 1, 1).is_ok());
+        assert!(checked_catalog_totals(0, MAX_CATALOG_METADATA_BYTES, 1).is_err());
     }
 }

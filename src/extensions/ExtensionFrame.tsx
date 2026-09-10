@@ -132,7 +132,8 @@ export function ExtensionFrame({
     ]);
     let stopEnvironment: (() => void) | undefined;
     const clipboardOwner = clipboard ? new AppClipboard(clipboard) : undefined;
-    const network = new AppNetwork(app.id, app.title, (request) =>
+    const principal = lease?.installed.principal ?? app.id;
+    const network = new AppNetwork(principal, app.title, (request) =>
       configureConnection.current(request),
     );
     const directories = fileSource ? new AppDirectories(fileSource) : undefined;
@@ -248,7 +249,7 @@ export function ExtensionFrame({
       );
       methods.set("system.services.call", customService.call);
       if (storage)
-        for (const [name, method] of appStorageMethods(app.id, storage))
+        for (const [name, method] of appStorageMethods(principal, storage))
           methods.set(name, method);
       if (clipboardOwner)
         for (const [name, method] of clipboardOwner.methods())
