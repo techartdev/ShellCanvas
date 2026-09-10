@@ -234,10 +234,7 @@ impl Connection {
             let mut channel = self.handle.channel_open_session().await?;
             channel.request_subsystem(true, "sftp").await?;
             wait_for_acceptance(&mut channel, "Text file subsystem").await?;
-            crate::SftpTextFiles::new(russh_sftp::client::RawSftpSession::new(
-                channel.into_stream(),
-            ))
-            .await
+            crate::SftpTextFiles::from_stream(channel.into_stream()).await
         })
         .await
         .context("Text file negotiation timed out")?

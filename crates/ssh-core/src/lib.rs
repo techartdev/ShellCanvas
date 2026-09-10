@@ -12,6 +12,7 @@ pub mod probe;
 pub mod profiles;
 pub mod provider;
 pub mod settings;
+mod sftp_transport;
 pub mod terminal;
 pub mod text;
 pub mod transfers;

@@ -113,6 +113,18 @@ Include the dependencies' licensing/distribution limitations in that app.
   were independently confirmed removed. All 33 core tests and all-target clippy
   pass. This is a controlled real SSH disconnect, not a black-holed network or a
   silent SFTP-only channel close; those failure detection paths remain to verify.
+- Desktop SFTP channels now observe their own transport EOF, I/O errors, shutdown
+  and drop, without additional remote probes. Mount heartbeat checks report Offline
+  after channel retirement even if the SSH connection remains open. Unconfirmed
+  OPEN/OPENDIR timeout also marks that same channel retired before closing it.
+  A real SFTP framing fixture closes one idle channel while a second remains open:
+  the first bridge Poll reports Offline and the second continues successfully.
+  The timeout fixture also verifies that heartbeat health is retired. All 34 core
+  unit tests and all-target clippy pass. Live `mount_probe` still passes offsets
+  above 4 GiB, truncate/EOF, concurrent handles, atomic saves, read-only grants,
+  directory enumeration and disposable cleanup. This is channel-close protocol
+  evidence plus a live healthy-path regression; native channel-only loss and
+  stalled-network detection remain separate checks.
 - SFTP handle acquisition now closes the mount's dedicated channel if OPEN or
   OPENDIR times out before the handle ID arrives. This releases potentially
   allocated but unclaimed server handles without replaying CREATE. Native library
@@ -244,8 +256,9 @@ Include the dependencies' licensing/distribution limitations in that app.
    and 400px light layouts with synthetic data. Desktop clippy and production
    build pass. Full desktop mapping recovery remains part of gate 1, including
    the platform launcher and native Unix mount-table runtime checks.
-3. Broaden failure acceptance to stalled/black-holed network and SFTP-only channel
-   loss, and remote permission/disk-full errors. Controlled SSH disconnect now
+3. Broaden failure acceptance to stalled/black-holed network and native SFTP-only
+   channel loss, and remote permission/disk-full errors. Idle channel EOF now has
+   protocol-level coverage with a second unaffected channel. Controlled SSH disconnect now
    passes over a native Linux mount, after fixing its connection-bound heartbeat.
    Native provider error/cleanup warning injection now passes. Unconfirmed
    SFTP open timeout cleanup is fixed and protocol-fixture tested; verify late

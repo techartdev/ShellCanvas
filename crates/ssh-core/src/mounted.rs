@@ -47,6 +47,9 @@ async fn acquire_handle(
                 // lost or late. No handle ID means we cannot send CLOSE. Retire
                 // this mount's dedicated SFTP channel so the server releases it.
                 // Never retry OPEN: CREATE could already have changed the source.
+                service
+                    .channel_closed
+                    .store(true, std::sync::atomic::Ordering::Release);
                 let _ = service.raw.close_session();
             }
             Err(error)
@@ -396,6 +399,16 @@ impl MountedDirectory for RemoteDirectory {
 #[async_trait]
 impl MountedFileSystem for SftpMount {
     fn check_available(&self) -> FsResult<()> {
+        if self
+            .service
+            .channel_closed
+            .load(std::sync::atomic::Ordering::Acquire)
+        {
+            return Err(FsError::new(
+                FsErrorKind::Offline,
+                "The attachment's SFTP channel has closed",
+            ));
+        }
         if self.connection.as_ref().is_some_and(|c| !c.is_connected()) {
             return Err(FsError::new(
                 FsErrorKind::Offline,
@@ -624,6 +637,65 @@ mod acquisition_tests {
         bytes
     }
 
+    async fn live_channel() -> (
+        Arc<SftpTextFiles>,
+        tokio::sync::oneshot::Sender<()>,
+        tokio::task::JoinHandle<()>,
+    ) {
+        let (client, mut remote) = tokio::io::duplex(4096);
+        let (close, closing) = tokio::sync::oneshot::channel();
+        let peer = tokio::spawn(async move {
+            assert_eq!(packet(&mut remote).await[0], 1);
+            remote
+                .write_all(&[0, 0, 0, 5, 2, 0, 0, 0, 3])
+                .await
+                .unwrap();
+            let _ = closing.await;
+            // Remote EOF without an outstanding filesystem request.
+            drop(remote);
+        });
+        let service = Arc::new(SftpTextFiles::from_stream(client).await.unwrap());
+        (service, close, peer)
+    }
+
+    #[tokio::test]
+    async fn idle_channel_eof_retires_only_its_mount_heartbeat() {
+        use shellcanvas_filesystem_sdk::wire::{Operation, Server};
+        let (service_a, close_a, peer_a) = live_channel().await;
+        let (service_b, close_b, peer_b) = live_channel().await;
+        let server = |service| {
+            Server::new(Arc::new(SftpMount {
+                service,
+                root: "/fixture".into(),
+                writable: false,
+                connection: None,
+            }))
+        };
+        let mut a = server(service_a);
+        let mut b = server(service_b);
+        assert!(a.dispatch(Operation::Poll).await.is_ok());
+        assert!(b.dispatch(Operation::Poll).await.is_ok());
+        close_a.send(()).unwrap();
+        peer_a.await.unwrap();
+        tokio::time::timeout(std::time::Duration::from_secs(1), async {
+            loop {
+                if let Err(error) = a.dispatch(Operation::Poll).await {
+                    assert_eq!(error.kind, FsErrorKind::Offline);
+                    break;
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(1)).await;
+            }
+        })
+        .await
+        .expect("Idle SFTP EOF was invisible to the heartbeat");
+        assert!(
+            b.dispatch(Operation::Poll).await.is_ok(),
+            "Another channel was retired"
+        );
+        close_b.send(()).unwrap();
+        peer_b.await.unwrap();
+    }
+
     #[tokio::test(start_paused = true)]
     async fn unconfirmed_file_and_directory_opens_close_the_dedicated_channel() {
         // Exercise the actual SFTP request path with both the library's own
@@ -660,6 +732,12 @@ mod acquisition_tests {
                 .await
             };
             assert_eq!(result.unwrap_err().kind, FsErrorKind::TimedOut);
+            assert!(
+                service
+                    .channel_closed
+                    .load(std::sync::atomic::Ordering::Acquire),
+                "Timed-out handle acquisition left the mount heartbeat healthy"
+            );
             tokio::time::timeout(std::time::Duration::from_secs(1), peer)
                 .await
                 .expect("Unclaimed remote handle channel stayed open")
