@@ -30,6 +30,7 @@ serde = { version = "1", features = ["derive"] }
 tokio = { version = "1", features = ["sync", "time", "fs", "io-util"] }
 
 [dev-dependencies]
+tao = "0.35"
 russh = { version = "0.63.2", default-features = false, features = ["ring", "rsa"] }
 rand = "0.10"
 
