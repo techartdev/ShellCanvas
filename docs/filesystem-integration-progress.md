@@ -77,6 +77,14 @@ Include the dependencies' licensing/distribution limitations in that app.
   Failed close and cleanup-time deletion deliver structured warnings to the parent;
   failed deletion preserves the source. This injects provider errors, not a real
   network outage or exhausted remote disk. Prior native checks continue to pass.
+- Bridge `1459801`, CI run `34513391440`, passes actual Windows pipe-loss acceptance
+  (31.50 seconds for the full test). With a write-through file still open, both
+  parent pipe endpoints are dropped. The next write fails within ten seconds,
+  independently inspected confirmed source bytes remain unchanged, the helper
+  exits unsuccessfully and the drive letter disappears. Unexpected lifecycle
+  replies/connection loss now return failure exits on both Windows and FUSE;
+  ordinary explicit detach remains successful. All three platform CI jobs pass.
+  This tests abrupt bridge IPC loss, not an actual SSH network outage.
 - SFTP handle acquisition now closes the mount's dedicated channel if OPEN or
   OPENDIR times out before the handle ID arrives. This releases potentially
   allocated but unclaimed server handles without replaying CREATE. Native library
@@ -118,7 +126,10 @@ Include the dependencies' licensing/distribution limitations in that app.
 - Protocol v2 adds ready/status/warning events and an explicit detach request.
   A failed busy detach returns to Attached and requires a new request; it never
   automatically retries. Windows holds an open-context gate across detach; Linux
-  and macOS use ordinary system unmount without force/lazy flags. Windows cleanup
+  and macOS explicit Detach uses ordinary system unmount without force/lazy flags.
+  Abnormal FUSE session/process cleanup also invokes the library's own teardown;
+  `fuser` 0.18's fallback can use lazy/forced unmount. Its native failure path remains
+  a verification gate, distinct from the normal busy-detach evidence. Windows cleanup
   failures reach the parent as structured warning events displayed by the mapping
   manager. Lifecycle and Windows gate unit tests pass.
 - Public bridge PR https://github.com/techartdev/ShellCanvas-DriveBridge/pull/1
@@ -216,7 +227,9 @@ Include the dependencies' licensing/distribution limitations in that app.
    disconnect behavior and failure recovery. Local driver setup is still pending.
 5. Native Linux FUSE tests using a CI binary and a disposable directory. Validate
    directory cursor/rewind and inode retention/forget behavior, create/rename/
-   truncate, permissions, flush, detach and helper failure.
+   truncate, permissions, flush, detach and helper failure. Specifically exercise
+   pipe loss with an open file: inspect the resulting mount table and the library's
+   abnormal cleanup behavior; do not infer it from explicit busy-detach tests.
 6. Verify modern macOS compilation and native runtime as available. fuser's
    kernel/libfuse backend is implemented; FSKit operation is not established.
    Do not claim an OS version/runtime works solely because Linux compiled.
