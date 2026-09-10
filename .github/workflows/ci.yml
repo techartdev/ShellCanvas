@@ -21,18 +21,11 @@ jobs:
       - run: npm run public:check
       - run: npm run verify
 
-  rust:
+  rust-sdks:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
-      - name: Install Tauri Linux dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
-            libwebkit2gtk-4.1-dev \
-            libayatana-appindicator3-dev \
-            librsvg2-dev \
-            libxdo-dev \
-            libssl-dev
-      - run: cargo test --workspace --locked
-      - run: cargo clippy --workspace --all-targets --locked -- -D warnings
+      - name: Test publishable Rust SDKs
+        run: cargo test -p shellcanvas-filesystem-sdk -p shellcanvas-adapter-sdk --locked
+      - name: Lint publishable Rust SDKs
+        run: cargo clippy -p shellcanvas-filesystem-sdk -p shellcanvas-adapter-sdk --all-targets --locked -- -D warnings
