@@ -108,6 +108,7 @@ function RuntimeDocument({
   };
   const state: AppEnvironment = {
     apiVersion: 1,
+    client: lease.client,
     connection: !context.session
       ? "local"
       : !context.connected
@@ -303,10 +304,11 @@ export class DesktopRuntime {
   disabledReason(id: string) {
     if (this.bundled.some((app) => app.id === id) || id === this.manager.id)
       return undefined;
-    return this.catalog
+    const entry = this.catalog
       .snapshot()
-      .some((entry) => entry.package.id === id && entry.enabled)
-      ? undefined
+      .find((entry) => entry.package.id === id);
+    return entry?.enabled
+      ? this.catalog.compatibilityReason(entry.package)
       : "This app is disabled or no longer installed.";
   }
   private launchEpoch = 0;

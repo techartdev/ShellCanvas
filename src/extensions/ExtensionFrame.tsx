@@ -116,7 +116,17 @@ export function ExtensionFrame({
   const documentState = useRef(onDocumentState);
   const controls = useRef(windowControls);
   controls.current = windowControls;
-  const [fallbackEnvironment] = useState(() => new RuntimeEnvironment());
+  const [fallbackEnvironment] = useState(
+    () =>
+      new RuntimeEnvironment({
+        apiVersion: 1,
+        connection: "local",
+        binding: null,
+        visible: true,
+        capabilities: [],
+        client: lease?.client ?? { platform: "unknown" },
+      }),
+  );
   const environment = suppliedEnvironment ?? fallbackEnvironment;
   documentState.current = onDocumentState;
   useEffect(() => {

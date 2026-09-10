@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: MPL-2.0
 import type { Json } from "./rpc.js";
+import type { ClientEnvironment } from "./client-platform.js";
 export interface AppEnvironment {
   readonly apiVersion: 1;
+  /** Client target independent of the remote host. Absent on older ShellCanvas versions. */
+  readonly client?: ClientEnvironment;
   readonly connection:
     "local" | "connected" | "disconnected" | "review-required";
   /** Opaque identity of the explicitly accepted binding, never a native session handle. */

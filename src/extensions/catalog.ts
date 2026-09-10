@@ -1,6 +1,11 @@
 // SPDX-License-Identifier: MPL-2.0
 import { parseAppPackage, type AppPackage } from "./package";
 import { RpcError } from "./rpc";
+import { readClientEnvironment } from "./client-platform";
+import {
+  clientCompatibilityReason,
+  type ClientEnvironment,
+} from "../../packages/app-sdk/src/client-platform";
 import { catalogNotifications, holdCatalogLock } from "./catalog-coordination";
 import {
   parseRepositorySource,
@@ -118,6 +123,7 @@ export class AppLease {
     readonly id: string,
     readonly installed: InstalledApp,
     private release: () => void,
+    readonly client: ClientEnvironment = Object.freeze({ platform: "unknown" }),
   ) {}
   get closed() {
     return this.stopped;
@@ -156,7 +162,23 @@ export class AppCatalog {
   private leases = new Map<string, AppLease>();
   private listeners = new Set<() => void>();
   private empty: readonly InstalledApp[] = Object.freeze([]);
-  constructor(private storage: CatalogStorage) {}
+  private clientInfo: ClientEnvironment = Object.freeze({
+    platform: "unknown",
+  });
+  constructor(
+    private storage: CatalogStorage,
+    private readClient = readClientEnvironment,
+  ) {}
+  get client() {
+    return this.clientInfo;
+  }
+  compatibilityReason(app: AppPackage) {
+    return clientCompatibilityReason(app, this.clientInfo);
+  }
+  private requireCompatible(app: AppPackage) {
+    const reason = this.compatibilityReason(app);
+    if (reason) throw new RpcError("unavailable", reason);
+  }
   snapshot = () => this.state?.apps ?? this.empty;
   subscribe = (listener: () => void) => {
     this.listeners.add(listener);
@@ -182,9 +204,16 @@ export class AppCatalog {
     return this.serial(() => this.refresh());
   }
   private async refresh() {
+    const client = await this.readClient();
     // A failed/corrupt read never replaces the previous state or writes an empty catalog.
     const next = parseCatalog(await this.storage.read());
-    if (!this.loaded || next?.revision !== this.state?.revision) {
+    const clientChanged = this.clientInfo.platform !== client.platform;
+    this.clientInfo = Object.freeze({ ...client });
+    if (
+      !this.loaded ||
+      clientChanged ||
+      next?.revision !== this.state?.revision
+    ) {
       this.state = next;
       this.loaded = true;
       this.publish();
@@ -282,6 +311,7 @@ export class AppCatalog {
           "invalid",
           "This app changed after review. Review the current update again.",
         );
+      this.requireCompatible(review.package);
       const installed: InstalledApp = Object.freeze({
         package: review.package,
         principal: current?.principal ?? crypto.randomUUID(),
@@ -313,6 +343,7 @@ export class AppCatalog {
   setEnabled(id: string, generation: string, enabled: boolean) {
     return this.serial(async () => {
       const current = this.current(id, generation);
+      if (enabled) this.requireCompatible(current.package);
       await this.commit(
         this.snapshot().map((entry) =>
           entry === current ? Object.freeze({ ...current, enabled }) : entry,
@@ -368,11 +399,17 @@ export class AppCatalog {
             "unavailable",
             "This app is disabled or no longer installed.",
           );
+        this.requireCompatible(installed.package);
         const identity = crypto.randomUUID();
-        const lease = new AppLease(identity, installed, () => {
-          this.leases.delete(identity);
-          release?.();
-        });
+        const lease = new AppLease(
+          identity,
+          installed,
+          () => {
+            this.leases.delete(identity);
+            release?.();
+          },
+          this.clientInfo,
+        );
         this.leases.set(identity, lease);
         return lease;
       } catch (error) {

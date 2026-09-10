@@ -71,6 +71,12 @@ fn error(e: impl std::fmt::Display) -> String {
     e.to_string()
 }
 
+/// Client compile target, independent of all remote workspace connections.
+#[tauri::command]
+fn client_platform() -> &'static str {
+    std::env::consts::OS
+}
+
 #[tauri::command]
 async fn profiles(app: tauri::AppHandle) -> Result<Vec<HostProfile>, String> {
     let dir = profile_store::storage_dir(&app)?;
@@ -786,6 +792,7 @@ pub fn run() {
                 return handler(invoke);
             }
             let handler: fn(tauri::ipc::Invoke<tauri::Wry>) -> bool = tauri::generate_handler![
+                client_platform,
                 drive_bridge_install::drive_bridge_installation,
                 drive_bridge_install::review_drive_bridge,
                 drive_bridge_install::cancel_drive_bridge_review,

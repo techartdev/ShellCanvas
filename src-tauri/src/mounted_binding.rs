@@ -87,6 +87,7 @@ impl MountedFileSystem for FileSystem {
             binding: self.binding.clone(),
             inner,
             writable: self.writable && options.write,
+            metadata_writable: self.writable,
         }))
     }
     async fn open_directory(&self, path: &MountPath) -> FsResult<Box<dyn MountedDirectory>> {
@@ -128,6 +129,7 @@ struct File {
     binding: Binding,
     inner: Arc<dyn MountedFile>,
     writable: bool,
+    metadata_writable: bool,
 }
 #[async_trait]
 impl MountedFile for File {
@@ -146,7 +148,10 @@ impl MountedFile for File {
             .await
     }
     async fn set_metadata(&self, metadata: FsSetMetadata) -> FsResult<()> {
-        write_allowed(self.writable)?;
+        write_allowed(self.metadata_writable)?;
+        if metadata.size.is_some() {
+            write_allowed(self.writable)?;
+        }
         self.binding
             .mount_run(true, self.inner.set_metadata(metadata))
             .await
@@ -189,6 +194,7 @@ mod tests {
     }
     struct Handle {
         closes: AtomicUsize,
+        metadata_writes: AtomicUsize,
     }
     #[async_trait]
     impl MountedFile for Handle {
@@ -202,6 +208,7 @@ mod tests {
             Ok(())
         }
         async fn set_metadata(&self, _: FsSetMetadata) -> FsResult<()> {
+            self.metadata_writes.fetch_add(1, Ordering::SeqCst);
             Ok(())
         }
         async fn flush(&self) -> FsResult<()> {
@@ -210,6 +217,44 @@ mod tests {
         async fn close(&self) -> FsResult<()> {
             self.closes.fetch_add(1, Ordering::SeqCst);
             Ok(())
+        }
+    }
+    struct Root(Arc<Handle>);
+    fn unsupported<T>() -> FsResult<T> {
+        Err(FsError::new(
+            FsErrorKind::Unsupported,
+            "unused fixture operation",
+        ))
+    }
+    #[async_trait]
+    impl MountedFileSystem for Root {
+        fn capabilities(&self) -> FsCapabilities {
+            FsCapabilities {
+                writable: true,
+                atomic_replace: false,
+                durable_flush: false,
+            }
+        }
+        async fn metadata(&self, _: &MountPath) -> FsResult<FsMetadata> {
+            unsupported()
+        }
+        async fn open(&self, _: &MountPath, _: FsOpenOptions) -> FsResult<Arc<dyn MountedFile>> {
+            Ok(self.0.clone())
+        }
+        async fn open_directory(&self, _: &MountPath) -> FsResult<Box<dyn MountedDirectory>> {
+            unsupported()
+        }
+        async fn set_metadata(&self, _: &MountPath, _: FsSetMetadata) -> FsResult<()> {
+            unsupported()
+        }
+        async fn mkdir(&self, _: &MountPath) -> FsResult<()> {
+            unsupported()
+        }
+        async fn remove(&self, _: &MountPath, _: bool) -> FsResult<()> {
+            unsupported()
+        }
+        async fn rename(&self, _: &MountPath, _: &MountPath, _: bool) -> FsResult<()> {
+            unsupported()
         }
     }
     #[tokio::test]
@@ -228,17 +273,66 @@ mod tests {
         };
         let inner = Arc::new(Handle {
             closes: AtomicUsize::new(0),
+            metadata_writes: AtomicUsize::new(0),
         });
-        let file = File {
-            binding: binding.clone(),
-            inner: inner.clone(),
-            writable: true,
+        let path = MountPath::root().child("file").unwrap();
+        let read_options = FsOpenOptions {
+            read: true,
+            write: false,
+            create: FsCreate::OpenExisting,
+            truncate: false,
         };
-        let read_only = File {
-            binding: binding.clone(),
-            inner: inner.clone(),
-            writable: false,
-        };
+        let root = Arc::new(Root(inner.clone()));
+        let writable_root = FileSystem::new(binding.clone(), root.clone(), true);
+        let file = writable_root
+            .open(
+                &path,
+                FsOpenOptions {
+                    write: true,
+                    ..read_options
+                },
+            )
+            .await
+            .unwrap();
+        let read_only = FileSystem::new(binding.clone(), root, false)
+            .open(&path, read_options)
+            .await
+            .unwrap();
+        let attributes_only = writable_root.open(&path, read_options).await.unwrap();
+        for metadata in [
+            FsSetMetadata {
+                permissions: Some(0o444),
+                ..Default::default()
+            },
+            FsSetMetadata {
+                modified: Some(1_600_000_123),
+                ..Default::default()
+            },
+        ] {
+            attributes_only.set_metadata(metadata).await.unwrap();
+        }
+        assert_eq!(inner.metadata_writes.load(Ordering::SeqCst), 2);
+        assert_eq!(
+            attributes_only
+                .set_metadata(FsSetMetadata {
+                    size: Some(0),
+                    permissions: Some(0o444),
+                    ..Default::default()
+                })
+                .await
+                .unwrap_err()
+                .kind,
+            FsErrorKind::ReadOnly
+        );
+        assert_eq!(
+            attributes_only.write_at(0, &[8]).await.unwrap_err().kind,
+            FsErrorKind::ReadOnly
+        );
+        assert_eq!(
+            inner.metadata_writes.load(Ordering::SeqCst),
+            2,
+            "Rejected truncation forwarded a partial metadata change"
+        );
         assert_eq!(
             read_only.write_at(0, &[8]).await.unwrap_err().kind,
             FsErrorKind::ReadOnly
@@ -252,6 +346,11 @@ mod tests {
             FsErrorKind::ReadOnly
         );
         assert_eq!(read_only.read_at(0, 1).await.unwrap(), vec![7]);
+        assert_eq!(
+            inner.metadata_writes.load(Ordering::SeqCst),
+            2,
+            "Read-only mount forwarded a metadata update"
+        );
         assert_eq!(
             file.metadata().await.unwrap_err().kind,
             FsErrorKind::PermissionDenied
@@ -275,6 +374,22 @@ mod tests {
         assert_eq!(
             file.write_at(0, &[8]).await.unwrap_err().kind,
             FsErrorKind::Offline
+        );
+        assert_eq!(
+            attributes_only
+                .set_metadata(FsSetMetadata {
+                    modified: Some(1_600_000_124),
+                    ..Default::default()
+                })
+                .await
+                .unwrap_err()
+                .kind,
+            FsErrorKind::Offline
+        );
+        assert_eq!(
+            inner.metadata_writes.load(Ordering::SeqCst),
+            2,
+            "Retired binding forwarded a metadata update"
         );
         file.close().await.unwrap();
         assert_eq!(inner.closes.load(Ordering::SeqCst), 1);

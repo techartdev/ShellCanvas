@@ -4,6 +4,8 @@ import { useEffect, useRef, useState } from "react";
 import { HardDrive, LoaderCircle, ShieldCheck } from "lucide-react";
 import "./DriveBridgeSettings.css";
 import { DriveMappings } from "./DriveMappings";
+import { readClientEnvironment } from "../extensions/client-platform";
+import { clientCompatibilityReason } from "../../packages/app-sdk/src/client-platform";
 
 type Installation = {
   version: number;
@@ -20,6 +22,7 @@ export function DriveBridgeSettings() {
   const [review, setReview] = useState<Review | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [compatible, setCompatible] = useState(false);
   const alive = useRef(true);
   const pending = useRef<string | null>(null);
   const working = useRef(false);
@@ -27,9 +30,22 @@ export function DriveBridgeSettings() {
   useEffect(() => {
     alive.current = true;
     if (native)
-      void invoke<Installation | null>("drive_bridge_installation")
+      void readClientEnvironment()
+        .then(async (client) => {
+          const reason = clientCompatibilityReason(
+            { clientPlatforms: ["windows", "macos", "linux"] },
+            client,
+          );
+          if (!alive.current) return undefined;
+          setCompatible(!reason);
+          if (reason) {
+            setInstallationStatus(reason);
+            return undefined;
+          }
+          return invoke<Installation | null>("drive_bridge_installation");
+        })
         .then((value) => {
-          if (alive.current) {
+          if (alive.current && value !== undefined) {
             setInstalled(value);
             setInstallationStatus(
               value ? "Bridge installed" : "No bridge installed",
@@ -173,14 +189,14 @@ export function DriveBridgeSettings() {
             <p>
               {installed
                 ? installed.name
-                : native
+                : native && compatible
                   ? "Choose a Drive Bridge build for this computer."
                   : "Install and attach drives in the desktop app."}
             </p>
           </div>
           <button
             type="button"
-            disabled={!native || busy}
+            disabled={!native || !compatible || busy}
             onClick={() => void choose()}
           >
             {busy ? <LoaderCircle className="spin" size={15} /> : null}

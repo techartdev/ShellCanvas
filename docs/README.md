@@ -16,7 +16,7 @@ The public user documentation lives at [shellcanvas.com/docs](https://shellcanva
 
 ## Contracts and API design
 
-- [System API](system-api.md), [app services](app-services.md), [service availability](service-availability.md) and [window management](window-management.md)
+- [System API](system-api.md), [app services](app-services.md), [service availability](service-availability.md), [client platform compatibility](client-platform-compatibility.md) and [window management](window-management.md)
 - [Filesystem contract](filesystem-contract.md), [workspace bindings](workspace-bindings.md), [adapter process protocol](adapter-process.md) and [providers](providers.md)
 - Runtime APIs: [files](app-files.md), [transfers](app-transfers.md), [console](app-console.md), [storage](app-storage.md), [events](app-events.md), [clipboard](app-clipboard.md), [network](app-network.md), [windows](app-window.md) and [host settings](app-host-settings.md)
 
