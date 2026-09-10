@@ -268,13 +268,24 @@ for i in range(70):
     (p/'directory'/f'item-{i:03}').write_bytes(bytes([i]))
 assert len(list((p/'directory').iterdir())) == 70
 assert len(list((p/'directory').iterdir())) == 70
+directory_fd = os.open(p/'directory', os.O_RDONLY | os.O_DIRECTORY)
+expected_names = {f'item-{i:03}' for i in range(70)}
+for _ in range(2):
+    os.lseek(directory_fd, 0, os.SEEK_SET)
+    with os.scandir(directory_fd) as entries:
+        assert {entry.name for entry in entries} == expected_names, 'rewind lost directory entries'
 fd = os.open(p/'directory'/'item-000', os.O_RDWR)
 os.rename(p/'directory', p/'renamed')
 try:
     os.pwrite(fd, b'changed', 0)
     assert (p/'renamed'/'item-000').read_bytes() == b'changed'
+    os.lseek(directory_fd, 0, os.SEEK_SET)
+    with os.scandir(directory_fd) as entries:
+        assert {entry.name for entry in entries} == expected_names, 'open directory rewind failed after rename'
 finally:
     os.close(fd)
+    os.close(directory_fd)
+print('LINUX_DIRECTORY_REWIND_PASS: same open directory descriptor enumerates exact pages after rewinding and renaming', flush=True)
 try:
     os.rmdir(p/'renamed')
     raise AssertionError('nonempty directory removed')

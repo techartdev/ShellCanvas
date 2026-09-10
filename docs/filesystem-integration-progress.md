@@ -12,6 +12,18 @@ Include the dependencies' licensing/distribution limitations in that app.
 
 ## Current implementation
 
+- Bridge `87a28c9` fixes FUSE directory rewind recovery: retired handles and
+  buffered entries are cleared before reopening. A failed close/reopen or invalid
+  reply cannot leave a later seek using a closed handle. Two regression tests
+  pass on Linux/macOS in CI run `34519068114`; all platform jobs pass. Its Linux
+  artifact (SHA-256 `24babf890037503ae93d3f2ac7c8ee855b9e4a093208d82f9b8a30c155bc515a`)
+  passes native Linux 6.8 acceptance over the real core SFTP provider: the same
+  directory descriptor enumerates exact pages after repeated rewind and after
+  directory rename. Prior I/O, mapped-file and busy-detach checks also pass.
+  The fixture `d7d47df5-69e2-4b6b-a9b6-70e2b6615214` and staged binary directory
+  were independently confirmed removed, with no remaining mount-table entry.
+  Failure recovery is regression-fixture evidence; native injected reopen failure
+  and non-root FUSE remain separate checks.
 - Bridge `e58d386` passes native Windows acceptance in CI run `34518237898`
   (32.21 seconds), including directory rename with two open directory aliases.
   An open descendant correctly blocks rename with error 5 and preserves source
@@ -288,8 +300,9 @@ Include the dependencies' licensing/distribution limitations in that app.
    Explorer/ordinary editor acceptance (native directory rename/open-handle
    semantics are now verified above),
    disconnect behavior and failure recovery. Local driver setup is still pending.
-5. Native Linux FUSE tests using a CI binary and a disposable directory. Validate
-   directory cursor/rewind and inode retention/forget behavior, create/rename/
+5. Native Linux FUSE tests using a CI binary and a disposable directory. Directory
+   cursor rewind, including an open renamed directory, now passes. Validate
+   inode retention/forget behavior, create/rename/
    truncate, permissions, flush, detach and helper failure. Specifically exercise
    pipe loss with an open file now passes on Linux 6.8 as root, including source
    preservation and confirmed mount disappearance. Validate non-root helper
