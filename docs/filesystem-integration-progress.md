@@ -42,6 +42,16 @@ Include the dependencies' licensing/distribution limitations in that app.
   These changes are in PR #1, not public main; protocol v2 still awaits merge.
   CI run `34507333272` for `078e624` passed builds and tests on Windows,
   Ubuntu and macOS 14. This is build evidence, not native Windows/macOS mount evidence.
+- Bridge `da6cf5a` negotiates Linux `FUSE_DIRECT_IO_ALLOW_MMAP` only when the
+  kernel advertises it, preserving ordinary direct I/O without enabling generic
+  writeback caching. CI run `34509574335` passed all three platforms. Its Linux
+  binary (SHA-256 `dac610e7588bf33d53e69f4896cfec8b3a6395cab892e5b42a500a8280415a6d`)
+  passed native Linux 6.8 tests through the core SFTP root: shared cross-page
+  mapped writes flushed to the independently inspected source, mapped lifetime
+  after descriptor close, read-only maps and private copy-on-write isolation.
+  The full prior native file-operation/busy-detach suite also passed, followed
+  by ordinary unmount and removal of the disposable UUID tree. The harness is
+  `crates/ssh-core/examples/native_bridge_probe.rs`.
 - Bridge has native Windows callbacks and a shared Linux/macOS FUSE backend,
   plus an independently buildable vendored SDK. GPL-3.0-only bridge licensing
   leaves the main app MPL-2.0. README/THIRD-PARTY describe WinFsp/wrapper terms,
@@ -180,7 +190,9 @@ Include the dependencies' licensing/distribution limitations in that app.
    Windows cleanup-time deletion warnings and busy-detach control are implemented
    but need native WinFsp acceptance. Volume-wide flush and cross-handle rename
    are implemented with bookkeeping regression tests; native checks and file
-   attribute work remain. Memory-mapped workflows need explicit acceptance.
+   attribute work remain. Linux shared/private/read-only memory-mapping acceptance
+   now passes; Windows/macOS mapped-file tests and concurrent remote-edit behavior
+   remain unverified. This is not database or VM-image compatibility evidence.
 8. Review cancellation/late responses, bounded teardown and protocol errors with
    failure fixtures, then run the relevant core/desktop regression checks. Add
    reproducible release packages/notices and update bridge docs with exact verified

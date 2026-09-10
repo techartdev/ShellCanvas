@@ -129,9 +129,10 @@ async fn main() -> Result<()> {
             run(
                 &args,
                 &format!(
-                    "timeout 240s python3 {} {}",
+                    "timeout 240s python3 {} {} {}",
                     quote(&script.path),
-                    quote(&target)
+                    quote(&target),
+                    quote(&source)
                 )
             )
             .await?
@@ -183,7 +184,7 @@ async fn main() -> Result<()> {
     println!("PASS: native Linux filesystem -> FUSE bridge -> core root grant -> real SFTP; detached and disposable tree removed");
     Ok(())
 }
-const TEST: &str = r#"import os, sys, errno
+const TEST: &str = r#"import os, sys, errno, mmap
 from pathlib import Path
 p = Path(sys.argv[1])
 f = os.open(p/'seek.bin', os.O_CREAT|os.O_EXCL|os.O_RDWR, 0o600)
@@ -224,5 +225,29 @@ try:
     raise AssertionError('missing file readable')
 except FileNotFoundError:
     pass
+payload = bytes(range(256)) * 49
+(p/'mapped.bin').write_bytes(payload)
+fd = os.open(p/'mapped.bin', os.O_RDWR)
+mapped = mmap.mmap(fd, len(payload), access=mmap.ACCESS_WRITE)
+os.close(fd) # The mapping must retain the open object after its descriptor closes.
+try:
+    assert mapped[:] == payload
+    mapped[4093:4103] = b'cross-page'
+    mapped.flush()
+finally:
+    mapped.close()
+expected = payload[:4093] + b'cross-page' + payload[4103:]
+assert (Path(sys.argv[2])/'mapped.bin').read_bytes() == expected, 'mapped write did not reach SFTP source'
+fd = os.open(p/'mapped.bin', os.O_RDONLY)
+try:
+    with mmap.mmap(fd, len(expected), access=mmap.ACCESS_READ) as readonly:
+        assert readonly[:] == expected
+    with mmap.mmap(fd, len(expected), access=mmap.ACCESS_COPY) as private:
+        private[:7] = b'private'
+        private.flush()
+finally:
+    os.close(fd)
+assert (Path(sys.argv[2])/'mapped.bin').read_bytes() == expected, 'private mapping modified source'
+print('LINUX_MMAP_PASS: shared cross-page writes flushed to source, descriptor-close lifetime, read-only and private mappings', flush=True)
 print('LINUX_NATIVE_MOUNT_PASS: sparse offset, truncate, atomic editor save, old handle identity, paged enumeration, directory rename with open file, capacity and errors', flush=True)
 "#;
