@@ -766,6 +766,60 @@ mod acquisition_tests {
         }
     }
 
+    #[tokio::test]
+    async fn cancelled_root_preparation_closes_only_its_dedicated_sftp_channel() {
+        let (other, close_other, other_peer) = live_channel().await;
+        for after_realpath in [false, true] {
+            let (client, mut remote) = tokio::io::duplex(4096);
+            let (entered, waiting) = tokio::sync::oneshot::channel();
+            let peer = tokio::spawn(async move {
+                assert_eq!(packet(&mut remote).await[0], 1);
+                remote
+                    .write_all(&[0, 0, 0, 5, 2, 0, 0, 0, 3])
+                    .await
+                    .unwrap();
+                let realpath = packet(&mut remote).await;
+                assert_eq!(realpath[0], 16); // SSH_FXP_REALPATH
+                if after_realpath {
+                    let mut name = 1u32.to_be_bytes().to_vec();
+                    name.extend_from_slice(&8u32.to_be_bytes());
+                    name.extend_from_slice(b"/fixture");
+                    name.extend_from_slice(&[0; 8]); // empty longname and attrs
+                    reply(&mut remote, 104, &realpath[1..5], &name).await;
+                    assert_eq!(packet(&mut remote).await[0], 7); // SSH_FXP_LSTAT
+                }
+                entered.send(()).unwrap();
+                let mut byte = [0];
+                assert_eq!(
+                    remote.read(&mut byte).await.unwrap(),
+                    0,
+                    "Canceled preparation did not close its SFTP channel"
+                );
+            });
+            let service = Arc::new(SftpTextFiles::from_stream(client).await.unwrap());
+            let preparation =
+                tokio::spawn(async move { SftpMount::new(service, "/fixture", false).await });
+            tokio::time::timeout(std::time::Duration::from_secs(2), waiting)
+                .await
+                .unwrap()
+                .unwrap();
+            preparation.abort();
+            assert!(preparation.await.err().unwrap().is_cancelled());
+            tokio::time::timeout(std::time::Duration::from_secs(2), peer)
+                .await
+                .unwrap()
+                .unwrap();
+            assert!(
+                !other
+                    .channel_closed
+                    .load(std::sync::atomic::Ordering::Acquire),
+                "Cancellation retired a different SFTP channel"
+            );
+        }
+        close_other.send(()).unwrap();
+        other_peer.await.unwrap();
+    }
+
     async fn live_channel() -> (
         Arc<SftpTextFiles>,
         tokio::sync::oneshot::Sender<()>,

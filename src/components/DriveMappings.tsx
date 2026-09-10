@@ -26,6 +26,8 @@ export interface DriveMapping {
   running: boolean;
   cleanupWarning?: string | null;
   canRetryCleanup?: boolean;
+  canCancelStartup?: boolean;
+  startupCanceled?: boolean;
 }
 export function DriveMappings({ only }: { only?: string }) {
   const [items, setItems] = useState<DriveMapping[]>([]);
@@ -86,8 +88,9 @@ export function DriveMappings({ only }: { only?: string }) {
         .filter((item) => !only || item.id === only)
         .map((item) => {
           const pending =
-            item.status.phase === "Starting" ||
-            item.status.phase === "Detaching";
+            !item.startupCanceled &&
+            (item.status.phase === "Starting" ||
+              item.status.phase === "Detaching");
           return (
             <article className="drive-mapping" key={item.id}>
               <div className="drive-mapping-heading">
@@ -100,7 +103,7 @@ export function DriveMappings({ only }: { only?: string }) {
               <div className="drive-mapping-status">
                 <span>
                   {pending && <LoaderCircle size={14} className="spin" />}
-                  {item.status.phase}
+                  {item.startupCanceled ? "Canceled" : item.status.phase}
                   {item.status.phase === "Detached" && item.running
                     ? " · finishing cleanup"
                     : ""}
@@ -115,7 +118,15 @@ export function DriveMappings({ only }: { only?: string }) {
                       <FolderOpen size={14} /> Open folder
                     </button>
                   )}
-                  {item.canRetryCleanup ? (
+                  {item.canCancelStartup ? (
+                    <button
+                      type="button"
+                      disabled={!!working}
+                      onClick={() => void action(item, "cancel_drive_startup")}
+                    >
+                      <X size={14} /> Cancel attachment
+                    </button>
+                  ) : item.canRetryCleanup ? (
                     <button
                       type="button"
                       disabled={!!working}
