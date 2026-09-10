@@ -19,6 +19,7 @@ fn error(e: SftpError) -> FsError {
             StatusCode::OpUnsupported => FsErrorKind::Unsupported,
             _ => FsErrorKind::Io,
         },
+        SftpError::Timeout => FsErrorKind::TimedOut,
         _ => FsErrorKind::Io,
     };
     FsError::new(kind, e.to_string())
@@ -33,6 +34,24 @@ async fn request<T>(f: impl Future<Output = Result<T, SftpError>>) -> FsResult<T
             )
         })?
         .map_err(error)
+}
+async fn acquire_handle(
+    service: &SftpTextFiles,
+    operation: impl Future<Output = Result<russh_sftp::protocol::Handle, SftpError>>,
+) -> FsResult<String> {
+    match request(operation).await {
+        Ok(handle) => Ok(handle.handle),
+        Err(error) => {
+            if error.kind == FsErrorKind::TimedOut {
+                // The remote server may have allocated a handle whose reply was
+                // lost or late. No handle ID means we cannot send CLOSE. Retire
+                // this mount's dedicated SFTP channel so the server releases it.
+                // Never retry OPEN: CREATE could already have changed the source.
+                let _ = service.raw.close_session();
+            }
+            Err(error)
+        }
+    }
 }
 fn metadata(a: FileAttributes) -> FsMetadata {
     FsMetadata {
@@ -424,9 +443,11 @@ impl MountedFileSystem for SftpMount {
         // Truncate only after validating the returned handle is a regular file.
         let service = self.service.clone();
         let file = tokio::spawn(async move {
-            let id = request(service.raw.open(path, flags, FileAttributes::empty()))
-                .await?
-                .handle;
+            let id = acquire_handle(
+                &service,
+                service.raw.open(path, flags, FileAttributes::empty()),
+            )
+            .await?;
             let file = RemoteFile {
                 handle: RemoteHandle {
                     service,
@@ -461,7 +482,7 @@ impl MountedFileSystem for SftpMount {
         }
         let service = self.service.clone();
         tokio::spawn(async move {
-            let id = request(service.raw.opendir(path)).await?.handle;
+            let id = acquire_handle(&service, service.raw.opendir(path)).await?;
             Ok(Box::new(RemoteDirectory {
                 handle: RemoteHandle {
                     service,
@@ -559,5 +580,64 @@ impl MountedFileSystem for SftpMount {
             request(self.service.raw.rename(from, to)).await?;
         }
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod acquisition_tests {
+    use super::*;
+    use russh_sftp::client::RawSftpSession;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt, DuplexStream};
+
+    async fn packet(stream: &mut DuplexStream) -> Vec<u8> {
+        let length = stream.read_u32().await.unwrap();
+        assert!(length < 4096);
+        let mut bytes = vec![0; length as usize];
+        stream.read_exact(&mut bytes).await.unwrap();
+        bytes
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn unconfirmed_file_and_directory_opens_close_the_dedicated_channel() {
+        // Exercise the actual SFTP request path with both the library's own
+        // deadline and our outer deadline. Keep the service alive throughout:
+        // cleanup must be caused by failed acquisition, not its final Drop.
+        for (directory, library_deadline) in [(false, 120), (true, 120), (false, 1)] {
+            let (client, mut remote) = tokio::io::duplex(4096);
+            let peer = tokio::spawn(async move {
+                assert_eq!(packet(&mut remote).await[0], 1); // SSH_FXP_INIT
+                remote
+                    .write_all(&[0, 0, 0, 5, 2, 0, 0, 0, 3])
+                    .await
+                    .unwrap();
+                let open = packet(&mut remote).await;
+                assert_eq!(open[0], if directory { 11 } else { 3 });
+                // Simulate an allocated remote handle with its reply delayed.
+                // Session EOF is the only way to release an ID the client lacks.
+                let mut byte = [0];
+                let n = remote.read(&mut byte).await.unwrap();
+                assert_eq!(n, 0, "Timed-out OPEN did not close its SFTP channel");
+            });
+            let raw = RawSftpSession::new(client);
+            raw.set_timeout(library_deadline);
+            let service = SftpTextFiles::new(raw).await.unwrap();
+            let result = if directory {
+                acquire_handle(&service, service.raw.opendir("/fixture")).await
+            } else {
+                acquire_handle(
+                    &service,
+                    service
+                        .raw
+                        .open("/fixture", OpenFlags::READ, FileAttributes::empty()),
+                )
+                .await
+            };
+            assert_eq!(result.unwrap_err().kind, FsErrorKind::TimedOut);
+            tokio::time::timeout(std::time::Duration::from_secs(1), peer)
+                .await
+                .expect("Unclaimed remote handle channel stayed open")
+                .unwrap();
+            drop(service);
+        }
     }
 }

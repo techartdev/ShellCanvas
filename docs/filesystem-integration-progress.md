@@ -69,6 +69,22 @@ Include the dependencies' licensing/distribution limitations in that app.
   All four native markers pass, with one test passing in 27.93 seconds. Windows,
   Ubuntu and macOS 14 build/test jobs pass. This is real WinFsp acceptance with
   a local provider, not desktop UI or an end-to-end SFTP mapping test.
+- Follow-up bridge `36464c5`, CI run `34512537189`, passes native Windows failure
+  injection as well (28.21 seconds). Write-through writes surface the expected
+  Windows status for I/O failure, offline, timeout and read-only rejection;
+  independently inspected source bytes remain unchanged. Failed durable flush
+  reports an error. Unrelated I/O remains usable after these operation failures.
+  Failed close and cleanup-time deletion deliver structured warnings to the parent;
+  failed deletion preserves the source. This injects provider errors, not a real
+  network outage or exhausted remote disk. Prior native checks continue to pass.
+- SFTP handle acquisition now closes the mount's dedicated channel if OPEN or
+  OPENDIR times out before the handle ID arrives. This releases potentially
+  allocated but unclaimed server handles without replaying CREATE. Native library
+  timeouts are classified as TimedOut. A paused-clock test exercises real SFTP
+  framing over an in-memory connection: file/directory acquisition and the library
+  deadline each produce channel EOF while the service is still alive. Actual
+  network-loss and caller-cancellation acceptance remain separate checks. All 33
+  SSH core unit tests and core all-target clippy pass after this change.
 - Main desktop has reviewed optional bridge installation in Settings → Files.
   The native chooser stages exact bytes; approval is window-owned, single-use and
   expires. Installed versions are immutable content-addressed files under the
@@ -189,8 +205,10 @@ Include the dependencies' licensing/distribution limitations in that app.
    and 400px light layouts with synthetic data. Desktop clippy and production
    build pass. Full desktop mapping recovery remains part of gate 1, including
    the platform launcher and native Unix mount-table runtime checks.
-3. Broaden failure acceptance to real network loss, permission/disk-full errors,
-   late SFTP open responses and cancellation while preparing the root. Verify the
+3. Broaden failure acceptance to real network loss and remote permission/disk-full
+   errors. Native provider error/cleanup warning injection now passes. Unconfirmed
+   SFTP open timeout cleanup is fixed and protocol-fixture tested; verify late
+   responses/caller cancellation while preparing the root. Verify the
    native chooser/source-retirement race without touching the normal user profile.
 4. Native Windows file API, replacement-save, capacity, basic error and busy-detach
    checks now pass in disposable WinFsp CI. Remaining: desktop-created SFTP mapping,
@@ -205,7 +223,7 @@ Include the dependencies' licensing/distribution limitations in that app.
 7. Resolve currently documented limits before calling the release ready:
    Windows cleanup-time deletion warnings and busy-detach control are implemented
    with busy detach now passing native WinFsp acceptance. Cleanup-time failure
-   warnings still need native failure injection. Volume-wide flush and cross-handle rename
+   warnings now pass native failure injection. Volume-wide flush and cross-handle rename
    are implemented with bookkeeping regression tests; native checks and file
    attribute work remain. Linux shared/private/read-only memory-mapping acceptance
    passes, as does Windows shared/private/read-only mapping against a disposable
