@@ -1,0 +1,145 @@
+/* SPDX-License-Identifier: MPL-2.0 */
+/* Geometry stays in real layout coordinates. rem sizes follow the user's scale;
+   pointer positions and native window dimensions remain physical CSS pixels. */
+:root[data-theme] {
+  color: var(--sc-text);
+  background: var(--sc-base);
+}
+:root[data-theme] .desktop {
+  min-height: min(540px, 100vh);
+}
+:root[data-theme] .system-bar {
+  height: var(--sc-toolbar-height);
+  background: var(--sc-inset);
+  border-bottom: 1px solid var(--sc-border);
+}
+:root[data-theme] .workspace {
+  height: calc(100% - var(--sc-toolbar-height));
+  --dock-reserve: calc(var(--sc-dock-size) + 3.077rem);
+}
+:root[data-theme] .app-window {
+  border-radius: var(--sc-window-radius);
+  background: var(--sc-surface);
+}
+:root[data-theme] .app-window.maximized,
+:root[data-theme] .app-window.tiled {
+  border-radius: 0;
+}
+:root[data-theme] .window-titlebar {
+  height: var(--sc-window-header);
+  background: var(--sc-raised);
+}
+:root[data-theme] .terminal-screen,
+:root[data-theme] .terminal-app,
+:root[data-theme] .terminal-footer,
+:root[data-theme] .terminal-type-preview {
+  background: var(--sc-terminal);
+  color: var(--sc-terminalText);
+}
+:root[data-theme] .terminal-container .xterm .xterm-viewport {
+  background-color: var(--sc-terminal);
+}
+:root[data-theme] .dock {
+  z-index: 1;
+  height: calc(var(--sc-dock-size) + 1.769rem);
+  border-radius: var(--sc-dock-radius);
+  background: rgba(var(--sc-raised-rgb), 0.86);
+  -webkit-backdrop-filter: blur(var(--sc-blur));
+  backdrop-filter: blur(var(--sc-blur));
+  max-width: calc(100vw - 2.462rem);
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: thin;
+}
+:root[data-theme] .dock > button {
+  width: calc(var(--sc-dock-size) + 0.308rem);
+  height: calc(var(--sc-dock-size) + 0.385rem);
+  flex-shrink: 0;
+}
+:root[data-theme] .dock-app-icon {
+  width: var(--sc-dock-size);
+  height: var(--sc-dock-size);
+}
+:root[data-theme] .dock-app-icon svg {
+  width: 64%;
+  height: 64%;
+}
+:root[data-theme] .dock-tooltip {
+  bottom: calc(var(--sc-dock-size) + 1.077rem);
+}
+:root[data-theme] .bottom-bar {
+  height: calc(var(--sc-dock-size) + 3.692rem);
+}
+:root[data-theme] .launcher {
+  bottom: calc(var(--sc-dock-size) + 4.077rem);
+}
+:root[data-theme] .wallpaper-theme,
+:root[data-theme] .wallpaper-custom {
+  --sky: var(--sc-sky);
+  --light: var(--sc-glow);
+  --far: var(--sc-far);
+  --mid: var(--sc-mid);
+  --near: var(--sc-near);
+}
+:root[data-theme] .wallpaper-theme .landscape,
+:root[data-theme] .wallpaper-custom .landscape {
+  background:
+    radial-gradient(ellipse at 80% 0%, var(--light), transparent 68%),
+    var(--sky);
+}
+:root[data-theme] .bottom-status,
+:root[data-theme] .desktop-caption,
+:root[data-theme] .disconnect-button {
+  color: #e0efec;
+  text-shadow: 0 1px 3px #122330;
+}
+:root[data-theme] .bottom-status svg {
+  color: #a8d8c0;
+}
+:root[data-theme] .dock .running::after {
+  background: var(--sc-accent);
+}
+:root[data-custom-wallpaper="true"] .wallpaper-custom .landscape {
+  background-color: var(--sc-base);
+  background-image: var(--sc-wallpaper-image);
+  background-position: center;
+  background-size: cover;
+  background-repeat: no-repeat;
+}
+:root[data-custom-wallpaper="true"] .wallpaper-custom .landscape > * {
+  display: none;
+}
+:root[data-custom-wallpaper="true"] .wallpaper-custom .desktop-heading {
+  background: var(--sc-surface);
+  padding: 1.23rem;
+  border: 1px solid var(--sc-border);
+  border-radius: var(--sc-window-radius);
+}
+:root[data-wallpaper-fit="contain"] .wallpaper-custom .landscape {
+  background-size: contain;
+}
+:root[data-wallpaper-fit="tile"] .wallpaper-custom .landscape {
+  background-size: auto;
+  background-repeat: repeat;
+}
+:root[data-theme] svg.lucide {
+  flex-shrink: 0;
+}
+@media (max-width: 899px) {
+  :root[data-theme] .workspace {
+    height: auto;
+    min-height: calc(100vh - var(--sc-toolbar-height));
+    min-height: calc(100dvh - var(--sc-toolbar-height));
+    padding-bottom: calc(var(--sc-dock-size) + 5.23rem);
+  }
+  :root[data-theme] .dock {
+    overflow-x: auto;
+    overflow-y: hidden;
+  }
+}
+@media (min-width: 900px) {
+  :root[data-theme] .app-window {
+    min-width: min(26.923rem, 100%);
+    min-height: min(20rem, 100%);
+  }
+}

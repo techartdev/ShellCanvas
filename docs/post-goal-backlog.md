@@ -9,6 +9,13 @@ is started by this list.
 
 ## Where we stopped
 
+Later appearance milestone: [installable themes and user appearance controls](theme-goal.md)
+are now implemented. Follow-up work is isolated-app content theme propagation,
+additional wallpaper/icon package formats, authenticated/private repositories,
+curated or signed catalogs, automatic updates, and physical Mac/Linux/mobile
+appearance acceptance. These are separate from the completed format-1 desktop
+theme contract; see [the authoring and scope guide](themes.md).
+
 - **Complete within the Windows scope:** the BASE-11 extension foundation,
   runtime app/adapter installation, composition, shared services, SDKs, schemas,
   starters and authoring skills. See the [eight-area acceptance audit](kernel-acceptance.md).

@@ -1,11 +1,11 @@
 .transfer-panel {
   flex: 0 1 auto;
   max-height: 35%;
-  min-height: 38px;
+  min-height: 2.923077rem;
   display: flex;
   flex-direction: column;
-  background: #16242e;
-  border-top: 1px solid #9ab7c21c;
+  background: var(--sc-inset, #16242e);
+  border-top: 1px solid var(--sc-border, #9ab7c21c);
 }
 .transfer-panel.collapsed {
   flex-shrink: 0;
@@ -13,11 +13,11 @@
 .transfer-toggle {
   display: flex;
   align-items: center;
-  gap: 5px;
+  gap: 0.384615rem;
 }
 .transfer-panel header .transfer-toggle {
-  color: #c3d5df;
-  font-size: 11px;
+  color: var(--sc-text, #c3d5df);
+  font-size: 0.846154rem;
 }
 .transfer-list[hidden] {
   display: none;
@@ -26,22 +26,22 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 10px 15px;
+  padding: 0.769231rem 1.153846rem;
   flex-shrink: 0;
-  font-size: 11px;
+  font-size: 0.846154rem;
 }
 .transfer-panel header strong {
   font-weight: 600;
 }
 .transfer-panel header span {
-  color: #7e9baa;
-  font-size: 10px;
-  margin-left: 8px;
+  color: var(--sc-muted, #7e9baa);
+  font-size: 0.769231rem;
+  margin-left: 0.615385rem;
   font-weight: 400;
 }
 .transfer-panel header button {
-  font-size: 10px;
-  color: #a1cdbd;
+  font-size: 0.769231rem;
+  color: var(--sc-accent, #a1cdbd);
 }
 .transfer-list {
   overflow: auto;
@@ -50,10 +50,10 @@
 .transfer-row {
   display: flex;
   align-items: flex-start;
-  gap: 10px;
-  padding: 10px 15px;
-  border-top: 1px solid #9ab7c20b;
-  color: #8fa7b3;
+  gap: 0.769231rem;
+  padding: 0.769231rem 1.153846rem;
+  border-top: 1px solid var(--sc-border, #9ab7c20b);
+  color: var(--sc-muted, #8fa7b3);
 }
 .transfer-detail {
   flex: 1;
@@ -61,65 +61,65 @@
 }
 .transfer-detail > div {
   display: flex;
-  gap: 12px;
+  gap: 0.923077rem;
   justify-content: space-between;
   align-items: center;
 }
 .transfer-detail strong {
-  font-size: 11px;
-  color: #c3d5df;
+  font-size: 0.846154rem;
+  color: var(--sc-text, #c3d5df);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
   font-weight: 500;
 }
 .transfer-detail span {
-  font-size: 9px;
+  font-size: 0.692308rem;
   white-space: nowrap;
 }
 .transfer-detail progress {
   display: block;
   width: 100%;
-  height: 3px;
-  margin: 7px 0 5px;
+  height: 0.230769rem;
+  margin: 0.538462rem 0 0.384615rem;
   appearance: none;
   border: none;
-  border-radius: 3px;
+  border-radius: 0.230769rem;
   overflow: hidden;
-  background: #253a45;
+  background: var(--sc-raised, #253a45);
 }
 .transfer-detail progress::-webkit-progress-bar {
-  background: #253a45;
+  background: var(--sc-raised, #253a45);
 }
 .transfer-detail progress::-webkit-progress-value {
-  background: #9bcdb7;
+  background: var(--sc-accent, #9bcdb7);
   transition: width 0.1s ease;
 }
 .transfer-detail small {
-  font-size: 9px;
-  color: #7995a5;
+  font-size: 0.692308rem;
+  color: var(--sc-muted, #7995a5);
 }
 .transfer-detail p {
-  margin: 6px 0 0;
-  font-size: 10px;
+  margin: 0.461538rem 0 0;
+  font-size: 0.769231rem;
   line-height: 1.5;
   overflow-wrap: anywhere;
 }
 .transfer-row > button {
-  width: 22px;
-  height: 22px;
+  width: 1.692308rem;
+  height: 1.692308rem;
   display: grid;
   place-items: center;
-  border-radius: 5px;
+  border-radius: 0.384615rem;
 }
 .transfer-row > button:hover {
-  background: #8ea6b31a;
+  background: var(--sc-hover, #8ea6b31a);
 }
 .transfer-row.failed {
-  color: #e4aba5;
+  color: var(--sc-danger, #e4aba5);
 }
 .transfer-success {
-  color: #9bcdb7;
+  color: var(--sc-accent, #9bcdb7);
 }
 .transfer-row.canceled {
   opacity: 0.65;

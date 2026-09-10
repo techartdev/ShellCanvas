@@ -2,7 +2,13 @@
 import { useSyncExternalStore } from "react";
 
 export interface Preferences {
-  wallpaper: "fjord" | "dusk" | "sage";
+  wallpaper: "theme" | "fjord" | "dusk" | "sage" | "custom";
+  themeId: string;
+  themeMode: "system" | "light" | "dark";
+  uiScale: number;
+  toolbarHeight: number;
+  dockSize: number;
+  wallpaperFit: "cover" | "contain" | "tile";
   clockFormat: "system" | "12" | "24";
   clockSeconds: boolean;
   reduceMotion: boolean;
@@ -21,7 +27,13 @@ export interface Preferences {
   filesCompact: boolean;
 }
 export const defaultPreferences: Readonly<Preferences> = Object.freeze({
-  wallpaper: "fjord",
+  wallpaper: "theme",
+  themeId: "org.shellcanvas.canvas",
+  themeMode: "dark",
+  uiScale: 100,
+  toolbarHeight: 0,
+  dockSize: 0,
+  wallpaperFit: "cover",
   clockFormat: "system",
   clockSeconds: false,
   reduceMotion: false,
@@ -52,7 +64,9 @@ function normalise(input: unknown): Preferences {
     return values;
   const data = input as Record<string, unknown>;
   const choices = {
-    wallpaper: ["fjord", "dusk", "sage"],
+    wallpaper: ["theme", "fjord", "dusk", "sage", "custom"],
+    themeMode: ["system", "light", "dark"],
+    wallpaperFit: ["cover", "contain", "tile"],
     clockFormat: ["system", "12", "24"],
     terminalCursor: ["bar", "block", "underline"],
     editorIndent: ["2", "4", "tab"],
@@ -60,7 +74,16 @@ function normalise(input: unknown): Preferences {
   };
   for (const key of Object.keys(values) as (keyof Preferences)[]) {
     const value = data[key];
-    if (typeof values[key] === "boolean" && typeof value === "boolean")
+    if (
+      key === "themeId" &&
+      typeof value === "string" &&
+      value.length <= 120 &&
+      /^[a-z][a-z0-9-]*(?:\.[a-z][a-z0-9-]*)+$/.test(value)
+    )
+      values.themeId = value;
+    else if ((key === "toolbarHeight" || key === "dockSize") && value === 0)
+      values[key] = 0;
+    else if (typeof values[key] === "boolean" && typeof value === "boolean")
       Object.assign(values, { [key]: value });
     else if (
       key in choices &&
@@ -74,7 +97,15 @@ function normalise(input: unknown): Preferences {
       Number.isInteger(value)
     ) {
       const [min, max] =
-        key === "terminalScrollback" ? [100, 100000] : [11, 24];
+        key === "terminalScrollback"
+          ? [100, 100000]
+          : key === "uiScale"
+            ? [80, 150]
+            : key === "toolbarHeight"
+              ? [36, 64]
+              : key === "dockSize"
+                ? [32, 64]
+                : [11, 24];
       if (value >= min && value <= max) Object.assign(values, { [key]: value });
     }
   }

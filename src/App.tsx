@@ -48,6 +48,7 @@ import {
 import { isAdapterProfile, type WorkspaceConnection } from "./workspaces";
 import { SettingsDialog } from "./components/SettingsDialog";
 import { usePreferences } from "./preferences";
+import { useDesktopTheme } from "./themes/runtime";
 import { native, nativeServices } from "./services";
 import { previewServices, previewSession } from "./preview";
 import type {
@@ -268,6 +269,7 @@ export default function App({
   );
   const [clock, setClock] = useState(new Date());
   const { values: preferences } = usePreferences();
+  useDesktopTheme();
   useEffect(() => {
     void services
       .profiles()

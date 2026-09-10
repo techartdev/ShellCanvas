@@ -42,13 +42,18 @@ export type RepositoryReader = (
   limit: number,
   signal: AbortSignal,
 ) => Promise<string>;
+function checkAbort(signal: AbortSignal) {
+  // Catalina's AbortSignal predates throwIfAborted().
+  if (signal.aborted)
+    throw new DOMException("Repository read cancelled.", "AbortError");
+}
 export const readRepositoryFile: RepositoryReader = async (
   location,
   path,
   limit,
   signal,
 ) => {
-  signal.throwIfAborted();
+  checkAbort(signal);
   if (!isTauri())
     throw new Error("Repository installation is available in the desktop app.");
   const id = await invoke<string>("prepare_repository_read");
@@ -57,7 +62,7 @@ export const readRepositoryFile: RepositoryReader = async (
   };
   signal.addEventListener("abort", cancel, { once: true });
   try {
-    signal.throwIfAborted();
+    checkAbort(signal);
     const text = await invoke<string>("read_repository_file", {
       id,
       owner: location.owner,
@@ -66,7 +71,7 @@ export const readRepositoryFile: RepositoryReader = async (
       path,
       limit,
     });
-    signal.throwIfAborted();
+    checkAbort(signal);
     return text;
   } finally {
     signal.removeEventListener("abort", cancel);
@@ -84,14 +89,14 @@ export async function inspectRepository(
   const manifest = parseAppRepository(
     await read(location, "shellcanvas.repo.json", 65536, signal),
   );
-  signal.throwIfAborted();
+  checkAbort(signal);
   const raw = await read(
     location,
     manifest.package.path,
     32 * 1024 * 1024,
     signal,
   );
-  signal.throwIfAborted();
+  checkAbort(signal);
   const bytes = new TextEncoder().encode(raw);
   const hash = await crypto.subtle.digest("SHA-256", bytes);
   const digest = [...new Uint8Array(hash)]
@@ -110,7 +115,7 @@ export async function inspectRepository(
     throw new Error(
       "The package identity does not match the repository manifest.",
     );
-  signal.throwIfAborted();
+  checkAbort(signal);
   return {
     raw,
     manifest,

@@ -6,116 +6,116 @@
 .legacy-flex-gap .host-pill > * + *,
 .legacy-flex-gap .window-title > * + *,
 .legacy-flex-gap .workspace-connect > * + * {
-  margin-left: 9px;
+  margin-left: 0.692308rem;
 }
 .legacy-flex-gap .system-indicators > * + * {
-  margin-left: 15px;
+  margin-left: 1.153846rem;
 }
 .legacy-flex-gap .system-indicators time > * + * {
-  margin-left: 13px;
+  margin-left: 1rem;
 }
 .legacy-flex-gap .desktop-meta > * + * {
-  margin-left: 24px;
+  margin-left: 1.846154rem;
 }
 .legacy-flex-gap .desktop-meta svg,
 .legacy-flex-gap .disconnect-button svg {
-  margin-right: 6px;
+  margin-right: 0.461538rem;
 }
 .legacy-flex-gap .workspace-connect > svg:first-child {
-  margin-right: 9px;
+  margin-right: 0.692308rem;
 }
 .legacy-flex-gap .workspace-choice > * + *,
 .legacy-flex-gap .desktop-caption > * + *,
 .legacy-flex-gap .toast > * + * {
-  margin-left: 12px;
+  margin-left: 0.923077rem;
 }
 .legacy-flex-gap .window-controls > * + * {
-  margin-left: 2px;
+  margin-left: 0.153846rem;
 }
 .legacy-flex-gap .dock > * + * {
-  margin-left: 6px;
+  margin-left: 0.461538rem;
 }
 .legacy-flex-gap .bottom-status > * + *,
 .legacy-flex-gap .file-search > * + *,
 .legacy-flex-gap .terminal-tabs > span:first-child > * + * {
-  margin-left: 7px;
+  margin-left: 0.538462rem;
 }
 .legacy-flex-gap .file-toolbar > * + *,
 .legacy-flex-gap .files-footer > * + * {
-  margin-left: 5px;
+  margin-left: 0.384615rem;
 }
 .legacy-flex-gap .file-sidebar > button svg,
 .legacy-flex-gap .file-row > span:first-child svg,
 .legacy-flex-gap .file-cut-bar > svg {
-  margin-right: 10px;
+  margin-right: 0.769231rem;
 }
 .legacy-flex-gap .path-bar > * + *,
 .legacy-flex-gap .volume > * + *,
 .legacy-flex-gap .window-adjustment > * + *,
 .legacy-flex-gap .folder-heading > * + * {
-  margin-left: 8px;
+  margin-left: 0.615385rem;
 }
 .legacy-flex-gap .context-menu-label svg,
 .legacy-flex-gap .popover-heading > span svg,
 .legacy-flex-gap .auth-tabs button svg,
 .legacy-flex-gap .launcher-connect svg {
-  margin-right: 8px;
+  margin-right: 0.615385rem;
 }
 .legacy-flex-gap .file-table-head button svg {
-  margin-left: 4px;
+  margin-left: 0.307692rem;
 }
 .legacy-flex-gap .terminal-footer button svg,
 .legacy-flex-gap .file-cut-bar button svg {
-  margin-right: 5px;
+  margin-right: 0.384615rem;
 }
 .legacy-flex-gap .files-footer button svg {
-  margin-right: 3px;
+  margin-right: 0.230769rem;
 }
 .legacy-flex-gap .terminal-footer > * + *,
 .legacy-flex-gap .file-cut-bar > button + button {
-  margin-left: 10px;
+  margin-left: 0.769231rem;
 }
 .legacy-flex-gap .file-message > * + * {
-  margin-top: 10px;
+  margin-top: 0.769231rem;
 }
 .legacy-flex-gap .context-menu button > * + * {
-  margin-left: 20px;
+  margin-left: 1.538462rem;
 }
 .legacy-flex-gap .primary-button > svg:last-child {
-  margin-left: 22px;
+  margin-left: 1.692308rem;
 }
 .legacy-flex-gap .launcher-app > * + *,
 .legacy-flex-gap .form-row > * + * {
-  margin-left: 13px;
+  margin-left: 1rem;
 }
 .legacy-flex-gap .wallpaper-options > * + * {
-  margin-left: 9px;
+  margin-left: 0.692308rem;
 }
 .legacy-flex-gap .auth-tabs > * + * {
-  margin-left: 3px;
+  margin-left: 0.230769rem;
 }
 .legacy-flex-gap .trust-note svg {
-  margin-right: 9px;
+  margin-right: 0.692308rem;
 }
 .legacy-flex-gap .profile-actions > *,
 .legacy-flex-gap .profile-removal > *,
 .legacy-flex-gap .capability-list > * {
-  margin-right: 8px;
-  margin-bottom: 8px;
+  margin-right: 0.615385rem;
+  margin-bottom: 0.615385rem;
 }
 @media (max-width: 899px) {
   .legacy-flex-gap .system-indicators > * + * {
-    margin-left: 6px;
+    margin-left: 0.461538rem;
   }
   .legacy-flex-gap .desktop-meta > * + * {
-    margin-left: 15px;
+    margin-left: 1.153846rem;
   }
   .legacy-flex-gap .workspace-windows > * + * {
-    margin-top: 18px;
+    margin-top: 1.384615rem;
   }
 }
 @media (max-width: 600px) {
   .legacy-flex-gap .desktop-meta > * + * {
-    margin-left: 10px;
+    margin-left: 0.769231rem;
   }
 }

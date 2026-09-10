@@ -1,6 +1,6 @@
 .adapter-connect {
-  max-height: calc(100vh - 48px);
-  max-height: calc(100dvh - 48px);
+  max-height: calc(100vh - 3.692308rem);
+  max-height: calc(100dvh - 3.692308rem);
   overflow: auto;
 }
 .adapter-connect fieldset {
@@ -9,85 +9,85 @@
   border: 0;
 }
 .workspace-profile-picker {
-  padding-bottom: 12px;
-  margin-bottom: 18px;
-  border-bottom: 1px solid #3c535e;
+  padding-bottom: 0.923077rem;
+  margin-bottom: 1.384615rem;
+  border-bottom: 1px solid var(--sc-border, #3c535e);
 }
 .workspace-profile-actions {
   display: flex;
   flex-wrap: wrap;
-  gap: 4px 20px;
+  gap: 0.307692rem 1.538462rem;
 }
 .workspace-profile-message {
-  color: #adc4cd;
-  font-size: 12px;
+  color: var(--sc-text, #adc4cd);
+  font-size: 0.923077rem;
   line-height: 1.5;
-  margin: 6px 0 0;
+  margin: 0.461538rem 0 0;
 }
 .adapter-source {
-  border: 1px solid #3c535e;
-  background: #21353f;
-  padding: 18px;
-  border-radius: 12px;
-  margin: 16px 0;
+  border: 1px solid var(--sc-border, #3c535e);
+  background: var(--sc-raised, #21353f);
+  padding: 1.384615rem;
+  border-radius: 0.923077rem;
+  margin: 1.230769rem 0;
 }
 .adapter-source-heading {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 10px;
+  margin-bottom: 0.769231rem;
 }
 .adapter-source-heading h3 {
-  font-size: 13px;
-  color: #b9cdd5;
+  font-size: 1rem;
+  color: var(--sc-text, #b9cdd5);
   margin: 0;
 }
 .adapter-roles {
   display: flex;
-  gap: 24px;
-  font-size: 13px;
-  color: #b9cdd5;
-  margin: 14px 0;
+  gap: 1.846154rem;
+  font-size: 1rem;
+  color: var(--sc-text, #b9cdd5);
+  margin: 1.076923rem 0;
 }
 .adapter-roles label {
   display: flex;
-  gap: 8px;
+  gap: 0.615385rem;
   align-items: center;
 }
 .adapter-roles input {
-  accent-color: #a0cbbb;
+  accent-color: var(--sc-accent, #a0cbbb);
 }
 .adapter-add {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 0.461538rem;
   background: transparent;
   border: 0;
-  color: #aacfc1;
+  color: var(--sc-accent, #aacfc1);
   font: inherit;
-  font-size: 12px;
-  padding: 9px 0;
+  font-size: 0.923077rem;
+  padding: 0.692308rem 0;
   cursor: pointer;
 }
 .adapter-connect .form-field select {
   width: 100%;
-  border: 1px solid #405864;
-  border-radius: 8px;
-  background: #1b2f39;
-  color: #e1edf0;
-  padding: 11px;
+  border: 1px solid var(--sc-border, #405864);
+  border-radius: 0.615385rem;
+  background: var(--sc-surface, #1b2f39);
+  color: var(--sc-text, #e1edf0);
+  padding: 0.846154rem;
 }
 .adapter-connect .form-field:has(input[type="checkbox"]) {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 0.769231rem;
 }
 .adapter-connect .form-field input[type="checkbox"] {
   order: -1;
-  width: 16px;
-  height: 16px;
-  min-height: 16px;
+  width: 1.230769rem;
+  height: 1.230769rem;
+  min-height: 1.230769rem;
   margin: 0;
   padding: 0;
-  accent-color: #a0cbbb;
+  accent-color: var(--sc-accent, #a0cbbb);
 }

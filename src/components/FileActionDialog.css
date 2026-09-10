@@ -1,140 +1,140 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 .file-action-dialog {
-  width: min(470px, calc(100vw - 32px));
-  max-height: calc(100vh - 50px);
-  max-height: calc(100dvh - 50px);
+  width: min(36.153846rem, calc(100vw - 2.461538rem));
+  max-height: calc(100vh - 3.846154rem);
+  max-height: calc(100dvh - 3.846154rem);
   overflow: auto;
-  padding: 28px;
+  padding: 2.153846rem;
   margin: auto;
-  border: 1px solid #9ec0c23d;
-  border-radius: 16px;
-  box-shadow: 0 30px 100px #03131baa;
-  color: #d4e4e8;
-  background: #1b2d38;
+  border: 1px solid var(--sc-border, #9ec0c23d);
+  border-radius: 1.230769rem;
+  box-shadow: 0 2.307692rem 7.692308rem rgba(var(--sc-shadow-rgb), 0.400);
+  color: var(--sc-text, #d4e4e8);
+  background: var(--sc-surface, #1b2d38);
 }
 .file-action-dialog::backdrop {
-  background: #06111bc4;
-  -webkit-backdrop-filter: blur(4px);
-  backdrop-filter: blur(4px);
+  background: rgba(var(--sc-scrim-rgb), 0.769);
+  -webkit-backdrop-filter: blur(0.307692rem);
+  backdrop-filter: blur(0.307692rem);
 }
 .file-action-emblem {
   display: grid;
   place-items: center;
-  width: 46px;
-  height: 46px;
-  border-radius: 12px;
-  background: #91baa820;
-  border: 1px solid #9ec5b526;
-  color: #b3d6c5;
-  margin-bottom: 23px;
+  width: 3.538462rem;
+  height: 3.538462rem;
+  border-radius: 0.923077rem;
+  background: var(--sc-selection, #91baa820);
+  border: 1px solid var(--sc-border, #9ec5b526);
+  color: var(--sc-accent, #b3d6c5);
+  margin-bottom: 1.769231rem;
 }
 .file-action-emblem.destructive {
-  background: #98636122;
-  color: #dfb0ac;
+  background: var(--sc-dangerSoft, #98636122);
+  color: var(--sc-danger, #dfb0ac);
 }
 .file-action-dialog .eyebrow {
-  font-size: 8px;
+  font-size: 0.615385rem;
 }
 .file-action-dialog h2 {
-  margin: 12px 0;
-  font-size: 23px;
+  margin: 0.923077rem 0;
+  font-size: 1.769231rem;
   font-weight: 500;
 }
 .file-action-description {
-  color: #9ab4c1;
-  font-size: 12px;
+  color: var(--sc-muted, #9ab4c1);
+  font-size: 0.923077rem;
   line-height: 1.7;
   overflow-wrap: anywhere;
 }
 .file-action-dialog label {
   display: block;
-  font-size: 10px;
-  color: #a9c1cd;
-  margin-top: 18px;
+  font-size: 0.769231rem;
+  color: var(--sc-text, #a9c1cd);
+  margin-top: 1.384615rem;
 }
 .file-action-dialog input {
   display: block;
   width: 100%;
-  margin-top: 8px;
-  border: 1px solid #a3c0c230;
-  border-radius: 6px;
-  background: #12242f;
-  color: #d0e1e7;
-  padding: 11px;
-  font-size: 12px;
+  margin-top: 0.615385rem;
+  border: 1px solid var(--sc-border, #a3c0c230);
+  border-radius: 0.461538rem;
+  background: var(--sc-inset, #12242f);
+  color: var(--sc-text, #d0e1e7);
+  padding: 0.846154rem;
+  font-size: 0.923077rem;
 }
 .file-action-target {
-  margin: 19px 0;
-  padding: 12px;
-  border: 1px solid #9ec0c222;
-  background: #112631;
-  border-radius: 7px;
+  margin: 1.461538rem 0;
+  padding: 0.923077rem;
+  border: 1px solid var(--sc-border, #9ec0c222);
+  background: var(--sc-inset, #112631);
+  border-radius: 0.538462rem;
   font:
-    11px/1.7 Consolas,
+    0.846154rem/1.7 Consolas,
     monospace;
   overflow-wrap: anywhere;
 }
 .file-action-buttons {
   display: flex;
   justify-content: flex-end;
-  gap: 10px;
-  margin-top: 25px;
+  gap: 0.769231rem;
+  margin-top: 1.923077rem;
 }
 .file-action-buttons button {
   display: flex;
   align-items: center;
-  gap: 7px;
-  border: 1px solid #92b6be30;
-  border-radius: 6px;
-  padding: 10px 14px;
-  font-size: 11px;
+  gap: 0.538462rem;
+  border: 1px solid var(--sc-border, #92b6be30);
+  border-radius: 0.461538rem;
+  padding: 0.769231rem 1.076923rem;
+  font-size: 0.846154rem;
 }
 .file-action-submit {
-  color: #bee0d0;
-  background: #83b49e21;
+  color: var(--sc-accent, #bee0d0);
+  background: var(--sc-selection, #83b49e21);
 }
 .file-action-dialog .inline-error {
-  margin: 16px 0 0;
-  max-height: 160px;
+  margin: 1.230769rem 0 0;
+  max-height: 12.307692rem;
   overflow: auto;
   overflow-wrap: anywhere;
 }
 .move-file-dialog {
-  width: min(530px, calc(100vw - 32px));
-  padding: 24px;
+  width: min(40.769231rem, calc(100vw - 2.461538rem));
+  padding: 1.846154rem;
 }
 .move-file-dialog .file-action-emblem {
-  width: 38px;
-  height: 38px;
-  margin-bottom: 12px;
+  width: 2.923077rem;
+  height: 2.923077rem;
+  margin-bottom: 0.923077rem;
 }
 .move-file-dialog h2 {
-  margin: 8px 0;
+  margin: 0.615385rem 0;
 }
 .move-file-dialog .file-action-description {
   line-height: 1.5;
 }
 .move-file-dialog label {
-  margin-top: 12px;
+  margin-top: 0.923077rem;
 }
 .move-file-dialog .file-action-buttons {
-  margin-top: 16px;
+  margin-top: 1.230769rem;
 }
 .move-file-dialog .file-action-target {
-  margin: 12px 0;
+  margin: 0.923077rem 0;
 }
 .move-file-dialog .file-action-target {
   display: grid;
-  gap: 4px;
+  gap: 0.307692rem;
 }
 .move-file-dialog .file-action-target span {
-  color: #8faab8;
+  color: var(--sc-muted, #8faab8);
 }
 .move-folder-address {
   display: flex;
   align-items: stretch;
-  gap: 6px;
-  margin-top: 8px;
+  gap: 0.461538rem;
+  margin-top: 0.615385rem;
 }
 .move-folder-address input {
   margin: 0;
@@ -144,47 +144,47 @@
 .move-folder-address button {
   display: grid;
   place-items: center;
-  padding: 0 10px;
-  border: 1px solid #a3c0c230;
-  border-radius: 6px;
+  padding: 0 0.769231rem;
+  border: 1px solid var(--sc-border, #a3c0c230);
+  border-radius: 0.461538rem;
 }
 .move-folder-places {
   display: flex;
-  gap: 8px;
+  gap: 0.615385rem;
   flex-wrap: wrap;
-  margin: 12px 0;
+  margin: 0.923077rem 0;
 }
 .move-folder-places button {
-  font-size: 11px;
-  padding: 6px 10px;
-  background: #91baa810;
-  border-radius: 5px;
+  font-size: 0.846154rem;
+  padding: 0.461538rem 0.769231rem;
+  background: var(--sc-selection, #91baa810);
+  border-radius: 0.384615rem;
 }
 .move-folder-list {
-  height: 128px;
+  height: 9.846154rem;
   overflow: auto;
-  border: 1px solid #a3c0c225;
-  border-radius: 8px;
-  margin-top: 12px;
-  padding: 4px;
-  background: #12242f;
+  border: 1px solid var(--sc-border, #a3c0c225);
+  border-radius: 0.615385rem;
+  margin-top: 0.923077rem;
+  padding: 0.307692rem;
+  background: var(--sc-inset, #12242f);
 }
 .move-folder-list button {
-  height: 38px;
+  height: 2.923077rem;
   display: flex;
   width: 100%;
-  gap: 10px;
+  gap: 0.769231rem;
   align-items: center;
-  padding: 10px;
-  font-size: 12px;
+  padding: 0.769231rem;
+  font-size: 0.923077rem;
   text-align: left;
-  border-radius: 5px;
+  border-radius: 0.384615rem;
 }
 .move-folder-list button:hover {
-  background: #91baa815;
+  background: var(--sc-selection, #91baa815);
 }
 .move-folder-list button svg:first-child {
-  color: #d9bc80;
+  color: var(--sc-warning, #d9bc80);
 }
 .move-folder-list button span {
   flex: 1;
@@ -196,32 +196,32 @@
 .move-folder-list p {
   display: flex;
   justify-content: center;
-  gap: 8px;
-  color: #8faab8;
-  font-size: 12px;
-  padding: 40px 10px;
+  gap: 0.615385rem;
+  color: var(--sc-muted, #8faab8);
+  font-size: 0.923077rem;
+  padding: 3.076923rem 0.769231rem;
 }
 .move-folder-review {
-  margin-top: 12px;
+  margin-top: 0.923077rem;
 }
 .move-folder-review strong {
-  color: #cee1db;
+  color: var(--sc-accent, #cee1db);
   font-weight: 500;
 }
 .batch-delete-list {
   list-style: none;
   padding: 0;
-  max-height: 240px;
+  max-height: 18.461538rem;
   overflow: auto;
-  border: 1px solid #9ec0c222;
-  border-radius: 8px;
-  background: #112631;
+  border: 1px solid var(--sc-border, #9ec0c222);
+  border-radius: 0.615385rem;
+  background: var(--sc-inset, #112631);
 }
 .batch-delete-list li {
   display: flex;
-  gap: 16px;
-  padding: 10px 12px;
-  border-bottom: 1px solid #9ec0c215;
+  gap: 1.230769rem;
+  padding: 0.769231rem 0.923077rem;
+  border-bottom: 1px solid var(--sc-border, #9ec0c215);
 }
 .batch-delete-list li > span {
   min-width: 0;
@@ -233,17 +233,17 @@
   overflow-wrap: anywhere;
 }
 .batch-delete-list strong {
-  font-size: 12px;
+  font-size: 0.923077rem;
   font-weight: 500;
 }
 .batch-delete-list small {
-  font-size: 10px;
-  color: #8faab8;
-  margin-top: 4px;
+  font-size: 0.769231rem;
+  color: var(--sc-muted, #8faab8);
+  margin-top: 0.307692rem;
 }
 .batch-delete-list em {
-  font-size: 10px;
+  font-size: 0.769231rem;
   font-style: normal;
-  color: #adcbbf;
+  color: var(--sc-accent, #adcbbf);
   flex-shrink: 0;
 }

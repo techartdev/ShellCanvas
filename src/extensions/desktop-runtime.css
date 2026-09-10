@@ -16,20 +16,20 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 16px;
-  padding: 12px 18px;
-  background: #243c43;
-  color: #c6dfdc;
-  border-bottom: 1px solid #416163;
-  font-size: 12px;
+  gap: 1.230769rem;
+  padding: 0.923077rem 1.384615rem;
+  background: var(--sc-raised, #243c43);
+  color: var(--sc-accent, #c6dfdc);
+  border-bottom: 1px solid var(--sc-border, #416163);
+  font-size: 0.923077rem;
 }
 .runtime-connection-review button {
   flex-shrink: 0;
-  border: 1px solid #739c93;
-  border-radius: 7px;
-  padding: 8px 12px;
-  color: #e0f3eb;
-  background: #36564f;
+  border: 1px solid var(--sc-border, #739c93);
+  border-radius: 0.538462rem;
+  padding: 0.615385rem 0.923077rem;
+  color: var(--sc-accent, #e0f3eb);
+  background: var(--sc-raised, #36564f);
   cursor: pointer;
 }
 .runtime-connection-review button:disabled {
@@ -41,7 +41,7 @@
   color: #193b3b;
 }
 .launcher {
-  max-height: calc(100vh - 150px);
+  max-height: calc(100vh - 11.538462rem);
   overflow-y: auto;
 }
 @media (max-width: 700px) {

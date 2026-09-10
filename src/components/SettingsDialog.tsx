@@ -3,7 +3,6 @@ import { showModal } from "../dialog-compat";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import {
-  Check,
   ChevronRight,
   FilePenLine,
   Folder,
@@ -15,6 +14,7 @@ import {
   X,
 } from "lucide-react";
 import { usePreferences, type Preferences } from "../preferences";
+import { Appearance } from "../themes/Appearance";
 import type { HostProfile, Session } from "../sdk";
 import "./SettingsDialog.css";
 
@@ -210,22 +210,7 @@ export function SettingsDialog({
           )}
           {section === "desktop" && (
             <>
-              <h3>Landscape</h3>
-              <div className="wallpaper-options">
-                {(["fjord", "dusk", "sage"] as const).map((name) => (
-                  <button
-                    key={name}
-                    className={`wallpaper-swatch swatch-${name}`}
-                    aria-label={`${name} wallpaper`}
-                    aria-pressed={values.wallpaper === name}
-                    disabled={blocked}
-                    onClick={() => set("wallpaper", name)}
-                  >
-                    {values.wallpaper === name && <Check size={20} />}
-                    <span>{name}</span>
-                  </button>
-                ))}
-              </div>
+              <Appearance />
               <h3>Clock & motion</h3>
               <div className="preferences-group">
                 {select(
@@ -251,7 +236,7 @@ export function SettingsDialog({
             <>
               <div
                 className="terminal-type-preview"
-                style={{ fontSize: values.terminalFontSize }}
+                style={{ fontSize: `${values.terminalFontSize / 13}rem` }}
               >
                 <span>you@remote</span>:~$ <b>ls -la</b>
                 <i className={`cursor-preview ${values.terminalCursor}`} />
@@ -295,7 +280,7 @@ export function SettingsDialog({
             <>
               <div
                 className="editor-type-preview"
-                style={{ fontSize: values.editorFontSize }}
+                style={{ fontSize: `${values.editorFontSize / 13}rem` }}
               >
                 <span># A little closer to your code.</span>
                 <br />

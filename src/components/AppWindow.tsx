@@ -275,22 +275,31 @@ export function AppWindow({
         return;
       const width = element.current.offsetWidth;
       const height = element.current.offsetHeight;
+      const rect = element.current.getBoundingClientRect();
+      const bounds = parent.getBoundingClientRect();
       setPosition((previous) => {
-        if (!previous) return previous;
+        // CSS positions also need clamping when scale/bar sizes change before
+        // the user has ever dragged this window.
+        const current = previous ?? {
+          left: rect.left - bounds.left,
+          top: rect.top - bounds.top,
+        };
         const left = Math.max(
           0,
-          Math.min(previous.left, parent.clientWidth - width),
+          Math.min(current.left, parent.clientWidth - width),
         );
         const top = Math.max(
           0,
-          Math.min(previous.top, parent.clientHeight - height),
+          Math.min(current.top, parent.clientHeight - height),
         );
-        return left === previous.left && top === previous.top
+        return Math.abs(left - current.left) < 0.5 &&
+          Math.abs(top - current.top) < 0.5
           ? previous
           : { left, top };
       });
     });
     observer.observe(parent);
+    if (element.current) observer.observe(element.current);
     return () => observer.disconnect();
   }, [arranged, visible]);
   const Component = app.component;

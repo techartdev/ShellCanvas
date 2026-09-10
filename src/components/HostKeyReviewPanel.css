@@ -1,99 +1,99 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 .connect-dialog.connect-dialog-review {
-  width: min(520px, calc(100vw - 40px));
+  width: min(40rem, calc(100vw - 3.076923rem));
 }
 .host-key-review {
-  margin-top: 24px;
+  margin-top: 1.846154rem;
 }
 .host-key-endpoint {
   display: grid;
-  gap: 6px;
-  padding: 16px;
-  border-radius: 9px;
-  border: 1px solid #9abcc333;
-  background: #142733;
+  gap: 0.461538rem;
+  padding: 1.230769rem;
+  border-radius: 0.692308rem;
+  border: 1px solid var(--sc-border, #9abcc333);
+  background: var(--sc-surface, #142733);
   overflow-wrap: anywhere;
 }
 .host-key-endpoint strong {
-  font-size: 17px;
+  font-size: 1.307692rem;
   font-weight: 500;
-  color: #d8e8ed;
+  color: var(--sc-text, #d8e8ed);
 }
 .host-key-endpoint span {
-  font-size: 11px;
-  color: #94b0bf;
+  font-size: 0.846154rem;
+  color: var(--sc-muted, #94b0bf);
 }
 .host-key-review > p {
-  font-size: 12px;
+  font-size: 0.923077rem;
   line-height: 1.65;
-  color: #a9c0cd;
-  margin: 17px 0;
+  color: var(--sc-text, #a9c0cd);
+  margin: 1.307692rem 0;
 }
 .host-key-fingerprint {
-  border-radius: 9px;
-  border: 1px solid #9abcc326;
-  padding: 16px;
-  background: #0e202b;
+  border-radius: 0.692308rem;
+  border: 1px solid var(--sc-border, #9abcc326);
+  padding: 1.230769rem;
+  background: var(--sc-inset, #0e202b);
 }
 .host-key-fingerprint > span {
-  font-size: 8px;
-  letter-spacing: 1.4px;
-  color: #7b9cae;
+  font-size: 0.615385rem;
+  letter-spacing: 0.107692rem;
+  color: var(--sc-muted, #7b9cae);
 }
 .host-key-fingerprint code {
   display: block;
-  font-size: 13px;
+  font-size: 1rem;
   line-height: 1.7;
   overflow-wrap: anywhere;
-  margin: 10px 0 12px;
-  color: #c5dfd1;
+  margin: 0.769231rem 0 0.923077rem;
+  color: var(--sc-accent, #c5dfd1);
   user-select: text;
 }
 .host-key-fingerprint button {
   display: flex;
   align-items: center;
-  gap: 6px;
-  color: #a8c3d0;
-  font-size: 10px;
+  gap: 0.461538rem;
+  color: var(--sc-text, #a8c3d0);
+  font-size: 0.769231rem;
 }
 .host-key-confirmation {
   display: flex;
   align-items: flex-start;
-  gap: 10px;
-  color: #c8dce2;
-  font-size: 12px;
+  gap: 0.769231rem;
+  color: var(--sc-text, #c8dce2);
+  font-size: 0.923077rem;
   line-height: 1.6;
-  margin-top: 20px;
+  margin-top: 1.538462rem;
   cursor: pointer;
 }
 .host-key-confirmation input {
-  width: 16px;
-  height: 16px;
-  margin-top: 2px;
+  width: 1.230769rem;
+  height: 1.230769rem;
+  margin-top: 0.153846rem;
   flex-shrink: 0;
-  accent-color: #a7d0bb;
+  accent-color: var(--sc-accent, #a7d0bb);
 }
 .host-key-review .host-key-storage {
-  font-size: 10px;
-  color: #7f9cac;
+  font-size: 0.769231rem;
+  color: var(--sc-muted, #7f9cac);
 }
 .host-key-buttons {
   display: flex;
   justify-content: flex-end;
-  gap: 10px;
-  margin-top: 22px;
+  gap: 0.769231rem;
+  margin-top: 1.692308rem;
 }
 .host-key-buttons button {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 7px;
-  padding: 11px 14px;
-  border-radius: 7px;
-  font-size: 11px;
+  gap: 0.538462rem;
+  padding: 0.846154rem 1.076923rem;
+  border-radius: 0.538462rem;
+  font-size: 0.846154rem;
 }
 .host-key-buttons button:first-child {
-  border: 1px solid #9abcc333;
+  border: 1px solid var(--sc-border, #9abcc333);
 }
 @media (max-width: 420px) {
   .host-key-buttons {

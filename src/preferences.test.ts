@@ -16,6 +16,44 @@ function storage() {
   };
 }
 describe("local preferences", () => {
+  it("retains existing preferences and validates theme and sizing overrides", () => {
+    const disk = storage();
+    disk.setItem(
+      preferencesKey,
+      JSON.stringify({
+        version: 1,
+        values: { wallpaper: "fjord", terminalFontSize: 16 },
+      }),
+    );
+    const store = createPreferencesStore(() => disk);
+    expect(store.getSnapshot().values).toEqual({
+      ...defaultPreferences,
+      wallpaper: "fjord",
+      terminalFontSize: 16,
+    });
+    store.set("uiScale", 150);
+    store.set("dockSize", 64);
+    store.set("toolbarHeight", 36);
+    store.set("themeMode", "system");
+    store.set("themeId", "studio.paper");
+    expect(
+      createPreferencesStore(() => disk).getSnapshot().values,
+    ).toMatchObject({
+      uiScale: 150,
+      dockSize: 64,
+      toolbarHeight: 36,
+      themeMode: "system",
+      themeId: "studio.paper",
+    });
+    store.set("uiScale", 1000);
+    store.set("themeId", "url(bad)");
+    store.set("dockSize", 0);
+    expect(store.getSnapshot().values).toMatchObject({
+      uiScale: 100,
+      dockSize: 0,
+      themeId: defaultPreferences.themeId,
+    });
+  });
   it("migrates wallpaper and persists values across fresh reads without other local data", () => {
     const disk = storage();
     disk.setItem("sshdesktop.wallpaper", "sage");

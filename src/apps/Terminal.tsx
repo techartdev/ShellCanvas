@@ -12,6 +12,7 @@ import {
 import { ContextMenu } from "../components/ContextMenu";
 import { clipboard } from "../clipboard";
 import { usePreferences } from "../preferences";
+import { useTheme } from "../themes/runtime";
 export function Terminal({
   session,
   services,
@@ -26,6 +27,29 @@ export function Terminal({
   const connectionState = useRef(connected);
   connectionState.current = connected;
   const { values: preferences } = usePreferences();
+  const {
+    mode,
+    style: { colors },
+  } = useTheme();
+  const palette = {
+    background: colors.terminal,
+    foreground: colors.terminalText,
+    cursor: colors.accent,
+    selectionBackground: colors.selection,
+    black: mode === "light" ? "#23332e" : "#182430",
+    red: colors.danger,
+    green: colors.success,
+    yellow: colors.warning,
+    blue: mode === "light" ? "#31669b" : "#8cb8d9",
+    magenta: mode === "light" ? "#814790" : "#c8a5d5",
+    cyan: mode === "light" ? "#286f78" : "#8ccacb",
+    white: mode === "light" ? "#6b7770" : "#e2e9ed",
+  };
+  const paletteRef = useRef(palette);
+  paletteRef.current = palette;
+  useEffect(() => {
+    if (instance.current) instance.current.options.theme = paletteRef.current;
+  }, [colors, mode]);
   const preferencesRef = useRef(preferences);
   preferencesRef.current = preferences;
   const reportErrorRef = useRef(reportError);
@@ -34,13 +58,15 @@ export function Terminal({
   useEffect(() => {
     const terminal = instance.current;
     if (!terminal) return;
-    terminal.options.fontSize = preferences.terminalFontSize;
+    terminal.options.fontSize =
+      (preferences.terminalFontSize * preferences.uiScale) / 100;
     terminal.options.cursorStyle = preferences.terminalCursor;
     terminal.options.cursorBlink = preferences.terminalBlink;
     terminal.options.scrollback = preferences.terminalScrollback;
     refit.current?.();
   }, [
     preferences.terminalFontSize,
+    preferences.uiScale,
     preferences.terminalCursor,
     preferences.terminalBlink,
     preferences.terminalScrollback,
@@ -95,25 +121,15 @@ export function Terminal({
     const terminal = new XTerminal({
       cursorBlink: preferencesRef.current.terminalBlink,
       cursorStyle: preferencesRef.current.terminalCursor,
-      fontSize: preferencesRef.current.terminalFontSize,
+      fontSize:
+        (preferencesRef.current.terminalFontSize *
+          preferencesRef.current.uiScale) /
+        100,
       fontFamily: '"Cascadia Code", "SFMono-Regular", Consolas, monospace',
       lineHeight: 1.35,
       scrollback: preferencesRef.current.terminalScrollback,
       allowProposedApi: false,
-      theme: {
-        background: "#111b26",
-        foreground: "#d4dfe6",
-        cursor: "#a3ddc5",
-        selectionBackground: "#385364",
-        black: "#182430",
-        red: "#e59191",
-        green: "#8fd1ad",
-        yellow: "#e7c993",
-        blue: "#8cb8d9",
-        magenta: "#c8a5d5",
-        cyan: "#8ccacb",
-        white: "#e2e9ed",
-      },
+      theme: paletteRef.current,
     });
     const fit = new FitAddon();
     terminal.loadAddon(fit);

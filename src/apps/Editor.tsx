@@ -108,7 +108,12 @@ export function Editor({
   useEffect(() => {
     if (gutter.current && textarea.current)
       gutter.current.scrollTop = textarea.current.scrollTop;
-  }, [wrap, preferences.editorLineNumbers, preferences.editorFontSize]);
+  }, [
+    wrap,
+    preferences.editorLineNumbers,
+    preferences.editorFontSize,
+    preferences.uiScale,
+  ]);
   const request = useRef(0);
   useLayoutEffect(() => {
     ++request.current;
@@ -476,8 +481,10 @@ export function Editor({
     if (!wrap)
       el.scrollTop = Math.max(
         0,
-        buffer.text.slice(0, index).split("\n").length *
-          (preferences.editorFontSize + 9) -
+        (buffer.text.slice(0, index).split("\n").length *
+          (preferences.editorFontSize + 9) *
+          preferences.uiScale) /
+          100 -
           el.clientHeight / 2,
       );
     setStatus(`Match at character ${index + 1}`);
@@ -664,8 +671,8 @@ export function Editor({
             aria-hidden="true"
             ref={gutter}
             style={{
-              fontSize: preferences.editorFontSize - 1,
-              lineHeight: `${preferences.editorFontSize + 9}px`,
+              fontSize: `${(preferences.editorFontSize - 1) / 13}rem`,
+              lineHeight: `${(preferences.editorFontSize + 9) / 13}rem`,
             }}
           >
             {lineNumbers}
@@ -680,8 +687,8 @@ export function Editor({
           spellCheck={false}
           wrap={wrap ? "soft" : "off"}
           style={{
-            fontSize: preferences.editorFontSize,
-            lineHeight: `${preferences.editorFontSize + 9}px`,
+            fontSize: `${preferences.editorFontSize / 13}rem`,
+            lineHeight: `${(preferences.editorFontSize + 9) / 13}rem`,
             tabSize: preferences.editorIndent === "2" ? 2 : 4,
           }}
           onChange={(event) => change(event.target.value)}

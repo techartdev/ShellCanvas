@@ -1,83 +1,83 @@
 .app-connection-dialog {
-  color: #e3edef;
-  background: #1c303b;
-  border: 1px solid #506674;
-  border-radius: 20px;
-  box-shadow: 0 24px 90px #00131db0;
-  width: min(510px, calc(100vw - 40px));
-  padding: 32px;
+  color: var(--sc-text, #e3edef);
+  background: var(--sc-surface, #1c303b);
+  border: 1px solid var(--sc-border, #506674);
+  border-radius: 1.538462rem;
+  box-shadow: 0 1.846154rem 6.923077rem rgba(var(--sc-shadow-rgb), 0.400);
+  width: min(39.230769rem, calc(100vw - 3.076923rem));
+  padding: 2.461538rem;
 }
 .app-connection-dialog::backdrop {
-  background: #06131b99;
-  backdrop-filter: blur(5px);
+  background: rgba(var(--sc-scrim-rgb), 0.600);
+  backdrop-filter: blur(0.384615rem);
 }
 .app-connection-icon {
-  width: 54px;
-  height: 54px;
+  width: 4.153846rem;
+  height: 4.153846rem;
   display: grid;
   place-items: center;
-  border-radius: 15px;
-  background: #355353;
-  color: #b4ddcd;
-  margin-bottom: 24px;
+  border-radius: 1.153846rem;
+  background: var(--sc-raised, #355353);
+  color: var(--sc-accent, #b4ddcd);
+  margin-bottom: 1.846154rem;
 }
 .app-connection-dialog .app-connection-eyebrow {
-  color: #9ec6b9;
-  font-size: 9px;
+  color: var(--sc-accent, #9ec6b9);
+  font-size: 0.692308rem;
   letter-spacing: 0.15em;
   font-weight: 700;
 }
 .app-connection-dialog h2 {
-  font-size: 26px;
+  font-size: 2rem;
   font-weight: 500;
-  margin: 12px 0;
+  margin: 0.923077rem 0;
 }
 .app-connection-dialog p {
-  color: #a6bcc7;
-  font-size: 13px;
+  color: var(--sc-text, #a6bcc7);
+  font-size: 1rem;
   line-height: 1.6;
 }
 .app-connection-dialog fieldset {
   border: 0;
-  padding: 8px 0;
+  padding: 0.615385rem 0;
   margin: 0;
   display: grid;
-  gap: 18px;
+  gap: 1.384615rem;
 }
 .app-connection-dialog label {
   display: grid;
-  gap: 8px;
-  color: #cbdae0;
-  font-size: 12px;
+  gap: 0.615385rem;
+  color: var(--sc-text, #cbdae0);
+  font-size: 0.923077rem;
 }
 .app-connection-dialog input:not([type="checkbox"]) {
   width: 100%;
   min-width: 0;
   box-sizing: border-box;
-  color: #e3edef;
-  background: #122732;
-  border: 1px solid #455f6b;
-  padding: 12px;
-  border-radius: 9px;
+  color: var(--sc-text, #e3edef);
+  background: var(--sc-surface, #122732);
+  border: 1px solid var(--sc-border, #455f6b);
+  padding: 0.923077rem;
+  border-radius: 0.692308rem;
   font: inherit;
 }
 .app-connection-dialog input:focus-visible {
-  outline: 2px solid #a4cebe;
-  outline-offset: 2px;
+  outline: 0.153846rem solid var(--sc-accent, #a4cebe);
+  outline-offset: 0.153846rem;
 }
 .app-connection-dialog .app-connection-remember {
   display: flex;
   align-items: center;
 }
 .app-connection-dialog input[type="checkbox"] {
-  accent-color: #b4ddcd;
+  accent-color: var(--sc-accent, #b4ddcd);
 }
 .app-connection-dialog .app-connection-note {
   display: flex;
-  gap: 9px;
+  gap: 0.692308rem;
   align-items: flex-start;
-  font-size: 11px;
-  margin-top: 20px;
+  font-size: 0.846154rem;
+  margin-top: 1.538462rem;
 }
 .app-connection-note svg {
   flex-shrink: 0;
@@ -85,23 +85,23 @@
 .app-connection-actions {
   display: flex;
   justify-content: flex-end;
-  gap: 9px;
-  margin-top: 24px;
+  gap: 0.692308rem;
+  margin-top: 1.846154rem;
 }
 .app-connection-actions button {
   cursor: pointer;
-  padding: 11px 16px;
-  border-radius: 9px;
-  border: 1px solid #496673;
-  background: #28414e;
-  color: #e2ebed;
+  padding: 0.846154rem 1.230769rem;
+  border-radius: 0.692308rem;
+  border: 1px solid var(--sc-border, #496673);
+  background: var(--sc-raised, #28414e);
+  color: var(--sc-text, #e2ebed);
   font: inherit;
-  font-size: 12px;
+  font-size: 0.923077rem;
 }
 .app-connection-actions button[type="submit"] {
-  color: #15322d;
-  background: #b4ddcd;
-  border-color: #b4ddcd;
+  color: var(--sc-onAccent);
+  background: var(--sc-accent, #b4ddcd);
+  border-color: var(--sc-border, #b4ddcd);
   font-weight: 600;
 }
 .app-connection-actions button:disabled {
@@ -109,8 +109,8 @@
   cursor: default;
 }
 .app-connection-dialog .app-connection-error {
-  color: #f0b6ae;
+  color: var(--sc-danger, #f0b6ae);
 }
 .app-connection-dialog .app-connection-warning {
-  color: #e2c691;
+  color: var(--sc-warning, #e2c691);
 }
