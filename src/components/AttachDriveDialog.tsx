@@ -28,6 +28,10 @@ export function AttachDriveDialog({
   const [working, setWorking] = useState(false);
   const [mapping, setMapping] = useState<string | null>(null);
   const [error, setError] = useState("");
+  const availableDrives =
+    availability?.availableDrives ??
+    Array.from({ length: 23 }, (_, i) => `${String.fromCharCode(90 - i)}:`);
+  const noDrive = availability?.windows && availableDrives.length === 0;
   useEffect(() => {
     alive.current = true;
     const previous = document.activeElement as HTMLElement | null;
@@ -37,7 +41,12 @@ export function AttachDriveDialog({
       Promise.reject("Local attachments are available in the desktop app.")
     )
       .then((value) => {
-        if (alive.current) setAvailability(value);
+        if (alive.current) {
+          setAvailability(value);
+          if (value.windows && value.availableDrives) {
+            setDrive(value.availableDrives[0] ?? "");
+          }
+        }
       })
       .catch((e) => {
         if (alive.current) setError(String(e));
@@ -52,6 +61,7 @@ export function AttachDriveDialog({
       working ||
       !availability?.supported ||
       !availability.installed ||
+      noDrive ||
       !services.attachDrive
     )
       return;
@@ -126,19 +136,23 @@ export function AttachDriveDialog({
                   Local drive
                   <select
                     value={drive}
-                    disabled={working}
+                    disabled={working || noDrive}
                     onChange={(e) => setDrive(e.target.value)}
                   >
-                    {Array.from(
-                      { length: 23 },
-                      (_, i) => `${String.fromCharCode(90 - i)}:`,
-                    ).map((letter) => (
+                    {noDrive && <option value="">No free drive letters</option>}
+                    {availableDrives.map((letter) => (
                       <option key={letter}>{letter}</option>
                     ))}
                   </select>
                 </label>
               ) : (
                 <p>You’ll choose an empty local folder in the next step.</p>
+              )}
+              {noDrive && (
+                <p role="status">
+                  All drive letters from D: to Z: are in use. Detach a drive,
+                  then reopen this dialog.
+                </p>
               )}
               <label>
                 File access
@@ -174,7 +188,10 @@ export function AttachDriveDialog({
             type="button"
             className="primary"
             disabled={
-              working || !availability?.supported || !availability.installed
+              working ||
+              !availability?.supported ||
+              !availability.installed ||
+              noDrive
             }
             onClick={() => void attach()}
           >

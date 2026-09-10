@@ -220,6 +220,8 @@ pub struct Availability {
     pub supported: bool,
     pub installed: bool,
     pub windows: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub available_drives: Option<Vec<String>>,
 }
 #[tauri::command]
 pub async fn drive_mapping_available(
@@ -237,10 +239,27 @@ pub async fn drive_mapping_available(
     .await
     .map_err(|e| e.to_string())??
     .is_some();
+    #[cfg(windows)]
+    let available_drives = {
+        let reserved = state.mappings.list()?;
+        Some(
+            crate::local_mounts::available_drive_letters()?
+                .into_iter()
+                .filter(|letter| {
+                    !reserved
+                        .iter()
+                        .any(|m| m.running && m.local_path.eq_ignore_ascii_case(letter))
+                })
+                .collect(),
+        )
+    };
+    #[cfg(not(windows))]
+    let available_drives = None;
     Ok(Availability {
         supported,
         installed,
         windows: cfg!(windows),
+        available_drives,
     })
 }
 

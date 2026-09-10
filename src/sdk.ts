@@ -232,6 +232,7 @@ export interface DriveMappingAvailability {
   supported: boolean;
   installed: boolean;
   windows: boolean;
+  availableDrives?: string[];
 }
 export interface HostServices {
   driveMappingAvailable?(sessionId: number): Promise<DriveMappingAvailability>;

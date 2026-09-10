@@ -4,6 +4,19 @@
 use std::path::Path;
 
 #[cfg(windows)]
+pub(crate) fn available_drive_letters() -> Result<Vec<String>, String> {
+    let mask = unsafe { windows::Win32::Storage::FileSystem::GetLogicalDrives() };
+    if mask == 0 {
+        return Err(std::io::Error::last_os_error().to_string());
+    }
+    Ok((b'D'..=b'Z')
+        .rev()
+        .filter(|letter| mask & (1 << (letter - b'A')) == 0)
+        .map(|letter| format!("{}:", char::from(letter)))
+        .collect())
+}
+
+#[cfg(windows)]
 pub(crate) fn occupied(target: &Path) -> Result<bool, String> {
     let value = target.to_str().ok_or("Invalid local drive")?.as_bytes();
     if value.len() != 2 || !value[0].is_ascii_uppercase() || value[1] != b':' {

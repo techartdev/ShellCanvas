@@ -12,6 +12,15 @@ Include the dependencies' licensing/distribution limitations in that app.
 
 ## Current implementation
 
+- Windows attachment setup now offers only unused D: through Z: drive letters,
+  also excluding active ShellCanvas reservations. The backend still checks the
+  chosen location at attachment time. Synthetic browser checks confirm the first
+  available choice and the disabled/explained no-free-letter state. TypeScript
+  and desktop clippy pass. Bridge `49c481a` explains missing/damaged WinFsp with
+  official setup guidance. A real helper launch on this PC without WinFsp passes:
+  after the protocol capability handshake it exits promptly with that message,
+  without requesting filesystem operations. No driver was installed. This does
+  not replace the full desktop installation and mapped-drive checks below.
 - `crates/filesystem-sdk`: small MPL-2.0 optional rooted filesystem contract and
   inherited-pipe protocol. Validated relative components, metadata/capacity,
   handle-based offset I/O, truncate, flush, atomic replacement, incremental
