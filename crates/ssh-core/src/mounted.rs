@@ -129,9 +129,26 @@ pub struct SftpMount {
     service: Arc<SftpTextFiles>,
     root: String,
     writable: bool,
+    connection: Option<Arc<dyn ConnectionLifecycle>>,
 }
 impl SftpMount {
     pub async fn new(service: Arc<SftpTextFiles>, path: &str, write: bool) -> FsResult<Arc<Self>> {
+        Self::prepare(service, path, write, None).await
+    }
+    pub(crate) async fn connected(
+        service: Arc<SftpTextFiles>,
+        path: &str,
+        write: bool,
+        connection: Arc<dyn ConnectionLifecycle>,
+    ) -> FsResult<Arc<Self>> {
+        Self::prepare(service, path, write, Some(connection)).await
+    }
+    async fn prepare(
+        service: Arc<SftpTextFiles>,
+        path: &str,
+        write: bool,
+        connection: Option<Arc<dyn ConnectionLifecycle>>,
+    ) -> FsResult<Arc<Self>> {
         let root = SftpBrowser(service.clone())
             .canonicalize(path)
             .await
@@ -146,6 +163,7 @@ impl SftpMount {
             service,
             root,
             writable: write,
+            connection,
         }))
     }
     /// Walk components without following links. SFTP v3 has no openat/nofollow
@@ -377,6 +395,15 @@ impl MountedDirectory for RemoteDirectory {
 
 #[async_trait]
 impl MountedFileSystem for SftpMount {
+    fn check_available(&self) -> FsResult<()> {
+        if self.connection.as_ref().is_some_and(|c| !c.is_connected()) {
+            return Err(FsError::new(
+                FsErrorKind::Offline,
+                "The attachment's SSH connection has closed",
+            ));
+        }
+        Ok(())
+    }
     async fn space(&self, path: &MountPath) -> FsResult<FsSpace> {
         let path = self.resolve(path, false).await?;
         let stats = request(self.service.raw.statvfs(path)).await?;

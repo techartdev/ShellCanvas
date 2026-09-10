@@ -52,6 +52,11 @@ async fn main() -> Result<()> {
         "Set SHELLCANVAS_LIVE_MOUNT_PROBE=1 for disposable native mount testing"
     );
     let transport_loss = std::env::var("SHELLCANVAS_PROBE_TRANSPORT_LOSS").as_deref() == Ok("1");
+    let ssh_loss = std::env::var("SHELLCANVAS_PROBE_SSH_LOSS").as_deref() == Ok("1");
+    ensure!(
+        !(transport_loss && ssh_loss),
+        "Select one connection-loss mode"
+    );
     let connection = Arc::new(
         Connection::connect_with_trust_store(
             &ConnectOptions {
@@ -103,7 +108,7 @@ async fn main() -> Result<()> {
             }
             anyhow::Ok(())
         }).await??;
-        if transport_loss {
+        if transport_loss || ssh_loss {
             let script = r#"import os,sys,errno
 f=os.open(sys.argv[1]+'/loss.bin',os.O_CREAT|os.O_EXCL|os.O_RDWR,0o600)
 os.pwrite(f,b'confirmed',0)
@@ -131,8 +136,16 @@ finally:
             ensure!(line.trim() == "HELD", "Loss fixture did not open its file");
             // Drop the bridge's real transport endpoints, while the separate
             // SSH connection driving the local application remains available.
-            serving.abort();
-            while !serving.is_finished() { tokio::task::yield_now().await; }
+            if ssh_loss {
+                connection.disconnect().await?;
+                tokio::time::timeout(Duration::from_secs(5), async {
+                    while connection.is_connected() { tokio::task::yield_now().await; }
+                }).await?;
+                println!("SSH_SOURCE_CLOSED: bridge pipes remain connected");
+            } else {
+                serving.abort();
+                while !serving.is_finished() { tokio::task::yield_now().await; }
+            }
             drop(holder.stdin.take());
             line.clear();
             tokio::time::timeout(Duration::from_secs(15), output.read_to_string(&mut line)).await??;
@@ -225,7 +238,9 @@ finally:
         &format!("python3 -c {} {}", quote(cleanup), quote(&root)),
     )
     .await?;
-    connection.disconnect().await?;
+    if connection.is_connected() {
+        connection.disconnect().await?;
+    }
     result?;
     println!("PASS: native Linux filesystem -> FUSE bridge -> core root grant -> real SFTP; detached and disposable tree removed");
     Ok(())

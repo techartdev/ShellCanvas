@@ -100,6 +100,19 @@ Include the dependencies' licensing/distribution limitations in that app.
   connection error; after explicitly validating that result the full replay passed.
   Example compilation/clippy pass. This verifies the Linux 6.8/root runtime used;
   non-root helper fallback, modern macOS and actual SSH outages remain separate.
+- Native Linux controlled SSH-disconnect acceptance exposed and fixed a heartbeat
+  gap: failed file I/O did not itself make the underlying SFTP mount's cheap health
+  check fail. Production SSH mounts now retain the exact original connection's
+  lifecycle and report Offline when it closes, without resolving any new source.
+  `SHELLCANVAS_PROBE_SSH_LOSS=1` closes only the fixture's SSH source connection;
+  the bridge pipes and independent test-control SSH sessions remain available.
+  Before the fix, the helper missed its exit deadline. After the fix, live Linux
+  FUSE write/close return EIO, source bytes remain `confirmed`, the heartbeat reports
+  the closed SSH connection, the helper exits unsuccessfully and mountinfo shows
+  removal. Both the failing and passing disposable fixtures and the staged binary
+  were independently confirmed removed. All 33 core tests and all-target clippy
+  pass. This is a controlled real SSH disconnect, not a black-holed network or a
+  silent SFTP-only channel close; those failure detection paths remain to verify.
 - SFTP handle acquisition now closes the mount's dedicated channel if OPEN or
   OPENDIR times out before the handle ID arrives. This releases potentially
   allocated but unclaimed server handles without replaying CREATE. Native library
@@ -231,8 +244,10 @@ Include the dependencies' licensing/distribution limitations in that app.
    and 400px light layouts with synthetic data. Desktop clippy and production
    build pass. Full desktop mapping recovery remains part of gate 1, including
    the platform launcher and native Unix mount-table runtime checks.
-3. Broaden failure acceptance to real network loss and remote permission/disk-full
-   errors. Native provider error/cleanup warning injection now passes. Unconfirmed
+3. Broaden failure acceptance to stalled/black-holed network and SFTP-only channel
+   loss, and remote permission/disk-full errors. Controlled SSH disconnect now
+   passes over a native Linux mount, after fixing its connection-bound heartbeat.
+   Native provider error/cleanup warning injection now passes. Unconfirmed
    SFTP open timeout cleanup is fixed and protocol-fixture tested; verify late
    responses/caller cancellation while preparing the root. Verify the
    native chooser/source-retirement race without touching the normal user profile.

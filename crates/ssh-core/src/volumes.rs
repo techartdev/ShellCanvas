@@ -142,7 +142,13 @@ impl FileSystemProvider for SshFileBrowser {
             .text_files()
             .await
             .map_err(|e| FsError::new(FsErrorKind::Offline, e.to_string()))?;
-        Ok(crate::mounted::SftpMount::new(Arc::new(service), path, writable).await?)
+        Ok(crate::mounted::SftpMount::connected(
+            Arc::new(service),
+            path,
+            writable,
+            self.connection.clone(),
+        )
+        .await?)
     }
     async fn volumes(&self) -> Result<FileVolumes> {
         self.inventory().await
