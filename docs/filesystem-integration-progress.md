@@ -12,6 +12,13 @@ Include the dependencies' licensing/distribution limitations in that app.
 
 ## Current implementation
 
+- Native Windows volume-wide flush now passes at bridge `9c4fbe1`, CI run
+  `34521265017` (full native suite: 28.88 seconds). The fixture opens the actual
+  disposable volume through the Windows device path and calls FlushFileBuffers
+  via `File::sync_all`. All three writable files are attempted even when one
+  provider flush fails; Windows receives ERROR_IO_DEVICE. Clearing the injected
+  fault allows the next volume flush to succeed, with every file's backing bytes
+  independently verified. All platform builds/tests and prior native checks pass.
 - Native Linux 6.8 acceptance now also passes as the existing unprivileged
   account `nobody` (UID 65534), using bridge `87a28c9`. The opt-in harness mode
   `SHELLCANVAS_PROBE_UNPRIVILEGED=1` runs the bridge and local file operations
@@ -325,7 +332,7 @@ Include the dependencies' licensing/distribution limitations in that app.
    with busy detach now passing native WinFsp acceptance. Cleanup-time failure
    warnings now pass native failure injection. Volume-wide flush and cross-handle rename
    are implemented with bookkeeping regression tests. Native directory alias
-   rename checks now pass; volume-wide flush and file attribute work remain.
+   rename and volume-wide flush checks now pass; file attribute work remains.
    Linux shared/private/read-only memory-mapping acceptance
    passes, as does Windows shared/private/read-only mapping against a disposable
    local provider. macOS mapped-file tests and concurrent remote-edit behavior
