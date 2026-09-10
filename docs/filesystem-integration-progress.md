@@ -12,6 +12,20 @@ Include the dependencies' licensing/distribution limitations in that app.
 
 ## Current implementation
 
+- Windows creation/overwrite read-only projection passes at bridge `0bf4b9a`,
+  CI `34528217955` (native suite 28.95 seconds). The original creating/overwriting
+  handle can finish writing; later writes are blocked by the read-only flag.
+  CopyFileW of a read-only source preserves its flag and exact backing bytes.
+  Unsupported hidden creation leaves no entry, and unsupported overwrite does
+  not truncate the destination. The overwrite test uses `NtCreateFile` with
+  `FILE_OVERWRITE`, verified against a local Windows baseline; the ordinary Rust
+  reopen/truncate path does not forward supplied attributes to this callback.
+  Archive flags supplied during create/overwrite are advisory and not persisted;
+  other unsupported DOS flags are rejected before mutation. A post-create
+  metadata failure returns an error and warns about the possibly created entry,
+  rather than deleting a path another remote actor might have replaced.
+  All platform builds/tests, local Windows lint checks and prior native lifecycle
+  checks pass. No new required provider methods or protocol fields were added.
 - Ordinary Windows `CopyFileW` acceptance passes at bridge `f6e3ee8`, CI
   `34526423658` (native suite 29.44 seconds): both copy directions, exact backing
   bytes, modification-time preservation, exclusive creation and overwrite.
@@ -394,7 +408,8 @@ Include the dependencies' licensing/distribution limitations in that app.
    rename and volume-wide flush checks now pass. Existing-file read-only changes
    now pass native Windows and separate live SFTP checks. Timestamp mapping and
    explicit rejection of unavailable creation/change-only updates pass as recorded
-   above. Creation/overwrite attribute handling still needs review.
+   above. Creation/overwrite read-only handling and ordinary native copy now pass
+   as recorded above; full DOS-attribute/ACL persistence is not provided.
    Linux shared/private/read-only memory-mapping acceptance
    passes, as does Windows shared/private/read-only mapping against a disposable
    local provider. macOS mapped-file tests and concurrent remote-edit behavior
