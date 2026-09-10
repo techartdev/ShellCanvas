@@ -12,6 +12,23 @@ Include the dependencies' licensing/distribution limitations in that app.
 
 ## Current implementation
 
+- Windows existing-file read-only attributes now project through remote Unix
+  permission bits at bridge `447b1c3`. Set removes write bits; clear restores owner
+  write only. `SetBasicInfo` rejects unsupported DOS flags before mutating other
+  metadata. It also rejects unsupported directory/special-mode transitions.
+  Attribute-only opens request a remote read handle instead of data-write access.
+  The core permits non-size metadata changes on read handles within writable
+  roots; read-only roots and read-handle truncation remain rejected. No new
+  required provider methods or protocol fields were added.
+  Core 34 tests and both core/bridge clippy pass. Live SFTP `mount_probe` passes
+  permission set/clear via a read handle, rejected truncation and read-only-root
+  enforcement; fixture `aa48fc99-234b-412a-80e6-5b984c1cbcb6` removal was independently
+  confirmed. CI `34523633220` passes all platforms and native WinFsp acceptance
+  (37.15 seconds): read-only set/clear reaches backing metadata, new writes and
+  deletion are blocked, and combined hidden/read-only rejection has no partial
+  effects. This is separate bridge/provider evidence, not a desktop SFTP mapping.
+  Creation/overwrite attributes and creation/change-time semantics remain open;
+  arbitrary DOS flags are not persisted by the present portable contract.
 - FUSE inode lifetime coverage passes at bridge `558d1f2`, CI run
   `34521983619`: lookup and open references retain an inode until both are gone,
   in either cleanup order; retiring an old inode cannot remove a recreated path.
@@ -347,7 +364,9 @@ Include the dependencies' licensing/distribution limitations in that app.
    with busy detach now passing native WinFsp acceptance. Cleanup-time failure
    warnings now pass native failure injection. Volume-wide flush and cross-handle rename
    are implemented with bookkeeping regression tests. Native directory alias
-   rename and volume-wide flush checks now pass; file attribute work remains.
+   rename and volume-wide flush checks now pass. Existing-file read-only changes
+   now pass native Windows and separate live SFTP checks; creation/overwrite
+   attributes and creation/change timestamps still need review.
    Linux shared/private/read-only memory-mapping acceptance
    passes, as does Windows shared/private/read-only mapping against a disposable
    local provider. macOS mapped-file tests and concurrent remote-edit behavior

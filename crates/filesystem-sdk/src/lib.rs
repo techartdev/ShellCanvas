@@ -164,6 +164,8 @@ pub trait MountedFile: Send + Sync {
     async fn metadata(&self) -> FsResult<FsMetadata>;
     async fn read_at(&self, offset: u64, length: u32) -> FsResult<Vec<u8>>;
     async fn write_at(&self, offset: u64, bytes: &[u8]) -> FsResult<()>;
+    /// Non-size metadata changes may use a read handle within a writable root;
+    /// the remote account still needs permission. Size changes require write access.
     async fn set_metadata(&self, metadata: FsSetMetadata) -> FsResult<()>;
     /// A provider without durable_flush only guarantees acknowledged writes.
     async fn flush(&self) -> FsResult<()>;

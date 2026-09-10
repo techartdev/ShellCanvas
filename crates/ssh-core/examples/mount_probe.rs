@@ -94,6 +94,21 @@ async fn main() -> Result<()> {
             reader.write_at(0, b"x").await.is_err(),
             "Read handle permitted write"
         );
+        reader.set_metadata(FsSetMetadata {
+            permissions: Some(0o444),
+            ..Default::default()
+        }).await?;
+        ensure!(reader.metadata().await?.permissions.unwrap_or(0) & 0o777 == 0o444,
+            "Read handle could not change permissions within writable root");
+        reader.set_metadata(FsSetMetadata {
+            permissions: Some(0o644),
+            ..Default::default()
+        }).await?;
+        ensure!(reader.metadata().await?.permissions.unwrap_or(0) & 0o777 == 0o644,
+            "Read handle could not restore owner write permission");
+        ensure!(reader.set_metadata(FsSetMetadata { size: Some(0), ..Default::default() }).await.is_err(),
+            "Read handle permitted truncation");
+        ensure!(reader.metadata().await?.size == 5, "Rejected truncation changed file size");
         let temp = MountPath::root().child("save.tmp")?;
         let save = fs.open(&temp, create).await?;
         save.write_at(0, b"saved").await?;
@@ -127,6 +142,13 @@ async fn main() -> Result<()> {
             "Closed handle stayed usable"
         );
         let readonly = browser.mount_root(&root, false).await?;
+        let readonly_file = readonly.open(&path, FsOpenOptions {
+            read: true, write: false, create: FsCreate::OpenExisting, truncate: false,
+        }).await?;
+        ensure!(readonly_file.set_metadata(FsSetMetadata {
+            permissions: Some(0o777), ..Default::default()
+        }).await.is_err(), "Read-only mount accepted metadata changes through a handle");
+        readonly_file.close().await?;
         ensure!(
             readonly.open(&path, create).await.is_err(),
             "Read-only mount accepted writable open"

@@ -239,6 +239,7 @@ struct RemoteFile {
     handle: RemoteHandle,
     read: bool,
     write: bool,
+    metadata_writable: bool,
 }
 #[async_trait]
 impl MountedFile for RemoteFile {
@@ -306,7 +307,10 @@ impl MountedFile for RemoteFile {
         Ok(())
     }
     async fn set_metadata(&self, update: FsSetMetadata) -> FsResult<()> {
-        writable(self.write)?;
+        writable(self.metadata_writable)?;
+        if update.size.is_some() {
+            writable(self.write)?;
+        }
         let id = self.handle.id.read().await;
         let id = id.as_ref().ok_or_else(closed)?;
         let current = request(self.handle.service.raw.fstat(id)).await?.attrs;
@@ -482,6 +486,7 @@ impl MountedFileSystem for SftpMount {
         }
         // Truncate only after validating the returned handle is a regular file.
         let service = self.service.clone();
+        let metadata_writable = self.writable;
         let file = tokio::spawn(async move {
             let id = acquire_handle(
                 &service,
@@ -495,6 +500,7 @@ impl MountedFileSystem for SftpMount {
                 },
                 read: options.read,
                 write: options.write,
+                metadata_writable,
             };
             if file.metadata().await?.kind != FsKind::File {
                 return Err(FsError::new(
