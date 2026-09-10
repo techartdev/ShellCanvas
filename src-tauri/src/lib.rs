@@ -23,6 +23,7 @@ mod directories;
 mod drive_bridge_install;
 mod drive_mappings;
 mod drive_recovery;
+mod drive_startup;
 mod local_mounts;
 mod extension_frames;
 #[cfg(debug_assertions)]
@@ -793,6 +794,7 @@ pub fn run() {
             }
             let handler: fn(tauri::ipc::Invoke<tauri::Wry>) -> bool = tauri::generate_handler![
                 client_platform,
+                drive_mappings::cancel_drive_startup,
                 drive_bridge_install::drive_bridge_installation,
                 drive_bridge_install::review_drive_bridge,
                 drive_bridge_install::cancel_drive_bridge_review,

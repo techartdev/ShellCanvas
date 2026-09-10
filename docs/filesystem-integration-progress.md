@@ -399,6 +399,31 @@ installation/reservation tests, and the production frontend build passed. No CI
 run was triggered for this follow-up. Batch future CI changes and use local
 verification where possible to respect the user's GitHub plan.
 
+## Startup cancellation follow-up
+
+Attachment preparation now exposes **Cancel attachment** while opening the
+remote root or verifying the local executable. Cancellation drops preparation
+resources and never starts the native helper. A serialized launch boundary
+rejects a late cancel request; once native startup begins, the existing detach
+and recovery machinery retains ownership. Canceled entries are labeled Canceled
+and can be dismissed after their connection reservation is released. Root
+availability is rechecked after executable verification, before native launch.
+This adds no filesystem-provider or bridge-protocol requirement.
+
+Local verification covers cancellation before polling, during preparation, and
+as a ready result arrives; the production desktop `run` path verifies no helper
+starts and root resources are dropped. The SFTP wire fixture cancels REALPATH and
+LSTAT during root preparation, observes channel EOF, and confirms another channel
+remains open. The isolated browser fixture verifies Cancel → Canceled → Dismiss
+and the rendered dialog. These are synthetic lifecycle/UI checks, not evidence
+of a desktop-created WinFsp mount.
+
+The ignored native-helper acceptance test was explicitly run locally with the
+built `shellcanvas-filesystem-sdk` `lifecycle_fixture` example. Stalled startup,
+invalid protocol, retained reservation for an occupied system location (read-only
+occupancy inspection), busy-detach refusal and explicit retry all passed. No
+driver, remote account, normal app profile, or CI run was used by these checks.
+
 ## Remaining completion gates
 
 1. Native end-to-end installation verification and an actual desktop-created
@@ -425,8 +450,9 @@ verification where possible to respect the user's GitHub plan.
    Native provider error/cleanup warning injection now passes. Unconfirmed
    SFTP open timeout cleanup and late OPEN reply cancellation are protocol-fixture
    tested. Cancelled/timed-out/rejected CLOSE cleanup is fixed and verified above.
-   Verify cancellation while preparing the root and the
-   native chooser/source-retirement race without touching the normal user profile.
+   Cancellation while preparing the root is now verified above. The native
+   chooser/source-retirement race remains to be exercised without touching the
+   normal user profile.
 4. Native Windows file API, replacement-save, capacity, basic error and busy-detach
    checks now pass in disposable WinFsp CI. Remaining: desktop-created SFTP mapping,
    Explorer/ordinary editor acceptance (native directory rename/open-handle

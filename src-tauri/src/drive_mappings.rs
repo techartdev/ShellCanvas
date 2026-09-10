@@ -34,12 +34,15 @@ pub struct MappingInfo {
     pub running: bool,
     pub cleanup_warning: Option<String>,
     pub can_retry_cleanup: bool,
+    pub can_cancel_startup: bool,
+    pub startup_canceled: bool,
 }
 struct Mapping {
     info: MappingInfo,
     control: Arc<BridgeControl>,
     _lease: Option<ConnectionLease>,
     recovery: Arc<crate::drive_recovery::Recovery>,
+    startup: Arc<crate::drive_startup::Startup>,
 }
 #[derive(Clone, Default)]
 pub struct Mappings(Arc<Mutex<BTreeMap<String, Mapping>>>);
@@ -58,6 +61,10 @@ impl Mappings {
                 let (warning, can_retry) = m.recovery.snapshot()?;
                 info.cleanup_warning = warning.or(info.cleanup_warning);
                 info.can_retry_cleanup = can_retry;
+                info.can_cancel_startup = m.info.running
+                    && info.status.phase == BridgePhase::Starting
+                    && m.startup.can_cancel();
+                info.startup_canceled = m.startup.was_canceled();
                 Ok(info)
             })
             .collect()
@@ -101,6 +108,7 @@ impl Mappings {
                 control,
                 _lease: lease,
                 recovery: Arc::new(crate::drive_recovery::Recovery::default()),
+                startup: Arc::new(crate::drive_startup::Startup::default()),
             },
         );
         Ok(())
@@ -110,6 +118,7 @@ impl Mappings {
             if let Some(item) = items.get_mut(id) {
                 item.info.running = false;
                 item._lease = None;
+                item.startup.finish();
             }
         }
     }
@@ -117,6 +126,14 @@ impl Mappings {
         let items = self.lock()?;
         let mapping = items.get(id).ok_or("Attachment no longer exists")?;
         mapping.control.request_detach().map_err(|e| e.to_string())
+    }
+    fn startup(&self, id: &str) -> Result<Arc<crate::drive_startup::Startup>, String> {
+        Ok(self
+            .lock()?
+            .get(id)
+            .ok_or("Attachment no longer exists")?
+            .startup
+            .clone())
     }
     fn recovery(&self, id: &str) -> Result<Arc<crate::drive_recovery::Recovery>, String> {
         Ok(self
@@ -151,6 +168,10 @@ pub fn drive_mappings(state: State<'_, DesktopState>) -> Result<Vec<MappingInfo>
 #[tauri::command]
 pub fn detach_drive(id: String, state: State<'_, DesktopState>) -> Result<(), String> {
     state.mappings.detach(&id)
+}
+#[tauri::command]
+pub fn cancel_drive_startup(id: String, state: State<'_, DesktopState>) -> Result<(), String> {
+    state.mappings.startup(&id)?.cancel()
 }
 #[tauri::command]
 pub fn dismiss_drive(id: String, state: State<'_, DesktopState>) -> Result<(), String> {
@@ -376,9 +397,12 @@ pub async fn attach_drive(
         running: true,
         cleanup_warning: None,
         can_retry_cleanup: false,
+        can_cancel_startup: false,
+        startup_canceled: false,
     };
     state.mappings.reserve(info, control.clone(), Some(lease))?;
     let recovery = state.mappings.recovery(&id)?;
+    let startup = state.mappings.startup(&id)?;
     let mappings = state.mappings.clone();
     let task_id = id.clone();
     // A canceled UI invocation does not drop a live mapping or its connection lease.
@@ -393,6 +417,7 @@ pub async fn attach_drive(
             control.clone(),
             safe.clone(),
             recovery,
+            startup,
         )
         .await;
         if let Err(error) = result {
@@ -422,20 +447,30 @@ async fn run(
     control: Arc<BridgeControl>,
     safe: Arc<AtomicBool>,
     recovery: Arc<crate::drive_recovery::Recovery>,
+    startup: Arc<crate::drive_startup::Startup>,
 ) -> Result<(), String> {
-    let root = tokio::time::timeout(Duration::from_secs(30), files.mount_root(&path, writable))
-        .await
-        .map_err(|_| "Opening the attachment root timed out")?
-        .map_err(|e| e.to_string())?;
-    if writable && !root.capabilities().writable {
-        return Err("This file provider permits only read-only attachments. Choose Read only and try again.".into());
-    }
-    let executable = tauri::async_runtime::spawn_blocking(move || {
-        crate::drive_bridge_install::verify(&installation.1, &installation.0)?;
-        Ok::<_, String>(installation.1)
-    })
-    .await
-    .map_err(|e| e.to_string())??;
+    let (root, executable) = startup
+        .prepare(async {
+            let root = tokio::time::timeout(
+                Duration::from_secs(30), files.mount_root(&path, writable),
+            )
+            .await
+            .map_err(|_| "Opening the attachment root timed out")?
+            .map_err(|e| e.to_string())?;
+            if writable && !root.capabilities().writable {
+                return Err("This file provider permits only read-only attachments. Choose Read only and try again.".into());
+            }
+            let executable = tauri::async_runtime::spawn_blocking(move || {
+                crate::drive_bridge_install::verify(&installation.1, &installation.0)?;
+                Ok::<_, String>(installation.1)
+            })
+            .await
+            .map_err(|e| e.to_string())??;
+            // A source can retire while local verification is in progress.
+            root.check_available().map_err(|e| e.to_string())?;
+            Ok((root, executable))
+        })
+        .await?;
     let mut command = Command::new(executable);
     command.arg("--mount").arg(&target);
     supervise(
@@ -576,6 +611,80 @@ fn diagnostic_tail(bytes: &Mutex<Vec<u8>>) -> String {
 mod tests {
     use super::*;
     use shellcanvas_services::*;
+
+    struct PendingRoot {
+        entered: tokio::sync::Notify,
+        dropped: Arc<AtomicBool>,
+    }
+    struct PreparingResource(Arc<AtomicBool>);
+    impl Drop for PreparingResource {
+        fn drop(&mut self) {
+            self.0.store(true, Ordering::Release);
+        }
+    }
+    #[async_trait::async_trait]
+    impl FileSystemProvider for PendingRoot {
+        async fn mount_root(&self, _: &str, _: bool) -> FsResult<Arc<dyn MountedFileSystem>> {
+            let _resource = PreparingResource(self.dropped.clone());
+            self.entered.notify_one();
+            std::future::pending().await
+        }
+        async fn list(&self, _: Option<&str>) -> anyhow::Result<Directory> {
+            anyhow::bail!("unused")
+        }
+        async fn locate(&self, _: &str) -> anyhow::Result<FileLocation> {
+            anyhow::bail!("unused")
+        }
+        async fn preview(&self, _: &str) -> anyhow::Result<String> {
+            anyhow::bail!("unused")
+        }
+    }
+    #[tokio::test]
+    async fn cancel_during_root_preparation_never_starts_a_native_helper() {
+        let dropped = Arc::new(AtomicBool::new(false));
+        let provider = Arc::new(PendingRoot {
+            entered: Default::default(),
+            dropped: dropped.clone(),
+        });
+        let startup = Arc::new(crate::drive_startup::Startup::default());
+        let safe = Arc::new(AtomicBool::new(true));
+        // Deliberately unusable installation: cancellation must finish before
+        // even reading this path, rather than fall through to verification/spawn.
+        let installation = crate::drive_bridge_install::Installation {
+            version: 1,
+            name: "Unused fixture".into(),
+            sha256: "0".repeat(64),
+            size: 1,
+        };
+        let task = tokio::spawn(run(
+            (installation, PathBuf::from("nonexistent-canceled-bridge")),
+            PathBuf::from("unused-target"),
+            provider.clone(),
+            "/fixture".into(),
+            false,
+            Arc::new(BridgeControl::default()),
+            safe.clone(),
+            Arc::new(crate::drive_recovery::Recovery::default()),
+            startup.clone(),
+        ));
+        provider.entered.notified().await;
+        startup.cancel().unwrap();
+        let result = tokio::time::timeout(Duration::from_secs(1), task)
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(result
+            .unwrap_err()
+            .contains("canceled before native startup"));
+        assert!(
+            dropped.load(Ordering::Acquire),
+            "Preparing root resources were retained"
+        );
+        assert!(
+            safe.load(Ordering::Acquire),
+            "Cancellation acquired native ownership"
+        );
+    }
 
     struct EmptyRoot;
     fn unsupported<T>() -> FsResult<T> {
@@ -768,6 +877,8 @@ mod tests {
                     running: true,
                     cleanup_warning: None,
                     can_retry_cleanup: false,
+                    can_cancel_startup: false,
+                    startup_canceled: false,
                 },
                 control,
                 Some(resource.lease().unwrap()),
@@ -805,6 +916,8 @@ mod tests {
             running: true,
             cleanup_warning: None,
             can_retry_cleanup: false,
+            can_cancel_startup: false,
+            startup_canceled: false,
         };
         mappings
             .reserve(info.clone(), control.clone(), None)
