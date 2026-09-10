@@ -111,8 +111,10 @@ unbounded whole-file caching.
 1. Folder/volume context menu: **Attach to this computer…**.
 2. Dialog shows host and remote path, local target, access mode and any missing
    native component. Installation is a deliberate setup action.
-3. A built-in mappings view shows name, source, local path and connection state,
-   with Open, Retry and Detach actions. Failed setup must leave no phantom drive.
+3. Settings → Files shows host, remote/local path, access and attachment state,
+   with explicit Detach and completed-result Dismiss actions. Open-local-location
+   and recovery convenience actions remain backlog. Failed setup must leave no
+   phantom drive; unconfirmed cleanup remains visible.
 4. Disconnect/quit explains which mappings are affected and allows cancellation
    when files remain in use.
 

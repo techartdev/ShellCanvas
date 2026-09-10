@@ -76,6 +76,8 @@ it("captures each source once and attaches it to all native service requests", a
   const bound = nativeServices.bindSources!(session);
   files.generation = 2;
   const requests = [
+    () => bound.driveMappingAvailable!(700),
+    () => bound.attachDrive!(700, "opaque", false, "Z:"),
     () => bound.volumes!(700),
     () => bound.setVolumeMounted!(700, "volume", "revision", true),
     () => bound.list(700),

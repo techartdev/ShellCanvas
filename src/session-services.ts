@@ -122,6 +122,28 @@ export function bindSession(
     notifyFileChanges(session!.id, relocate ? "relocation" : "content");
   }
   const services: SessionServices = {
+    driveMappingAvailable: backend.driveMappingAvailable
+      ? async () => {
+          const expected = generation;
+          const result = await backend.driveMappingAvailable!(
+            check("files.read"),
+          );
+          check("files.read", expected);
+          return result;
+        }
+      : undefined,
+    // A successful attachment belongs to the desktop, not this window. Return
+    // its id even if the visible workspace changed while the chooser was open.
+    attachDrive: backend.attachDrive
+      ? async (path, writable, drive) =>
+          backend.attachDrive!(
+            check("files.read"),
+            path,
+            writable,
+            drive,
+            session?.info.hostname,
+          )
+      : undefined,
     volumes: backend.volumes
       ? async () => {
           const expected = generation;

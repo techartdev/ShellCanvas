@@ -4,6 +4,7 @@
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use std::{fmt, sync::Arc};
+pub mod bridge_control;
 pub mod wire;
 
 pub const MOUNT_IO_CHUNK: usize = 32 * 1024;

@@ -228,7 +228,20 @@ export interface ClipboardFileState {
   sequence: number;
   intent?: "copy" | "move";
 }
+export interface DriveMappingAvailability {
+  supported: boolean;
+  installed: boolean;
+  windows: boolean;
+}
 export interface HostServices {
+  driveMappingAvailable?(sessionId: number): Promise<DriveMappingAvailability>;
+  attachDrive?(
+    sessionId: number,
+    path: string,
+    writable: boolean,
+    drive?: string,
+    hostLabel?: string,
+  ): Promise<string | null>;
   volumes?(sessionId: number): Promise<FileVolumes>;
   setVolumeMounted?(
     sessionId: number,
@@ -373,6 +386,12 @@ export interface HostServices {
 }
 /** Apps receive a fixed session handle, never connection administration. */
 export interface SessionServices {
+  driveMappingAvailable?(): Promise<DriveMappingAvailability>;
+  attachDrive?(
+    path: string,
+    writable: boolean,
+    drive?: string,
+  ): Promise<string | null>;
   volumes?(): Promise<FileVolumes>;
   setVolumeMounted?(
     id: string,

@@ -20,6 +20,8 @@ mod connection_resource;
 mod custom_binding;
 mod custom_services;
 mod directories;
+mod drive_bridge_install;
+mod drive_mappings;
 mod extension_frames;
 #[cfg(debug_assertions)]
 mod extension_probe;
@@ -45,6 +47,8 @@ use workspace_services::ServiceRole;
 use workspace_services::WorkspaceServices as ActiveSession;
 #[derive(Default)]
 struct DesktopState {
+    mappings: drive_mappings::Mappings,
+    mount_transition: Mutex<()>,
     directories: directories::DirectoryReaders,
     registry: Arc<Mutex<SessionRegistry<ActiveSession>>>,
     next_id: AtomicU64,
@@ -270,7 +274,11 @@ async fn decide_host_key(
 }
 #[tauri::command]
 async fn disconnect(session_id: u64, state: State<'_, DesktopState>) -> Result<(), String> {
-    let removed = state.registry.lock().await.remove(session_id);
+    let removed = {
+        let mut registry = state.registry.lock().await;
+        state.mappings.ensure_releasable(session_id, None)?;
+        registry.remove(session_id)
+    };
     state.transfers.lock().await.close_session(session_id);
     state.directories.close_session(session_id);
     if let Some(old) = removed {
@@ -403,6 +411,12 @@ async fn set_volume_mounted(
     mounted: bool,
     state: State<'_, DesktopState>,
 ) -> Result<(), String> {
+    let _transition = state.mount_transition.lock().await;
+    if !mounted {
+        state.mappings.ensure_releasable(session_id, binding.as_ref()).map_err(|_| {
+            "Detach this host's local drives in Settings → Files before unmounting a remote volume.".to_string()
+        })?;
+    }
     filesystem(&state, session_id, binding.as_ref())
         .await?
         .set_volume_mounted(&id, &revision, mounted)
@@ -711,6 +725,16 @@ async fn close_terminal(
 pub fn run() {
     tauri::Builder::default()
         .on_window_event(|window, event| {
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                if window
+                    .try_state::<DesktopState>()
+                    .is_some_and(|s| s.mappings.has_running())
+                {
+                    use tauri::Emitter;
+                    api.prevent_close();
+                    let _ = window.emit("drive-mappings-close-blocked", ());
+                }
+            }
             if matches!(event, tauri::WindowEvent::Destroyed) {
                 if let Some(state) = window.try_state::<DesktopState>() {
                     state.directories.close_owner(window.label());
@@ -730,6 +754,7 @@ pub fn run() {
             Ok(())
         })
         .manage(DesktopState::default())
+        .manage(drive_bridge_install::Reviews::default())
         .manage(adapters::AdapterJobs::default())
         .manage(adapter_diagnostics::AdapterDiagnostics::default())
         .manage(custom_services::CustomRequests::default())
@@ -759,6 +784,15 @@ pub fn run() {
                 return handler(invoke);
             }
             let handler: fn(tauri::ipc::Invoke<tauri::Wry>) -> bool = tauri::generate_handler![
+                drive_bridge_install::drive_bridge_installation,
+                drive_bridge_install::review_drive_bridge,
+                drive_bridge_install::cancel_drive_bridge_review,
+                drive_bridge_install::install_drive_bridge,
+                drive_mappings::drive_mappings,
+                drive_mappings::drive_mapping_available,
+                drive_mappings::attach_drive,
+                drive_mappings::detach_drive,
+                drive_mappings::dismiss_drive,
                 repository_install::read_repository_file,
                 repository_install::prepare_repository_read,
                 repository_install::cancel_repository_read,
@@ -838,6 +872,15 @@ pub fn run() {
             ];
             handler(invoke)
         })
-        .run(tauri::generate_context!())
-        .expect("Unable to start ShellCanvas");
+        .build(tauri::generate_context!())
+        .expect("Unable to start ShellCanvas")
+        .run(|app, event| {
+            if let tauri::RunEvent::ExitRequested { api, .. } = event {
+                if app.state::<DesktopState>().mappings.has_running() {
+                    use tauri::Emitter;
+                    api.prevent_exit();
+                    let _ = app.emit("drive-mappings-close-blocked", ());
+                }
+            }
+        });
 }

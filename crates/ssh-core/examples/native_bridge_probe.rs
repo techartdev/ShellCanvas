@@ -3,8 +3,10 @@
 //! to a separately built bridge; the selected filesystem remains the core SFTP provider.
 use anyhow::{ensure, Context, Result};
 use shellcanvas_core::*;
+use shellcanvas_filesystem_sdk::bridge_control::{BridgeControl, BridgePhase};
 use shellcanvas_filesystem_sdk::wire::Server;
 use std::{path::PathBuf, process::Stdio, sync::Arc, time::Duration};
+use tokio::io::AsyncBufReadExt;
 fn quote(value: &str) -> String {
     format!("'{}'", value.replace('\'', "'\\''"))
 }
@@ -82,7 +84,8 @@ async fn main() -> Result<()> {
         .spawn()?;
     let reader = child.stdout.take().context("Missing child stdout")?;
     let writer = child.stdin.take().context("Missing child stdin")?;
-    let serving = tokio::spawn(Server::new(fs).serve(reader, writer));
+    let control = Arc::new(BridgeControl::default());
+    let serving = tokio::spawn(Server::with_control(fs, control.clone()).serve(reader, writer));
     let result: Result<()> = async {
         run(
             &args,
@@ -92,6 +95,34 @@ async fn main() -> Result<()> {
             ),
         )
         .await?;
+        tokio::time::timeout(Duration::from_secs(10), async {
+            while control.snapshot()?.phase != BridgePhase::Attached {
+                tokio::time::sleep(Duration::from_millis(100)).await;
+            }
+            anyhow::Ok(())
+        }).await??;
+        let hold = "import os,sys; f=os.open(sys.argv[1]+'/held',os.O_CREAT|os.O_RDWR,0o600); print('HELD',flush=True); sys.stdin.read(); os.close(f)";
+        let mut holder = ssh(&args, &format!("exec timeout 60s python3 -u -c {} {}", quote(hold), quote(&target)))
+            .stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::inherit()).spawn()?;
+        let mut ready = tokio::io::BufReader::new(holder.stdout.take().unwrap());
+        let mut line = String::new();
+        tokio::time::timeout(Duration::from_secs(15), ready.read_line(&mut line)).await??;
+        ensure!(line.trim() == "HELD", "Busy-file fixture did not open");
+        control.request_detach()?;
+        tokio::time::timeout(Duration::from_secs(25), async {
+            loop {
+                let snapshot = control.snapshot()?;
+                if snapshot.phase == BridgePhase::Attached && snapshot.message.is_some() { break; }
+                ensure!(snapshot.phase != BridgePhase::Detached && snapshot.phase != BridgePhase::Failed, "Busy drive was detached or failed");
+                tokio::time::sleep(Duration::from_millis(100)).await;
+            }
+            anyhow::Ok(())
+        }).await??;
+        run(&args, &format!("mountpoint -q {}", quote(&target))).await?;
+        drop(holder.stdin.take());
+        let status = tokio::time::timeout(Duration::from_secs(10), holder.wait()).await??;
+        ensure!(status.success(), "Busy-file fixture did not close cleanly");
+        println!("BUSY_DETACH_PASS: held file prevented unmount; attachment stayed available");
         let script = service.create_text(&root, "test.py", TEST).await?;
         print!(
             "{}",
@@ -105,6 +136,16 @@ async fn main() -> Result<()> {
             )
             .await?
         );
+        control.request_detach()?;
+        tokio::time::timeout(Duration::from_secs(25), async {
+            loop {
+                let snapshot = control.snapshot()?;
+                if snapshot.phase == BridgePhase::Detached { break; }
+                ensure!(snapshot.phase == BridgePhase::Detaching, "Graceful detach failed: {:?}", snapshot.message);
+                tokio::time::sleep(Duration::from_millis(100)).await;
+            }
+            anyhow::Ok(())
+        }).await??;
         Ok(())
     }
     .await;
@@ -132,7 +173,11 @@ async fn main() -> Result<()> {
     // The regular Files action intentionally removes only empty directories.
     // This harness owns the entire UUID fixture, including the populated source.
     let cleanup = "import os,shutil,sys; p=sys.argv[1]; assert p.startswith('/tmp/shellcanvas-native-') and os.path.dirname(p)=='/tmp' and not os.path.islink(p) and not os.path.ismount(p+'/mount'); shutil.rmtree(p)";
-    run(&args, &format!("python3 -c {} {}", quote(cleanup), quote(&root))).await?;
+    run(
+        &args,
+        &format!("python3 -c {} {}", quote(cleanup), quote(&root)),
+    )
+    .await?;
     connection.disconnect().await?;
     result?;
     println!("PASS: native Linux filesystem -> FUSE bridge -> core root grant -> real SFTP; detached and disposable tree removed");

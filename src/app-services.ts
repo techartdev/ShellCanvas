@@ -52,6 +52,12 @@ export function scopeAppServices(
     return { ...ticket };
   }
   const services: SessionServices = {
+    driveMappingAvailable: base.driveMappingAvailable
+      ? guard("files.read", base.driveMappingAvailable.bind(base))
+      : undefined,
+    attachDrive: base.attachDrive
+      ? guard("files.read", base.attachDrive.bind(base))
+      : undefined,
     custom: base.custom
       ? {
           list: (signal) => base.custom!.list(signal),

@@ -45,6 +45,7 @@ import { usePreferences } from "../preferences";
 import { visibleFiles } from "../file-view";
 import { FileActionDialog } from "../components/FileActionDialog";
 import { FileVolumes } from "../components/FileVolumes";
+import { AttachDriveDialog } from "../components/AttachDriveDialog";
 import { MoveFileDialog } from "../components/MoveFileDialog";
 import { watchFileChanges, watchFileLocations } from "../file-events";
 import { relocateNavigation, trackedNavigation } from "../file-navigation";
@@ -76,6 +77,18 @@ export function Files({
   workspaceLabel,
 }: AppContext) {
   const [showVolumes, setShowVolumes] = useState(false);
+  const [attachTarget, setAttachTarget] = useState<{
+    path: string;
+    host: string;
+    services: typeof services;
+  } | null>(null);
+  function reviewAttachment(path: string) {
+    setAttachTarget({
+      path,
+      host: workspaceLabel || session?.info.hostname || "This host",
+      services,
+    });
+  }
   const sourceKey = fileSourceKey(session);
   const previousSource = useRef(sourceKey);
   const {
@@ -1024,6 +1037,16 @@ export function Files({
         disabled: !canUpload,
         run: () => void upload(),
       },
+      ...(!entry || entry.kind === "directory"
+        ? [
+            {
+              id: "attach-drive",
+              label: "Attach to this computer…",
+              disabled: !connected || loading || busy || !services.attachDrive,
+              run: () => reviewAttachment(entry?.path ?? directory.path),
+            },
+          ]
+        : []),
       {
         id: "upload-folder",
         label: "Upload folder…",
@@ -1482,6 +1505,7 @@ export function Files({
           connected={connected}
           host={workspaceLabel || session?.info.hostname || "This host"}
           setBusy={setBusy}
+          attach={services.attachDrive ? reviewAttachment : undefined}
           back={() => setShowVolumes(false)}
           navigate={(path) => {
             setShowVolumes(false);
@@ -1493,6 +1517,14 @@ export function Files({
         className="file-main"
         style={showVolumes ? { display: "none" } : undefined}
       >
+        {attachTarget && (
+          <AttachDriveDialog
+            path={attachTarget.path}
+            host={attachTarget.host}
+            services={attachTarget.services}
+            close={() => setAttachTarget(null)}
+          />
+        )}
         <div className="file-toolbar">
           <button
             className="icon-button"

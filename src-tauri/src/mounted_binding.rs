@@ -23,10 +23,26 @@ impl Binding {
 pub(super) struct FileSystem {
     binding: Binding,
     inner: Arc<dyn MountedFileSystem>,
+    writable: bool,
 }
 impl FileSystem {
-    pub(super) fn new(binding: Binding, inner: Arc<dyn MountedFileSystem>) -> Self {
-        Self { binding, inner }
+    pub(super) fn new(binding: Binding, inner: Arc<dyn MountedFileSystem>, writable: bool) -> Self {
+        let writable = writable && inner.capabilities().writable;
+        Self {
+            binding,
+            inner,
+            writable,
+        }
+    }
+}
+fn write_allowed(writable: bool) -> FsResult<()> {
+    if writable {
+        Ok(())
+    } else {
+        Err(FsError::new(
+            FsErrorKind::ReadOnly,
+            "This attachment or handle is read-only",
+        ))
     }
 }
 #[async_trait]
@@ -36,7 +52,10 @@ impl MountedFileSystem for FileSystem {
         self.inner.check_available()
     }
     fn capabilities(&self) -> FsCapabilities {
-        self.inner.capabilities()
+        FsCapabilities {
+            writable: self.writable,
+            ..self.inner.capabilities()
+        }
     }
     async fn space(&self, path: &MountPath) -> FsResult<FsSpace> {
         self.binding.mount_run(false, self.inner.space(path)).await
@@ -52,6 +71,10 @@ impl MountedFileSystem for FileSystem {
         options: FsOpenOptions,
     ) -> FsResult<Arc<dyn MountedFile>> {
         self.binding.mount_check()?;
+        options.validate()?;
+        if options.write || options.truncate || options.create != FsCreate::OpenExisting {
+            write_allowed(self.writable)?;
+        }
         let inner = self.inner.open(path, options).await?;
         if let Err(error) = self
             .binding
@@ -63,6 +86,7 @@ impl MountedFileSystem for FileSystem {
         Ok(Arc::new(File {
             binding: self.binding.clone(),
             inner,
+            writable: self.writable && options.write,
         }))
     }
     async fn open_directory(&self, path: &MountPath) -> FsResult<Box<dyn MountedDirectory>> {
@@ -78,19 +102,23 @@ impl MountedFileSystem for FileSystem {
         }))
     }
     async fn set_metadata(&self, path: &MountPath, metadata: FsSetMetadata) -> FsResult<()> {
+        write_allowed(self.writable)?;
         self.binding
             .mount_run(true, self.inner.set_metadata(path, metadata))
             .await
     }
     async fn mkdir(&self, path: &MountPath) -> FsResult<()> {
+        write_allowed(self.writable)?;
         self.binding.mount_run(true, self.inner.mkdir(path)).await
     }
     async fn remove(&self, path: &MountPath, directory: bool) -> FsResult<()> {
+        write_allowed(self.writable)?;
         self.binding
             .mount_run(true, self.inner.remove(path, directory))
             .await
     }
     async fn rename(&self, from: &MountPath, to: &MountPath, replace: bool) -> FsResult<()> {
+        write_allowed(self.writable)?;
         self.binding
             .mount_run(true, self.inner.rename(from, to, replace))
             .await
@@ -99,6 +127,7 @@ impl MountedFileSystem for FileSystem {
 struct File {
     binding: Binding,
     inner: Arc<dyn MountedFile>,
+    writable: bool,
 }
 #[async_trait]
 impl MountedFile for File {
@@ -111,11 +140,13 @@ impl MountedFile for File {
             .await
     }
     async fn write_at(&self, offset: u64, bytes: &[u8]) -> FsResult<()> {
+        write_allowed(self.writable)?;
         self.binding
             .mount_run(true, self.inner.write_at(offset, bytes))
             .await
     }
     async fn set_metadata(&self, metadata: FsSetMetadata) -> FsResult<()> {
+        write_allowed(self.writable)?;
         self.binding
             .mount_run(true, self.inner.set_metadata(metadata))
             .await
@@ -201,7 +232,26 @@ mod tests {
         let file = File {
             binding: binding.clone(),
             inner: inner.clone(),
+            writable: true,
         };
+        let read_only = File {
+            binding: binding.clone(),
+            inner: inner.clone(),
+            writable: false,
+        };
+        assert_eq!(
+            read_only.write_at(0, &[8]).await.unwrap_err().kind,
+            FsErrorKind::ReadOnly
+        );
+        assert_eq!(
+            read_only
+                .set_metadata(FsSetMetadata::default())
+                .await
+                .unwrap_err()
+                .kind,
+            FsErrorKind::ReadOnly
+        );
+        assert_eq!(read_only.read_at(0, 1).await.unwrap(), vec![7]);
         assert_eq!(
             file.metadata().await.unwrap_err().kind,
             FsErrorKind::PermissionDenied

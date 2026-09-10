@@ -584,6 +584,7 @@ impl FileSystemProvider for Bound<dyn FileSystemProvider> {
         Ok(Arc::new(mounted_binding::FileSystem::new(
             self.binding.clone(),
             filesystem,
+            writable,
         )))
     }
     async fn list(&self, path: Option<&str>) -> Result<Directory> {

@@ -1,4 +1,14 @@
 /* SPDX-License-Identifier: MPL-2.0 */
+.file-volume-location {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+.file-volume-location > button:first-child {
+  flex: 1;
+  min-width: 0;
+}
 .file-volumes {
   flex: 1;
   min-width: 0;

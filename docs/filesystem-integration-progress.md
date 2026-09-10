@@ -37,15 +37,70 @@ Include the dependencies' licensing/distribution limitations in that app.
   plus an independently buildable vendored SDK. GPL-3.0-only bridge licensing
   leaves the main app MPL-2.0. README/THIRD-PARTY describe WinFsp/wrapper terms,
   separate macFUSE installation and commercial binary-bundling restrictions.
-- Main desktop storage/settings/installation and right-click attachment UI are
-  **not integrated yet**. No user mapping is active or advertised as ready.
+- Main desktop has reviewed optional bridge installation in Settings → Files.
+  The native chooser stages exact bytes; approval is window-owned, single-use and
+  expires. Installed versions are immutable content-addressed files under the
+  app data directory, with atomic selection and hash verification before launch.
+  The UI describes native-code trust and driver/license terms. Installation tests
+  use isolated temporary profiles; no bridge was installed into the user's profile.
+  Three installer tests pass, including changed-review rejection preserving the
+  previous installation. Frontend production build, desktop clippy and 640px
+  preview overflow checks pass. Native chooser/approval still needs end-to-end use.
+  Native chooser/approval and an actual desktop-launched Windows mapping remain
+  unverified; the implementation is a development preview.
+- Files now offers **Attach to this computer…** for folders/current directories,
+  and an Attach action beside mounted volume locations. The dialog checks optional
+  provider support and installation, defaults to read-only, offers a Windows drive
+  letter or a native empty-folder chooser on Unix, and shows attachment status.
+  Settings → Files lists mappings and their host/path, warnings and detach actions.
+  Compact 400px light and normal-width dark dialog layouts were checked with a
+  synthetic UI fixture; these checks did not create an OS mount.
+- The desktop mapping manager reserves the exact session/source before opening
+  a rooted grant, retains a connection lease, launches only a hash-verified installed
+  helper and supervises it over inherited pipes. It bounds startup, stderr memory,
+  failed-process cleanup and handle teardown. Closing Files or switching visible
+  hosts does not stop or retarget a mapping. Disconnect/source replacement and
+  remote-volume unmount refuse while affected mappings run; quit opens Settings
+  with an explanation. Failed disconnect no longer marks a retained workspace
+  disconnected in the UI. Busy detach never kills or retries the helper.
+  Unconfirmed process cleanup conservatively retains the grant/connection guard
+  and shows a warning; automatic recovery from that state is not yet implemented.
+  The core also enforces read-only grants/handles independently of provider write
+  behavior. Installed bytes are checked again immediately before helper launch.
+- Protocol v2 adds ready/status/warning events and an explicit detach request.
+  A failed busy detach returns to Attached and requires a new request; it never
+  automatically retries. Windows holds an open-context gate across detach; Linux
+  and macOS use ordinary system unmount without force/lazy flags. Windows cleanup
+  failures reach the parent as structured warning events displayed by the mapping
+  manager. Lifecycle and Windows gate unit tests pass.
+- Public bridge PR https://github.com/techartdev/ShellCanvas-DriveBridge/pull/1
+  contains the detach changes. Native Linux acceptance passed against `32d0c79`:
+  held file prevented unmount, attachment remained usable, releasing it allowed
+  an explicit clean detach, and the full file-operation/cleanup test passed.
+  Latest review-branch commit `6edb2a9` adds structured cleanup warnings and
+  retired-channel refinements. All Windows/Ubuntu/macOS 14 checks pass on that
+  commit (run `34502539007`); the PR is ready but requires repository review.
+  Main `dac05fa`
+  remains protocol v1 until this PR merges; use a v2 bridge with the updated core.
 
 ## Evidence gathered
 
 - `cargo check -p shellcanvas-core` passes.
 - `cargo clippy -p shellcanvas-core -p shellcanvas-filesystem-sdk --all-targets -- -D warnings` passes.
-- Four filesystem SDK tests pass: path validation, bounded frames, exact large
-  offsets and transport retirement on a mismatched reply.
+- Five filesystem SDK tests pass: path validation, bounded frames, exact large
+  offsets, transport retirement on a mismatched reply and explicit busy detach.
+- Four desktop mapping tests pass, including connection lease ownership and an
+  opt-in native child-process fixture. On Windows the fixture verifies that a
+  stalled startup and invalid protocol are terminated/reaped, 160 KB of stderr
+  does not block the protocol, busy detach retains the helper, and a second explicit
+  detach completes. It uses no driver and performs no local/remote file operations.
+  Reproduce with `cargo build -p shellcanvas-filesystem-sdk --example lifecycle_fixture`,
+  set `SHELLCANVAS_BRIDGE_FIXTURE` to that absolute executable, then run
+  `cargo test -p shellcanvas --lib drive_mappings::tests -- --include-ignored`.
+- Thirty frontend service/session/app-boundary tests pass, including source pins
+  on the new attach/availability commands. Desktop clippy and frontend type-check
+  pass. The production frontend build passes (the existing large-chunk advisory
+  remains); this does not verify a native mounted drive.
 - Opt-in `mount_probe` on the authorized Linux SSH host passes real SFTP tests:
   offsets above 4 GiB using a sparse file, truncation, EOF, atomic save replacement,
   old/new open-handle identity, close, read-only enforcement, directory listing
@@ -85,15 +140,15 @@ Include the dependencies' licensing/distribution limitations in that app.
 
 ## Remaining completion gates
 
-1. Implement reviewed bridge installation/configuration, one-root/one-source
-   grant management, helper supervision and explicit user access mode. Keep
-   credentials in the desktop and never accept an executable path from a web app.
-2. Add the Files folder/volume context action, attachment dialog and mapping
-   status/management UI. Verify the modern neutral theme and compact layouts.
-3. Pin connection generation and source identity throughout mapping lifetime.
-   Closing a Files window must not stop a mapping; source replacement/disconnect
-   and app quit must account for active mappings and busy handles. No silent
-   forced detach or stale-handle reconnection.
+1. Native end-to-end installation verification and an actual desktop-created
+   mapping, including chooser cancel, missing driver and changed executable.
+   The manager/UI/source leases are implemented; native user-flow verification
+   remains, including disconnect/source replacement/quit with busy local files.
+2. Add mapping Open-local-location convenience and an explicit recovery workflow
+   for unconfirmed cleanup. Do not silently clear ownership or claim detach.
+3. Broaden failure acceptance to real network loss, permission/disk-full errors,
+   late SFTP open responses and cancellation while preparing the root. Verify the
+   native chooser/source-retirement race without touching the normal user profile.
 4. Native Windows mount tests after administrator setup: Explorer and actual
    local file APIs, ordinary editor/temporary-file replacement saves, directory
    rename with open handles, capacity, errors and disconnect behavior.
@@ -104,9 +159,10 @@ Include the dependencies' licensing/distribution limitations in that app.
    kernel/libfuse backend is implemented; FSKit operation is not established.
    Do not claim an OS version/runtime works solely because Linux compiled.
 7. Resolve currently documented limits before calling the release ready:
-   Windows cleanup-time deletion failures need visible reporting, file attributes
-   and cross-handle directory rename need native checks, busy detach needs a
-   control protocol, and memory-mapped workflows need explicit acceptance.
+   Windows cleanup-time deletion warnings and busy-detach control are implemented
+   but need native WinFsp acceptance. File attributes, volume-wide flush and
+   cross-handle directory rename need work/checks. Memory-mapped workflows need
+   explicit acceptance.
 8. Review cancellation/late responses, bounded teardown and protocol errors with
    failure fixtures, then run the relevant core/desktop regression checks. Add
    reproducible release packages/notices and update bridge docs with exact verified

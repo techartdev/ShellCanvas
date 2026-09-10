@@ -2,6 +2,7 @@
 //! Versioned bridge IPC over inherited anonymous pipes, never a TCP listener.
 //! The parent grants exactly one filesystem root. Neither endpoint sends SSH
 //! credentials, unscoped remote paths, executable paths or shell commands.
+use crate::bridge_control::{BridgeControl, BridgeDirective, BridgeEvent};
 use crate::*;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use std::{
@@ -15,7 +16,7 @@ use std::{
 };
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 
-pub const PROTOCOL: u32 = 1;
+pub const PROTOCOL: u32 = 2;
 pub const MAX_FRAME: usize = 1024 * 1024;
 pub const REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
 #[derive(Debug, Serialize, Deserialize)]
@@ -28,6 +29,10 @@ pub struct Request {
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(tag = "method", content = "params", deny_unknown_fields)]
 pub enum Operation {
+    Poll,
+    Report {
+        event: BridgeEvent,
+    },
     Capabilities,
     Space {
         path: MountPath,
@@ -97,6 +102,7 @@ pub struct Response {
 }
 #[derive(Debug, Serialize, Deserialize)]
 pub enum Value {
+    Directive(BridgeDirective),
     Unit,
     Capabilities(FsCapabilities),
     Space(FsSpace),
@@ -165,6 +171,7 @@ struct DirectoryState {
 /// Lives for one helper/root grant. IDs are never reused or shared with another
 /// grant, and provider handles are released when the pipe closes.
 pub struct Server {
+    control: Arc<BridgeControl>,
     fs: Arc<dyn MountedFileSystem>,
     next: u64,
     files: HashMap<u64, Arc<dyn MountedFile>>,
@@ -172,7 +179,11 @@ pub struct Server {
 }
 impl Server {
     pub fn new(fs: Arc<dyn MountedFileSystem>) -> Self {
+        Self::with_control(fs, Arc::new(BridgeControl::default()))
+    }
+    pub fn with_control(fs: Arc<dyn MountedFileSystem>, control: Arc<BridgeControl>) -> Self {
         Self {
+            control,
             fs,
             next: 0,
             files: HashMap::new(),
@@ -193,6 +204,14 @@ impl Server {
     }
     pub async fn dispatch(&mut self, operation: Operation) -> FsResult<Value> {
         match operation {
+            Operation::Poll => {
+                self.fs.check_available()?;
+                return Ok(Value::Directive(self.control.poll()?));
+            }
+            Operation::Report { event } => {
+                self.control.report(event)?;
+                return Ok(Value::Unit);
+            }
             Operation::Capabilities => {
                 self.fs.check_available()?;
                 return Ok(Value::Capabilities(self.fs.capabilities()));
@@ -368,6 +387,9 @@ impl Server {
             }
         }
         .await;
+        if let Err(error) = &result {
+            self.control.fail(error.to_string());
+        }
         self.close().await;
         result
     }
