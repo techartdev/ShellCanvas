@@ -23,11 +23,11 @@ mod directories;
 mod drive_bridge_install;
 mod drive_mappings;
 mod drive_recovery;
-mod local_mounts;
 mod extension_frames;
 #[cfg(debug_assertions)]
 mod extension_probe;
 mod host_trust;
+mod local_mounts;
 mod native_ipc;
 mod prepared_source;
 mod profile_store;

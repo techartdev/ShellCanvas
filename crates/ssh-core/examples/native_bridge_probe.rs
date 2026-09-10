@@ -5,7 +5,15 @@ use anyhow::{ensure, Context, Result};
 use shellcanvas_core::*;
 use shellcanvas_filesystem_sdk::bridge_control::{BridgeControl, BridgePhase};
 use shellcanvas_filesystem_sdk::wire::Server;
-use std::{path::PathBuf, process::Stdio, sync::{Arc, atomic::{AtomicBool, Ordering}}, time::Duration};
+use std::{
+    path::PathBuf,
+    process::Stdio,
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc,
+    },
+    time::Duration,
+};
 use tokio::io::{AsyncBufReadExt, AsyncReadExt};
 
 // Fault injection for this probe's dedicated SFTP channel only. SSH keepalives,
@@ -15,20 +23,38 @@ struct StalledSftp<S> {
     stalled: Arc<AtomicBool>,
 }
 impl<S: tokio::io::AsyncRead + Unpin> tokio::io::AsyncRead for StalledSftp<S> {
-    fn poll_read(mut self: std::pin::Pin<&mut Self>, cx: &mut std::task::Context<'_>, buf: &mut tokio::io::ReadBuf<'_>) -> std::task::Poll<std::io::Result<()>> {
-        if self.stalled.load(Ordering::Acquire) { return std::task::Poll::Pending; }
+    fn poll_read(
+        mut self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+        buf: &mut tokio::io::ReadBuf<'_>,
+    ) -> std::task::Poll<std::io::Result<()>> {
+        if self.stalled.load(Ordering::Acquire) {
+            return std::task::Poll::Pending;
+        }
         std::pin::Pin::new(&mut self.stream).poll_read(cx, buf)
     }
 }
 impl<S: tokio::io::AsyncWrite + Unpin> tokio::io::AsyncWrite for StalledSftp<S> {
-    fn poll_write(mut self: std::pin::Pin<&mut Self>, cx: &mut std::task::Context<'_>, buf: &[u8]) -> std::task::Poll<std::io::Result<usize>> {
-        if self.stalled.load(Ordering::Acquire) { return std::task::Poll::Ready(Ok(buf.len())); }
+    fn poll_write(
+        mut self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+        buf: &[u8],
+    ) -> std::task::Poll<std::io::Result<usize>> {
+        if self.stalled.load(Ordering::Acquire) {
+            return std::task::Poll::Ready(Ok(buf.len()));
+        }
         std::pin::Pin::new(&mut self.stream).poll_write(cx, buf)
     }
-    fn poll_flush(mut self: std::pin::Pin<&mut Self>, cx: &mut std::task::Context<'_>) -> std::task::Poll<std::io::Result<()>> {
+    fn poll_flush(
+        mut self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<std::io::Result<()>> {
         std::pin::Pin::new(&mut self.stream).poll_flush(cx)
     }
-    fn poll_shutdown(mut self: std::pin::Pin<&mut Self>, cx: &mut std::task::Context<'_>) -> std::task::Poll<std::io::Result<()>> {
+    fn poll_shutdown(
+        mut self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<std::io::Result<()>> {
         std::pin::Pin::new(&mut self.stream).poll_shutdown(cx)
     }
 }
@@ -100,7 +126,11 @@ async fn main() -> Result<()> {
         println!("UNPRIVILEGED_LOCAL_UID: {}", uid.trim());
     }
     ensure!(
-        [transport_loss, ssh_loss, sftp_stall].into_iter().filter(|mode| *mode).count() <= 1,
+        [transport_loss, ssh_loss, sftp_stall]
+            .into_iter()
+            .filter(|mode| *mode)
+            .count()
+            <= 1,
         "Select one connection-loss mode"
     );
     let connection = Arc::new(
@@ -144,7 +174,8 @@ async fn main() -> Result<()> {
         let channel = connection.handle.channel_open_session().await?;
         channel.request_subsystem(true, "sftp").await?;
         let raw = russh_sftp::client::RawSftpSession::new(StalledSftp {
-            stream: channel.into_stream(), stalled: stalled.clone(),
+            stream: channel.into_stream(),
+            stalled: stalled.clone(),
         });
         let isolated = Arc::new(SftpTextFiles::new(raw).await?);
         mounted::SftpMount::new(isolated, &source, true).await?
