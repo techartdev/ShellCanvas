@@ -98,6 +98,10 @@ Paths, parent locations, roots and cursor tokens remain opaque. The host does no
 
 ## Optional file methods v1
 
+Drive discovery and reviewed mount actions are also optional; see
+[Drives and mounts](drives-and-mounts.md) for `files.volumes` and
+`files.setVolumeMounted`. Existing adapters do not need either method.
+
 An adapter with the base `files` service can additionally advertise these methods. All parameters and results use the camelCase service-contract shapes; locations and revisions belong to the provider.
 
 | Method                | Parameters                                    | Result                     |

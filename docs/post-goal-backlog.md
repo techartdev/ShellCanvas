@@ -9,6 +9,19 @@ is started by this list.
 
 ## Where we stopped
 
+- **Separate future track, nice to have: native development/test profiles.**
+  Deferred by user choice (2026-09-10); this is non-blocking and not mandatory
+  for current testing or the next feature work. Regular debug and release
+  builds currently share `dev.shellcanvas.client` user storage. Existing dedicated
+  probes use `dev.shellcanvas.extensionprobe`, and synthetic browser checks use
+  isolated browser storage, but manual checks of the normal desktop use the user
+  profile. Add a visibly named test launcher/profile with its own native data,
+  WebView storage, adapter packages, trust data and build output. Also scope the
+  app-network OS credential namespace by desktop profile: it currently uses the
+  same service name across identifiers. Preserve existing production credentials;
+  test profiles must not fall back to them. This gap does not establish the cause
+  of the reported missing host entry below.
+
 - **Investigate reported saved-host disappearance after restart (2026-09-10):**
   user reported a saved SSH host missing from both the workspace switcher and
   connection picker. Its record was present in the native profile store with an
@@ -50,6 +63,15 @@ must be chosen first). Every unchecked item remains open. Priorities are a
 suggested order, not a commitment to complete every item.
 
 ## First: everyday reliability and native acceptance
+
+- [ ] **Drive/mount follow-ups (2026-09-10).** Files now has provider-owned drive
+      discovery and browsing, optional reviewed Linux/macOS mount controls, and
+      explicit macOS/Windows detection. See [scope and evidence](drives-and-mounts.md).
+      Remaining: physical removable-volume mount/unmount acceptance (including
+      busy/permission failures), Windows-over-SSH acceptance and Windows mount
+      access-path assignment. Encrypted unlock, new network-share setup,
+      persistent mount configuration and public app SDK disk permissions are
+      future scope, not implicit requirements for basic file providers.
 
 - [ ] **POST-01 — Physical connection interruption. Validation.** Exercise actual
       network loss and restoration during terminal I/O, browsing, save, upload,

@@ -116,6 +116,59 @@ impl DirectoryReader for FileDirectory {
 }
 #[async_trait]
 impl FileSystemProvider for Files {
+    async fn volumes(&self) -> Result<FileVolumes> {
+        if !self.0.supports("files", 1, &["files.volumes"]) {
+            return Ok(FileVolumes::unavailable());
+        }
+        let mut snapshot: FileVolumes =
+            serde_json::from_value(self.0.call("files.volumes", json!({}), OPERATION).await?)?;
+        let controls = self.0.supports("files", 1, &["files.setVolumeMounted"]);
+        let mut ids = std::collections::HashSet::new();
+        for volume in &mut snapshot.volumes {
+            if volume.id.is_empty()
+                || !ids.insert(volume.id.clone())
+                || volume.locations.iter().any(|p| p.path.is_empty())
+            {
+                bail!("Adapter returned an invalid volume inventory");
+            }
+            if !controls || volume.system || snapshot.revision.is_empty() {
+                volume.can_mount = false;
+                volume.can_unmount = false;
+            }
+            if volume.can_mount && !volume.locations.is_empty()
+                || volume.can_unmount && volume.locations.is_empty()
+            {
+                bail!("Adapter returned inconsistent mount actions");
+            }
+        }
+        Ok(snapshot)
+    }
+    async fn set_volume_mounted(&self, id: &str, revision: &str, mounted: bool) -> Result<()> {
+        let current = self.volumes().await?;
+        let volume = current
+            .volumes
+            .iter()
+            .find(|v| v.id == id)
+            .context("Volume is no longer present")?;
+        if revision.is_empty()
+            || current.revision != revision
+            || !(if mounted {
+                volume.can_mount
+            } else {
+                volume.can_unmount
+            })
+        {
+            bail!("Drive state changed or this action is unavailable. Refresh before retrying");
+        }
+        self.0
+            .call(
+                "files.setVolumeMounted",
+                json!({"id":id,"revision":revision,"mounted":mounted}),
+                OPERATION,
+            )
+            .await?;
+        Ok(())
+    }
     async fn list(&self, path: Option<&str>) -> Result<Directory> {
         let operation = collect_directory(Box::new(FileDirectory::new(self.0.clone(), path)));
         tokio::time::timeout(OPERATION, operation)

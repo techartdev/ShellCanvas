@@ -70,6 +70,12 @@ async fn main() {
                     }
                     if config["standard"] == "files" || config["standard"] == "both" {
                         let mut methods = vec!["files.list", "files.locate", "files.preview"];
+                        if config["volumes"].is_object() {
+                            methods.push("files.volumes");
+                            if config["mountControls"] == true {
+                                methods.push("files.setVolumeMounted");
+                            }
+                        }
                         methods.extend(transfer_fixture::methods(&config));
                         if config["extended"] == true {
                             methods.push("files.readText");
@@ -276,6 +282,8 @@ impl Device {
             return Ok(json!({"invalid":"fixture"}));
         }
         match method {
+            "files.volumes" => Ok(self.config["volumes"].clone()),
+            "files.setVolumeMounted" => Ok(Value::Null),
             "files.list" => {
                 let selected = params["path"].as_str().unwrap_or("");
                 if self.config["extended"] == true

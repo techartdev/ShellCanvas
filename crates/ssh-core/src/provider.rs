@@ -64,7 +64,77 @@ impl SystemProvider for LinuxProvider {
     }
 }
 
-static SYSTEM_PROVIDERS: &[&dyn SystemProvider] = &[&LinuxProvider];
+pub struct MacProvider;
+#[async_trait]
+impl SystemProvider for MacProvider {
+    fn id(&self) -> &'static str {
+        "macos"
+    }
+    async fn detect(&self, context: &ProbeContext<'_>) -> bool {
+        match context.commands {
+            Some(commands) => commands
+                .probe("uname -s")
+                .await
+                .is_ok_and(|s| s == "Darwin"),
+            None => false,
+        }
+    }
+    async fn inspect(&self, context: &ProbeContext<'_>) -> Result<HostInfo> {
+        let commands = context
+            .commands
+            .context("System inspection needs command probes")?;
+        let mut info = context.fallback.clone();
+        info.provider = self.id().into();
+        info.hostname = commands
+            .probe("uname -n")
+            .await
+            .unwrap_or_else(|_| "Mac".into());
+        info.system = commands
+            .probe("sw_vers -productVersion")
+            .await
+            .map(|v| format!("macOS {v}"))
+            .unwrap_or_else(|_| "macOS".into());
+        Ok(info)
+    }
+}
+pub struct WindowsProvider;
+#[async_trait]
+impl SystemProvider for WindowsProvider {
+    fn id(&self) -> &'static str {
+        "windows"
+    }
+    async fn detect(&self, context: &ProbeContext<'_>) -> bool {
+        match context.commands {
+            Some(commands) => commands
+                .probe(&crate::volumes::powershell(
+                    "if ([Environment]::OSVersion.Platform -eq 'Win32NT') { 'Windows' }",
+                ))
+                .await
+                .is_ok_and(|s| s == "Windows"),
+            None => false,
+        }
+    }
+    async fn inspect(&self, context: &ProbeContext<'_>) -> Result<HostInfo> {
+        let commands = context
+            .commands
+            .context("System inspection needs command probes")?;
+        let mut info = context.fallback.clone();
+        info.provider = self.id().into();
+        info.hostname = commands
+            .probe(&crate::volumes::powershell("[Environment]::MachineName"))
+            .await
+            .unwrap_or_else(|_| "Windows host".into());
+        info.system = commands
+            .probe(&crate::volumes::powershell(
+                "(Get-CimInstance Win32_OperatingSystem).Caption",
+            ))
+            .await
+            .unwrap_or_else(|_| "Windows".into());
+        Ok(info)
+    }
+}
+
+static SYSTEM_PROVIDERS: &[&dyn SystemProvider] = &[&LinuxProvider, &MacProvider, &WindowsProvider];
 
 pub fn settings_for_host(
     provider: &str,
@@ -310,6 +380,59 @@ mod detection_tests {
     }
 
     struct FailedCommands;
+    struct DesktopCommands(&'static str);
+    #[async_trait]
+    impl CommandProbe for DesktopCommands {
+        async fn probe(&self, command: &str) -> Result<String> {
+            if self.0 == "Darwin" {
+                return Ok(match command {
+                    "uname -s" => "Darwin",
+                    "uname -n" => "MacBook-Air.local",
+                    "sw_vers -productVersion" => "10.15.8",
+                    _ => bail!("Unexpected command"),
+                }
+                .into());
+            }
+            let encoded = command
+                .strip_prefix("powershell.exe -NoProfile -NonInteractive -EncodedCommand ")
+                .context("Not PowerShell")?;
+            use base64::Engine;
+            let bytes = base64::engine::general_purpose::STANDARD.decode(encoded)?;
+            let script = String::from_utf16(
+                &bytes
+                    .chunks_exact(2)
+                    .map(|b| u16::from_le_bytes([b[0], b[1]]))
+                    .collect::<Vec<_>>(),
+            )?;
+            Ok(if script.contains("OSVersion.Platform") {
+                "Windows"
+            } else if script.contains("MachineName") {
+                "WORKSTATION"
+            } else {
+                "Microsoft Windows 11 Pro"
+            }
+            .into())
+        }
+    }
+    #[tokio::test]
+    async fn mac_and_windows_are_identified_without_linux_settings_or_invented_services() {
+        for (os, provider, name) in [
+            ("Darwin", "macos", "MacBook-Air.local"),
+            ("Windows", "windows", "WORKSTATION"),
+        ] {
+            let commands = DesktopCommands(os);
+            let context = ProbeContext {
+                commands: Some(&commands),
+                fallback: fallback(&["files.read"]),
+            };
+            let info = inspect_with_providers(&context, SYSTEM_PROVIDERS, OP_TIMEOUT).await;
+            assert_eq!(info.provider, provider);
+            assert_eq!(info.hostname, name);
+            assert_eq!(info.capabilities, vec!["files.read"]);
+            assert!(settings_for_host(provider, None).is_none());
+            assert!(info.notices.is_empty());
+        }
+    }
     #[async_trait]
     impl CommandProbe for FailedCommands {
         async fn probe(&self, _: &str) -> Result<String> {

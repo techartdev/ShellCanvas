@@ -4,6 +4,43 @@ import { bindSession } from "./session-services";
 import { previewServices, previewSession } from "./preview";
 import type { Directory, TerminalSession, FileRelocation } from "./sdk";
 import { watchFileChanges, watchFileLocations } from "./file-events";
+it("rejects late drive discovery and mount actions after the file source changes", async () => {
+  let finish!: (value: import("./sdk").FileVolumes) => void;
+  const volumes = vi.fn(
+    () =>
+      new Promise<import("./sdk").FileVolumes>((resolve) => {
+        finish = resolve;
+      }),
+  );
+  const setVolumeMounted = vi.fn(async () => {});
+  const first = { instance: 71, generation: 1, adapter: "files" };
+  const session = {
+    ...previewSession,
+    services: [
+      {
+        capability: "files.read" as const,
+        state: "available" as const,
+        source: first,
+      },
+    ],
+  };
+  const owner = bindSession(
+    { ...previewServices, volumes, setVolumeMounted },
+    session,
+  );
+  const pending = owner.services.volumes!();
+  owner.updateAvailability({
+    ...session,
+    services: [{ ...session.services[0], source: { ...first, generation: 2 } }],
+  });
+  finish({ revision: "old", volumes: [], notices: [] });
+  await expect(pending).rejects.toThrow("no longer connected");
+  await expect(
+    owner.services.setVolumeMounted!("disk", "old", true),
+  ).rejects.toThrow("no longer connected");
+  expect(setVolumeMounted).not.toHaveBeenCalled();
+  owner.dispose();
+});
 it("releases a prepared clipboard move if an open editor blocks relocation", async () => {
   const ticket = { id: 719, direction: "move" as const, name: "cut", size: 0 };
   const pasteMovedFiles = vi.fn(async () => [ticket]);

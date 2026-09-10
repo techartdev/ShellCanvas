@@ -122,6 +122,26 @@ export function bindSession(
     notifyFileChanges(session!.id, relocate ? "relocation" : "content");
   }
   const services: SessionServices = {
+    volumes: backend.volumes
+      ? async () => {
+          const expected = generation;
+          const result = await backend.volumes!(check("files.read"));
+          check("files.read", expected);
+          return result;
+        }
+      : undefined,
+    setVolumeMounted: backend.setVolumeMounted
+      ? async (id, revision, mounted) => {
+          const expected = generation;
+          await backend.setVolumeMounted!(
+            check("files.read"),
+            id,
+            revision,
+            mounted,
+          );
+          mutationCompleted("files.read", expected);
+        }
+      : undefined,
     cancelSystemCut: backend.cancelSystemCut
       ? async (sequence) => {
           if (session) await backend.cancelSystemCut!(session.id, sequence);

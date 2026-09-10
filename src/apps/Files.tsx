@@ -18,6 +18,7 @@ import {
   FileText,
   Folder,
   Home,
+  HardDrive,
   LoaderCircle,
   MoreHorizontal,
   FolderPlus,
@@ -43,6 +44,7 @@ import { fileClipboard } from "../file-clipboard";
 import { usePreferences } from "../preferences";
 import { visibleFiles } from "../file-view";
 import { FileActionDialog } from "../components/FileActionDialog";
+import { FileVolumes } from "../components/FileVolumes";
 import { MoveFileDialog } from "../components/MoveFileDialog";
 import { watchFileChanges, watchFileLocations } from "../file-events";
 import { relocateNavigation, trackedNavigation } from "../file-navigation";
@@ -71,7 +73,9 @@ export function Files({
   connected = true,
   reportError,
   setDocumentState,
+  workspaceLabel,
 }: AppContext) {
+  const [showVolumes, setShowVolumes] = useState(false);
   const sourceKey = fileSourceKey(session);
   const previousSource = useRef(sourceKey);
   const {
@@ -1281,6 +1285,7 @@ export function Files({
       className={`files-app ${preferences.filesCompact ? "compact-files" : ""}`}
       ref={root}
       onCopy={(event) => {
+        if (showVolumes) return;
         if (
           (event.target as HTMLElement).closest(
             'input,textarea,[contenteditable="true"],[role="menu"],dialog',
@@ -1292,6 +1297,7 @@ export function Files({
         copySelection();
       }}
       onCut={(event) => {
+        if (showVolumes) return;
         if (
           document ||
           (event.target as HTMLElement).closest(
@@ -1305,6 +1311,7 @@ export function Files({
         if (entry) cut(entry);
       }}
       onPaste={(event) => {
+        if (showVolumes) return;
         if (
           document ||
           (event.target as HTMLElement).closest(
@@ -1317,6 +1324,7 @@ export function Files({
         void pasteInto(directory.path);
       }}
       onKeyDown={(event) => {
+        if (showVolumes) return;
         const target = event.target as HTMLElement;
         if (target.closest('[role="menu"],dialog')) return;
         const command = event.ctrlKey || event.metaKey;
@@ -1409,10 +1417,17 @@ export function Files({
         <p className="eyebrow">PLACES</p>
         {directory.home && (
           <button
-            className={directory.path === directory.home.path ? "selected" : ""}
+            className={
+              !showVolumes && directory.path === directory.home.path
+                ? "selected"
+                : ""
+            }
             title={directory.home.name}
-            disabled={!connected || relocating}
-            onClick={() => void navigate(directory.home!.path)}
+            disabled={!connected || relocating || (showVolumes && busy)}
+            onClick={() => {
+              setShowVolumes(false);
+              void navigate(directory.home!.path);
+            }}
           >
             <Home size={16} /> {directory.home.name}
           </button>
@@ -1420,14 +1435,27 @@ export function Files({
         {directory.roots.map((root) => (
           <button
             key={root.path}
-            className={directory.path === root.path ? "selected" : ""}
+            className={
+              !showVolumes && directory.path === root.path ? "selected" : ""
+            }
             title={root.name}
-            disabled={!connected || relocating}
-            onClick={() => void navigate(root.path)}
+            disabled={!connected || relocating || (showVolumes && busy)}
+            onClick={() => {
+              setShowVolumes(false);
+              void navigate(root.path);
+            }}
           >
             <Server size={16} /> {root.name}
           </button>
         ))}
+        <button
+          className={showVolumes ? "selected" : ""}
+          title="Drives and mounts"
+          disabled={!connected || busy || relocating}
+          onClick={() => setShowVolumes(true)}
+        >
+          <HardDrive size={16} /> Drives
+        </button>
         <div className="sidebar-spacer" />
         <div className="volume">
           <span className="volume-icon">
@@ -1447,7 +1475,24 @@ export function Files({
           </div>
         </div>
       </aside>
-      <div className="file-main">
+      {showVolumes && (
+        <FileVolumes
+          key={sourceKey}
+          services={services}
+          connected={connected}
+          host={workspaceLabel || session?.info.hostname || "This host"}
+          setBusy={setBusy}
+          back={() => setShowVolumes(false)}
+          navigate={(path) => {
+            setShowVolumes(false);
+            void navigate(path);
+          }}
+        />
+      )}
+      <div
+        className="file-main"
+        style={showVolumes ? { display: "none" } : undefined}
+      >
         <div className="file-toolbar">
           <button
             className="icon-button"

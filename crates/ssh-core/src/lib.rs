@@ -2,6 +2,8 @@
 pub mod connection;
 pub mod directory;
 pub use directory::SftpBrowser;
+pub mod volumes;
+pub use volumes::SshFileBrowser;
 pub mod file_actions;
 pub mod host_keys;
 pub use host_keys::*;

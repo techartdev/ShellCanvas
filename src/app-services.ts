@@ -157,6 +157,12 @@ export function scopeAppServices(
       async (path: string, revision: string, parent: string) =>
         adopt(await base.prepareCopy(path, revision, parent)),
     ),
+    volumes: base.volumes
+      ? guard("files.read", base.volumes.bind(base))
+      : undefined,
+    setVolumeMounted: base.setVolumeMounted
+      ? guard("files.read", base.setVolumeMounted.bind(base))
+      : undefined,
     list: guard("files.read", base.list.bind(base)),
     openDirectory: base.openDirectory
       ? guard("files.read", base.openDirectory.bind(base))

@@ -19,6 +19,8 @@ type SourcePins = {
   custom: Readonly<Record<string, ConnectionIdentity>>;
 };
 const commandRoles: Record<string, "files" | "console" | "settings"> = {
+  file_volumes: "files",
+  set_volume_mounted: "files",
   paste_system_files: "files",
   paste_copied_files: "files",
   paste_moved_files: "files",
@@ -65,6 +67,9 @@ function createNativeServices(pins?: SourcePins): HostServices {
     return nativeInvoke<T>(...parameters);
   };
   return {
+    volumes: (sessionId) => invoke("file_volumes", { sessionId }),
+    setVolumeMounted: (sessionId, id, revision, mounted) =>
+      invoke("set_volume_mounted", { sessionId, id, revision, mounted }),
     bindSources(session) {
       const capture = (family: "files" | "console" | "settings") => {
         const source = session.services?.find((item) =>

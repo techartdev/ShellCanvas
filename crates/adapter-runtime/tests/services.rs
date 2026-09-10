@@ -5,6 +5,39 @@ use shellcanvas_services::{TerminalSize, TERMINAL_CHUNK};
 use std::{path::PathBuf, time::Duration};
 const DEADLINE: Duration = Duration::from_secs(4);
 #[tokio::test]
+async fn optional_volumes_keep_opaque_paths_and_only_offer_negotiated_reviewed_actions() {
+    let volume = json!({"id":"device#7","name":"Disk","detail":"fixture","locations":[],"system":false,"canMount":true,"canUnmount":false});
+    for controls in [false, true] {
+        let process = fixture(json!({"standard":"files","mountControls":controls,"volumes":{"revision":"v1","notices":[],"volumes":[volume.clone()]}})).await;
+        let files = process.files().unwrap();
+        let snapshot = files.volumes().await.unwrap();
+        assert_eq!(snapshot.volumes[0].can_mount, controls);
+        assert!(files
+            .set_volume_mounted("device#7", "stale", true)
+            .await
+            .is_err());
+        assert_eq!(
+            files
+                .set_volume_mounted("device#7", "v1", true)
+                .await
+                .is_ok(),
+            controls
+        );
+        process.close().await.unwrap();
+    }
+    let process = fixture(json!({"standard":"files"})).await;
+    assert!(process
+        .files()
+        .unwrap()
+        .volumes()
+        .await
+        .unwrap()
+        .volumes
+        .is_empty());
+    assert!(process.files().unwrap().list(None).await.is_ok());
+    process.close().await.unwrap();
+}
+#[tokio::test]
 async fn directory_readers_fetch_only_requested_pages_and_keep_independent_positions() {
     let process = fixture(json!({"standard":"files","entries":50_000})).await;
     let files = process.files().unwrap();

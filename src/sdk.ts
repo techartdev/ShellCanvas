@@ -177,6 +177,20 @@ export interface FilePlace {
   path: string;
   name: string;
 }
+export interface FileVolume {
+  id: string;
+  name: string;
+  detail: string;
+  locations: FilePlace[];
+  system: boolean;
+  canMount: boolean;
+  canUnmount: boolean;
+}
+export interface FileVolumes {
+  revision: string;
+  volumes: FileVolume[];
+  notices: string[];
+}
 /** Paths are opaque provider-owned tokens; apps must not split or join them. */
 export interface Directory {
   path: string;
@@ -215,6 +229,13 @@ export interface ClipboardFileState {
   intent?: "copy" | "move";
 }
 export interface HostServices {
+  volumes?(sessionId: number): Promise<FileVolumes>;
+  setVolumeMounted?(
+    sessionId: number,
+    id: string,
+    revision: string,
+    mounted: boolean,
+  ): Promise<void>;
   cancelSystemCut?(sessionId: number, sequence: number): Promise<void>;
   pasteMovedFiles?(
     sessionId: number,
@@ -352,6 +373,12 @@ export interface HostServices {
 }
 /** Apps receive a fixed session handle, never connection administration. */
 export interface SessionServices {
+  volumes?(): Promise<FileVolumes>;
+  setVolumeMounted?(
+    id: string,
+    revision: string,
+    mounted: boolean,
+  ): Promise<void>;
   cancelSystemCut?(sequence: number): Promise<void>;
   pasteMovedFiles?(parent: string, sequence: number): Promise<TransferTicket[]>;
   inspectSystemFiles?(): Promise<ClipboardFileState>;

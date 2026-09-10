@@ -214,7 +214,7 @@ async fn prepare_ssh(
             let service = Arc::new(service);
             let browser = Arc::new(SftpBrowser(service.clone()));
             info.home = browser.canonicalize(".").await.ok();
-            files = Some(browser);
+            files = Some(Arc::new(SshFileBrowser::new(browser, connection.clone())));
             info.capabilities.push("files.read".into());
             mutations = Some(service.clone());
             moves = Some(service.clone());
@@ -381,6 +381,35 @@ async fn list_directory(
         .await
         .map_err(|e| format!("{e:#}"))
 }
+#[tauri::command]
+async fn file_volumes(
+    session_id: u64,
+    binding: Option<ConnectionIdentity>,
+    state: State<'_, DesktopState>,
+) -> Result<FileVolumes, String> {
+    filesystem(&state, session_id, binding.as_ref())
+        .await?
+        .volumes()
+        .await
+        .map_err(error)
+}
+
+#[tauri::command]
+async fn set_volume_mounted(
+    session_id: u64,
+    binding: Option<ConnectionIdentity>,
+    id: String,
+    revision: String,
+    mounted: bool,
+    state: State<'_, DesktopState>,
+) -> Result<(), String> {
+    filesystem(&state, session_id, binding.as_ref())
+        .await?
+        .set_volume_mounted(&id, &revision, mounted)
+        .await
+        .map_err(error)
+}
+
 #[tauri::command]
 async fn preview_file(
     session_id: u64,
@@ -772,6 +801,8 @@ pub fn run() {
                 decide_host_key,
                 disconnect,
                 list_directory,
+                file_volumes,
+                set_volume_mounted,
                 directories::open_directory,
                 directories::read_directory,
                 directories::close_directory,

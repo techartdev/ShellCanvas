@@ -76,6 +76,8 @@ it("captures each source once and attaches it to all native service requests", a
   const bound = nativeServices.bindSources!(session);
   files.generation = 2;
   const requests = [
+    () => bound.volumes!(700),
+    () => bound.setVolumeMounted!(700, "volume", "revision", true),
     () => bound.list(700),
     () => bound.openDirectory!(700),
     () => bound.preview(700, "opaque"),

@@ -13,6 +13,8 @@ pub mod device;
 pub use device::*;
 pub mod directory;
 pub use directory::*;
+pub mod volumes;
+pub use volumes::*;
 pub mod terminal;
 pub use terminal::*;
 pub mod settings;
@@ -159,6 +161,15 @@ pub struct TextDocument {
 
 #[async_trait]
 pub trait FileSystemProvider: Send + Sync {
+    /// Optional; basic file providers need not implement disk management.
+    async fn volumes(&self) -> Result<FileVolumes> {
+        Ok(FileVolumes::unavailable())
+    }
+    /// Explicit reviewed action. Recheck revision, identity and permissions;
+    /// never format, force-unmount, elevate, or interpret the ID as a command.
+    async fn set_volume_mounted(&self, _id: &str, _revision: &str, _mounted: bool) -> Result<()> {
+        anyhow::bail!("Mounting and unmounting are unavailable on this file provider")
+    }
     /// None selects the provider's default location, not an assumed dot or root.
     async fn list(&self, path: Option<&str>) -> Result<Directory>;
     /// Incremental scan with explicit ownership; None selects the default location.
