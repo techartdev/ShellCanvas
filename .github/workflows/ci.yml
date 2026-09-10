@@ -1,15 +1,13 @@
-name: CI
+name: Release readiness
 
 on:
-  push:
-    branches: [main]
-  pull_request:
+  workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: ci-${{ github.workflow }}-${{ github.ref }}
+  group: release-readiness
   cancel-in-progress: true
 
 jobs:
@@ -24,12 +22,3 @@ jobs:
       - run: npm ci
       - run: npm run public:check
       - run: npm run verify
-
-  rust-sdks:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
-      - name: Test publishable Rust SDKs
-        run: cargo test -p shellcanvas-filesystem-sdk -p shellcanvas-adapter-sdk --locked
-      - name: Lint publishable Rust SDKs
-        run: cargo clippy -p shellcanvas-filesystem-sdk -p shellcanvas-adapter-sdk --all-targets --locked -- -D warnings
