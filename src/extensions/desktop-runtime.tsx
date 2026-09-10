@@ -116,6 +116,11 @@ function RuntimeDocument({
           ? "review-required"
           : "connected",
     binding: currentBinding(),
+    workspaceId: !context.session
+      ? "local"
+      : accepted === context.system
+        ? (context.workspaceId ?? null)
+        : null,
     ...(context.session && accepted === context.system
       ? {
           host: {

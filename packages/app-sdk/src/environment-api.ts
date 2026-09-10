@@ -6,6 +6,9 @@ export interface AppEnvironment {
     "local" | "connected" | "disconnected" | "review-required";
   /** Opaque identity of the explicitly accepted binding, never a native session handle. */
   readonly binding: string | null;
+  /** Stable configured workspace identity across reconnects; not authentication
+   * or routing authority. Null/absent means unknown. Compare opaque values only. */
+  readonly workspaceId?: string | null;
   /** Display metadata only; never use labels as routing identities. */
   readonly host?: { readonly name: string; readonly system: string };
   readonly visible: boolean;

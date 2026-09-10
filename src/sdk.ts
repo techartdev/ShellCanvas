@@ -422,6 +422,8 @@ export interface SessionServices {
   ): Promise<TerminalSession>;
 }
 export interface AppContext {
+  /** Stable configured target identity; never a service routing token. */
+  workspaceId?: string | null;
   /** Host-owned controls scoped to this window. */
   window?: import("./extensions/window-api").WindowControls;
   /** True only when this window is visible in the current workspace. */

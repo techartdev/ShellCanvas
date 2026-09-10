@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
-import { useLayoutEffect, useMemo } from "react";
+import { useEffect, useLayoutEffect, useMemo, useState } from "react";
+import { workspaceIdentity } from "../workspace-identity";
 import type { DesktopRuntime } from "../extensions/desktop-runtime";
 import { focusedApp, instanceTitle, type DesktopAction } from "../desktop";
 import { WorkspaceBindings } from "../workspace-bindings";
@@ -26,6 +27,21 @@ export function WorkspaceWindows({
   connect(): void;
   reportError(message: string): void;
 }) {
+  const [identity, setIdentity] = useState<{
+    connection: Workspace["connection"];
+    id: string | null;
+  }>();
+  useEffect(() => {
+    let current = true;
+    void workspaceIdentity(workspace.connection)
+      .then((id) => {
+        if (current) setIdentity({ connection: workspace.connection, id });
+      })
+      .catch((error) => reportError(String(error)));
+    return () => {
+      current = false;
+    };
+  }, [workspace.connection, reportError]);
   const bindings = useMemo(
     () => new WorkspaceBindings(backend, reportError),
     [backend, workspace.session?.id],
@@ -50,6 +66,11 @@ export function WorkspaceWindows({
   }, [bindings, plan, workspace.connected]);
   useLayoutEffect(() => () => bindings.dispose(), [bindings]);
   const context: Omit<AppContext, "services"> = {
+    workspaceId: !workspace.session
+      ? "local"
+      : identity?.connection === workspace.connection
+        ? identity?.id
+        : null,
     session: workspace.session,
     preview,
     active,
