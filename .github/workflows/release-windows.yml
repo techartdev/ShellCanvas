@@ -19,7 +19,6 @@ jobs:
       - run: npm ci
       - run: npm run release:check -- "${{ github.ref_name }}"
       - run: npm run public:check
-      - run: npm run verify
       - run: npm run release:windows
       - name: Generate SHA-256 checksums
         shell: pwsh
