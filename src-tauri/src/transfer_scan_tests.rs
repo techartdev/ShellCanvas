@@ -12,9 +12,14 @@ struct Paged {
     pages: AtomicUsize,
     aborted: AtomicUsize,
     stall: bool,
+    /// Extra bytes in each opaque file path, to grow metadata without files.
+    padding: usize,
 }
 impl Paged {
     fn new(width: usize, depth: usize, stall: bool) -> Arc<Self> {
+        Self::padded(width, depth, stall, 0)
+    }
+    fn padded(width: usize, depth: usize, stall: bool, padding: usize) -> Arc<Self> {
         Arc::new(Self {
             width,
             depth,
@@ -24,6 +29,7 @@ impl Paged {
             pages: 0.into(),
             aborted: 0.into(),
             stall,
+            padding,
         })
     }
 }
@@ -75,8 +81,9 @@ impl TransferDirectory for Cursor {
             return Ok(Vec::new());
         }
         let end = (self.offset + TRANSFER_DIRECTORY_PAGE).min(self.owner.width);
+        let padding = "x".repeat(self.owner.padding);
         let entries = (self.offset..end)
-            .map(|i| entry(format!("file@{i}"), format!("file-{i}.bin"), false))
+            .map(|i| entry(format!("file@{i}{padding}"), format!("file-{i}.bin"), false))
             .collect();
         self.offset = end;
         Ok(entries)
@@ -188,6 +195,168 @@ async fn scan_cancel_closes_a_stalled_cursor_without_destination_writes() {
     assert!(result.err().unwrap().to_string().contains("canceled"));
     assert_eq!(paged.active.load(Ordering::SeqCst), 0);
     assert_eq!(paged.aborted.load(Ordering::SeqCst), 1);
+}
+fn root() -> FileEntry {
+    entry("directory@0".into(), "Root".into(), true)
+}
+fn seeded(catalog: Catalog) -> Arc<Catalog> {
+    catalog.add(None, vec![(root(), None)]).unwrap();
+    Arc::new(catalog)
+}
+fn progress() -> Progress {
+    Progress {
+        bytes: 0,
+        total: 0,
+        items: None,
+        phase: "preparing",
+    }
+}
+/// The 0.1.0 catalog refused discovery beyond 250,000 entries. Traversal is
+/// incremental: one cursor, one page in memory, metadata on disk.
+#[tokio::test]
+async fn discovery_exceeds_the_former_item_budget_with_one_cursor() {
+    const FILES: usize = 250_127;
+    let paged = Paged::new(FILES, 0, false);
+    let service: Arc<dyn FileTransferService> = paged.clone();
+    let catalog = seeded(Catalog::new(false).unwrap());
+    let scratch = catalog.scratch_path().to_path_buf();
+    let (_stop, cancel) = watch::channel(false);
+    let mut largest_step = 0;
+    let mut seen = 1;
+    let catalog = scan_catalog(catalog, service, &cancel, &mut |event| {
+        let items = event.items.unwrap();
+        largest_step = largest_step.max(items - seen);
+        seen = items;
+    })
+    .await
+    .unwrap();
+    assert_eq!(catalog.len(), FILES as u64 + 1);
+    assert!(catalog.len() > 250_000);
+    assert_eq!(catalog.size(), FILES as u64);
+    assert_eq!(
+        catalog.get(catalog.len()).unwrap().entry.name,
+        "file-250126.bin"
+    );
+    assert_eq!(paged.opens.load(Ordering::SeqCst), 1);
+    assert_eq!(paged.peak.load(Ordering::SeqCst), 1);
+    assert_eq!(paged.active.load(Ordering::SeqCst), 0);
+    assert!(
+        largest_step <= TRANSFER_DIRECTORY_PAGE as u64,
+        "one page at a time"
+    );
+    drop(catalog);
+    assert!(!scratch.exists());
+}
+#[tokio::test]
+async fn cancellation_in_large_discovery_is_reported_as_canceled_and_releases_everything() {
+    let paged = Paged::new(1_000_000, 0, false);
+    let service: Arc<dyn FileTransferService> = paged.clone();
+    let catalog = seeded(Catalog::new(false).unwrap());
+    let scratch = catalog.scratch_path().to_path_buf();
+    let (stop, cancel) = watch::channel(false);
+    let error = scan_catalog(catalog.clone(), service, &cancel, &mut |event| {
+        if event.items.unwrap() > 20_000 {
+            stop.send_replace(true);
+        }
+    })
+    .await
+    .err()
+    .unwrap();
+    let discovered = catalog.len();
+    assert!((20_000..30_000).contains(&discovered), "{discovered}");
+    let result = outcome(Err(error), &progress());
+    assert_eq!(result.status, "canceled", "{:?}", result.message);
+    assert_eq!(paged.aborted.load(Ordering::SeqCst), 1);
+    assert_eq!(paged.active.load(Ordering::SeqCst), 0);
+    drop(catalog);
+    assert!(
+        !scratch.exists(),
+        "canceled discovery must remove its scratch catalog"
+    );
+}
+#[tokio::test]
+async fn full_scratch_disk_fails_clearly_and_is_never_reported_as_canceled() {
+    let paged = Paged::new(1_000_000, 0, false);
+    let service: Arc<dyn FileTransferService> = paged.clone();
+    let catalog = seeded(Catalog::with_page_limit(false, 256).unwrap());
+    let scratch = catalog.scratch_path().to_path_buf();
+    let (_stop, cancel) = watch::channel(false);
+    let error = scan_catalog(catalog.clone(), service, &cancel, &mut |_| {})
+        .await
+        .err()
+        .unwrap();
+    let result = outcome(Err(error), &progress());
+    assert_eq!(result.status, "failed");
+    let message = result.message.unwrap();
+    assert!(
+        message.starts_with(crate::transfers::catalog::STORAGE_FULL),
+        "{message}"
+    );
+    assert!(!message.contains("Duplicate"), "{message}");
+    assert_eq!(
+        paged.aborted.load(Ordering::SeqCst),
+        1,
+        "cursor must be released"
+    );
+    assert_eq!(paged.active.load(Ordering::SeqCst), 0);
+    assert!(
+        catalog.len() > 1,
+        "discovery ran until storage was exhausted"
+    );
+    drop(catalog);
+    assert!(!scratch.exists());
+}
+/// Only in-memory consumers such as Explorer offers pass a limit; it stops early.
+#[tokio::test]
+async fn in_memory_consumer_limit_stops_discovery_early_with_its_own_message() {
+    let paged = Paged::new(1_000_000, 0, false);
+    let service: Arc<dyn FileTransferService> = paged.clone();
+    let (_stop, cancel) = watch::channel(false);
+    let error = scan_catalog_limited(
+        seeded(Catalog::new(true).unwrap()),
+        service,
+        &cancel,
+        &mut |_| {},
+        Some((1_000, "Explorer limit fixture")),
+    )
+    .await
+    .err()
+    .unwrap();
+    assert_eq!(error.to_string(), "Explorer limit fixture");
+    assert!(paged.pages.load(Ordering::SeqCst) <= 1_000 / TRANSFER_DIRECTORY_PAGE + 1);
+    assert_eq!(paged.aborted.load(Ordering::SeqCst), 1);
+    assert_eq!(paged.active.load(Ordering::SeqCst), 0);
+    assert_eq!(outcome(Err(error), &progress()).status, "failed");
+}
+/// Partial cancellation after destinations changed is checked with a real result
+/// in `chooser_download_preflights_all_roots_and_preserves_completed_items_on_cancel`.
+#[test]
+fn outcome_reports_completion_with_the_published_path() {
+    let result = outcome(Ok(("published@opaque".into(), None)), &progress());
+    assert_eq!(result.status, "completed");
+    assert_eq!(result.path.as_deref(), Some("published@opaque"));
+}
+/// Former 128 MiB metadata budget, exceeded with 32 KiB opaque paths in pages no
+/// larger than one adapter frame. Writes about 0.5 GB of scratch data, so it is
+/// opt-in: set TMP/TEMP to a volume with space, then run with --ignored.
+#[tokio::test]
+#[ignore = "writes ~0.5 GB of scratch metadata; run explicitly with TMP on a spacious volume"]
+async fn discovery_exceeds_the_former_metadata_budget() {
+    const FILES: usize = 5_000;
+    let paged = Paged::padded(FILES, 0, false, 32 * 1024);
+    let service: Arc<dyn FileTransferService> = paged.clone();
+    let catalog = seeded(Catalog::new(false).unwrap());
+    let scratch = catalog.scratch_path().to_path_buf();
+    let (_stop, cancel) = watch::channel(false);
+    let catalog = scan_catalog(catalog, service, &cancel, &mut |_| {})
+        .await
+        .unwrap();
+    assert_eq!(catalog.len(), FILES as u64 + 1);
+    let database = scratch.join("catalog.sqlite").metadata().unwrap().len();
+    assert!(database > 128 * 1024 * 1024, "{database}");
+    assert_eq!(paged.peak.load(Ordering::SeqCst), 1);
+    drop(catalog);
+    assert!(!scratch.exists());
 }
 #[tokio::test]
 async fn local_scan_exceeds_old_limit_and_changed_file_is_rejected_at_open() {

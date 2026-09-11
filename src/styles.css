@@ -1436,22 +1436,6 @@ button:active:not(:disabled) {
   color: var(--sc-text, #b8cdd6);
   font-size: 0.923077rem;
 }
-.launcher {
-  position: absolute;
-  bottom: 7.307692rem;
-  z-index: 15;
-  background: var(--sc-surface, #21323df2);
-  border: 1px solid var(--sc-border, #bdd8d829);
-  -webkit-backdrop-filter: blur(1.923077rem);
-  backdrop-filter: blur(1.923077rem);
-  box-shadow: 0 1.538462rem 5rem rgba(var(--sc-shadow-rgb), 0.400);
-  border-radius: 1rem;
-  padding: 1.384615rem;
-  width: 25.384615rem;
-}
-.launcher {
-  left: calc(50% - 13.076923rem);
-}
 .popover-heading {
   display: flex;
   align-items: center;
@@ -1464,32 +1448,6 @@ button:active:not(:disabled) {
   display: flex;
   gap: 0.615385rem;
   align-items: center;
-}
-.launcher-app {
-  display: flex;
-  align-items: center;
-  gap: 1rem;
-  width: 100%;
-  padding: 0.846154rem 0.384615rem;
-  text-align: left;
-  border-radius: 0.538462rem;
-}
-.launcher-app > span:nth-child(2) {
-  flex: 1;
-}
-.launcher-app strong {
-  font-weight: 550;
-  font-size: 0.923077rem;
-  display: block;
-}
-.launcher-app small {
-  display: block;
-  color: var(--sc-muted, #8ca7b5);
-  margin-top: 0.384615rem;
-  font-size: 0.692308rem;
-}
-.launcher-app > svg {
-  color: var(--sc-muted, #7895a5);
 }
 .launcher-connect {
   display: flex;
@@ -2010,10 +1968,6 @@ button:active:not(:disabled) {
   }
   .landscape {
     position: fixed;
-  }
-  .launcher {
-    position: fixed;
-    bottom: 7.307692rem;
   }
   .modal-backdrop {
     position: fixed;

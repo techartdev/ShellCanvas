@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MPL-2.0
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { Package, PanelsTopLeft } from "lucide-react";
+import { Store } from "lucide-react";
+import { GenericAppIcon, imageGlyph } from "../components/AppIcon";
+import { appSummary } from "./app-listing";
 import type { DesktopAction, DesktopState } from "../desktop";
 import {
   capabilityLabels,
@@ -40,6 +42,7 @@ function descriptor(
     id: entry.package.id,
     title: entry.package.title,
     subtitle: `Version ${entry.package.version}`,
+    description: appSummary(entry),
     scope: capabilities.length ? "host" : "local",
     allowWithoutHost: true,
     requires: [],
@@ -47,9 +50,26 @@ function descriptor(
     customPermissions: entry.grants.filter((grant) =>
       grant.startsWith("services."),
     ),
-    icon: PanelsTopLeft,
+    icon: entry.package.icon ? imageGlyph(entry.package.icon) : GenericAppIcon,
+    ...(entry.package.icon ? { image: entry.package.icon } : {}),
     component,
     window: { multiple: true },
+  };
+}
+
+/**
+ * Environment events must be JSON. Workspaces without an SSH target (adapter
+ * connections, the preview) omit `target` rather than sending `undefined`,
+ * which the event journal rejects.
+ */
+export function environmentHost(
+  session: NonNullable<AppContext["session"]>,
+  context: Pick<AppContext, "workspaceLabel" | "workspaceTarget">,
+): NonNullable<AppEnvironment["host"]> {
+  return {
+    name: context.workspaceLabel || session.info.hostname,
+    ...(context.workspaceTarget ? { target: context.workspaceTarget } : {}),
+    system: session.info.system,
   };
 }
 
@@ -124,11 +144,7 @@ function RuntimeDocument({
         : null,
     ...(context.session && accepted === context.system
       ? {
-          host: {
-            name: context.workspaceLabel || context.session.info.hostname,
-            target: context.workspaceTarget,
-            system: context.session.info.system,
-          },
+          host: environmentHost(context.session, context),
         }
       : {}),
     visible: context.visible !== false,
@@ -259,11 +275,11 @@ export class DesktopRuntime {
     this.manager = {
       apiVersion: 1,
       id: "apps",
-      title: "Apps",
-      subtitle: "Install and manage your desktop tools",
+      title: "App Manager",
+      subtitle: "Add, update and manage your apps",
       scope: "local",
       requires: [],
-      icon: Package,
+      icon: Store,
       component: (context) => (
         <ExtensionCenter
           catalog={catalog}

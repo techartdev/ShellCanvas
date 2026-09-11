@@ -55,3 +55,26 @@ test("repository tooling fingerprints the artifact and agrees with the published
   await assert.rejects(() => repositoryManifest(root));
   assert.equal(await readFile(path, "utf8"), generated);
 });
+test("repository description defaults to the package description", async () => {
+  const root = await mkdtemp(join(tmpdir(), "shellcanvas-repository-"));
+  await mkdir(join(root, "dist"));
+  const app = {
+    format: 1,
+    kind: "app",
+    id: "org.example.app",
+    version: "1.0.0",
+    title: "App",
+    description: "Packaged summary",
+    permissions: [],
+    script: "void 0",
+    style: "",
+  };
+  await writeFile(join(root, "dist/app.shellcanvas.json"), JSON.stringify(app));
+  const read = async (options) =>
+    parseAppRepository(await readFile(await repositoryManifest(root, options), "utf8"));
+  assert.equal((await read()).description, "Packaged summary");
+  assert.equal((await read({ description: "Listed" })).description, "Listed");
+  const { description: _description, ...plain } = app;
+  await writeFile(join(root, "dist/app.shellcanvas.json"), JSON.stringify(plain));
+  assert.equal((await read()).description, "");
+});

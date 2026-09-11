@@ -62,6 +62,8 @@ import type {
 } from "./sdk";
 import { unavailableReason } from "./sdk";
 import { SystemDialogHost } from "./components/SystemDialogHost";
+import { AppLauncher } from "./components/AppLauncher";
+import { AppIcon } from "./components/AppIcon";
 const defaultServices = native ? nativeServices : previewServices;
 export default function App({
   services = defaultServices,
@@ -1060,56 +1062,21 @@ export default function App({
         </div>
       </section>
       {launcherOpen && (
-        <div className="launcher">
-          <div className="popover-heading">
-            <span>Your workspace</span>
-            <button
-              className="icon-button"
-              aria-label="Close launcher"
-              onClick={() => setLauncherOpen(false)}
-            >
-              <X size={16} />
-            </button>
-          </div>
-          {launcherApps.map((app) => (
-            <button
-              className="launcher-app"
-              key={app.id}
-              disabled={
-                !!session &&
-                !!unavailableReason(app, session) &&
-                !desktop.open.some(
-                  (id) => desktop.instances[id].appId === app.id,
-                )
-              }
-              title={unavailableReason(app, session) ?? app.subtitle}
-              onClick={() => openApp(app.id)}
-            >
-              <span className={`dock-app-icon ${app.id}`}>
-                <app.icon size={23} />
-              </span>
-              <span>
-                <strong>{app.title}</strong>
-                <small>
-                  {session
-                    ? (unavailableReason(app, session) ?? app.subtitle)
-                    : app.subtitle}
-                </small>
-              </span>
-              <ArrowUpRight size={16} />
-            </button>
-          ))}
-          <button
-            className="launcher-connect"
-            onClick={() => {
-              setLauncherOpen(false);
-              showConnect();
-            }}
-          >
-            <Plus size={16} />
-            Connect another host
-          </button>
-        </div>
+        <AppLauncher
+          apps={launcherApps}
+          running={(appId) =>
+            desktop.open.some((id) => desktop.instances[id].appId === appId)
+          }
+          blocked={(app) =>
+            session &&
+            !desktop.open.some((id) => desktop.instances[id].appId === app.id)
+              ? (unavailableReason(app, session) ?? undefined)
+              : undefined
+          }
+          launch={openApp}
+          close={() => setLauncherOpen(false)}
+          connect={showConnect}
+        />
       )}
       {settingsOpen && (
         <SettingsDialog
@@ -1200,9 +1167,12 @@ export default function App({
                 dockMenu(app, bounds.left, bounds.top);
               }}
             >
-              <span className={`dock-app-icon ${app.id}`}>
-                <app.icon size={25} />
-              </span>
+              <AppIcon
+                id={app.id}
+                image={app.image}
+                icon={app.icon}
+                glyph={25}
+              />
               <span className="dock-tooltip">{app.title}</span>
               {desktop.open.filter(
                 (id) => desktop.instances[id].appId === app.id,

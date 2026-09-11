@@ -4,5 +4,9 @@
   "id": "org.shellcanvas.service-inspector",
   "version": "0.1.0",
   "title": "Device Services",
-  "permissions": ["services.acme"]
+  "description": "Inspect and call custom services on a connected device.",
+  "icon": "icon.svg",
+  "permissions": [
+    "services.acme"
+  ]
 }

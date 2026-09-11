@@ -2,7 +2,10 @@
 import { expect, it, vi } from "vitest";
 import { initialDesktop, updateDesktop } from "../desktop";
 import { AppCatalog, type CatalogSnapshot } from "./catalog";
-import { DesktopRuntime } from "./desktop-runtime";
+import { DesktopRuntime, environmentHost } from "./desktop-runtime";
+import { previewSession } from "../preview";
+import { isJsonValue } from "./rpc";
+import { GenericAppIcon } from "../components/AppIcon";
 async function setup() {
   let saved: CatalogSnapshot | null = null;
   const catalog = new AppCatalog({
@@ -163,4 +166,63 @@ it("keeps runtime lease identity through focus, minimize and document-state chan
   expect(state.instances[id].extension).toBe(lease);
   expect(state.instances[id].dirty).toBe(true);
   runtime.closeAll();
+});
+it("lists installed apps with packaged artwork and description, or a generic icon", async () => {
+  const { runtime, catalog } = await setup();
+  const icon = `data:image/svg+xml;base64,${btoa('<svg xmlns="http://www.w3.org/2000/svg"/>')}`;
+  const add = async (id: string, extra: object) =>
+    catalog.install(
+      await catalog.review(
+        JSON.stringify({
+          format: 1,
+          kind: "app",
+          id,
+          title: id.split(".").at(-1),
+          version: "1.0.0",
+          permissions: [],
+          script: "void 0",
+          style: "",
+          ...extra,
+        }),
+      ),
+      [],
+    );
+  await add("org.example.painted", { icon, description: "Has artwork" });
+  await add("org.example.plain", {});
+  const painted = runtime
+    .snapshot()
+    .find((app) => app.id === "org.example.painted")!;
+  expect(painted.image).toBe(icon);
+  expect(painted.description).toBe("Has artwork");
+  expect(painted.subtitle).toBe("Version 1.0.0");
+  expect(painted.icon).not.toBe(GenericAppIcon);
+  const plain = runtime
+    .snapshot()
+    .find((app) => app.id === "org.example.plain")!;
+  expect(plain.image).toBeUndefined();
+  expect(plain.icon).toBe(GenericAppIcon);
+  expect(plain.description).toBe("Installed from an app package");
+  expect(runtime.snapshot().find((app) => app.id === "apps")?.title).toBe(
+    "App Manager",
+  );
+  runtime.closeAll();
+});
+it("describes the host environment as JSON, omitting an unknown SSH target", () => {
+  const session = previewSession;
+  const local = environmentHost(session, { workspaceLabel: "Practice device" });
+  expect(local).toEqual({
+    name: "Practice device",
+    system: session.info.system,
+  });
+  expect("target" in local).toBe(false);
+  expect(isJsonValue(local)).toBe(true);
+  const ssh = environmentHost(session, {
+    workspaceLabel: "",
+    workspaceTarget: "demo@atlas:22",
+  });
+  expect(ssh).toEqual({
+    name: session.info.hostname,
+    target: "demo@atlas:22",
+    system: session.info.system,
+  });
 });

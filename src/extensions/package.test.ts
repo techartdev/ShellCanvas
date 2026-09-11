@@ -1,6 +1,18 @@
 // SPDX-License-Identifier: MPL-2.0
 import { expect, it } from "vitest";
 import { appDocument, parseAppPackage } from "./package";
+import {
+  APP_ICON_MAX_BYTES,
+  parseAppManifest,
+} from "../../packages/app-sdk/src/package";
+const data = (type: string, bytes: string) =>
+  `data:${type};base64,${btoa(bytes)}`;
+const png = (size = 12) =>
+  data("image/png", "\x89PNG\r\n\x1a\n" + "\0".repeat(size - 8));
+const svg = data(
+  "image/svg+xml",
+  '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1 1"/>',
+);
 const manifest = {
   format: 1,
   kind: "app",
@@ -27,6 +39,63 @@ it("snapshots self-contained app packages without arbitrary markup or unknown fi
       parseAppPackage(JSON.stringify({ ...manifest, ...change })),
     ).toThrow();
   }
+});
+it("accepts a one-line description and an embedded icon whose bytes match its declared type", () => {
+  const parse = (change: object) =>
+    parseAppPackage(JSON.stringify({ ...manifest, ...change }));
+  const app = parse({ description: "Quick notes for your hosts", icon: svg });
+  expect(app.description).toBe("Quick notes for your hosts");
+  expect(app.icon).toBe(svg);
+  for (const icon of [
+    png(),
+    svg,
+    data("image/jpeg", "\xff\xd8\xff\xe0\0\x10"),
+    data("image/webp", "RIFF\x10\0\0\0WEBPVP8 "),
+    png(APP_ICON_MAX_BYTES),
+  ])
+    expect(() => parse({ icon })).not.toThrow();
+  for (const change of [
+    { description: "" },
+    { description: "   " },
+    { description: "x".repeat(161) },
+    { description: "Two\nlines" },
+    // C1 controls and Unicode line/paragraph separators also break one line.
+    { description: "Next\u0085line" },
+    { description: "Line\u2028separator" },
+    { description: "Paragraph\u2029separator" },
+    { description: "C1\u009fcontrol" },
+    { description: 3 },
+    { icon: "https://example.invalid/icon.png" },
+    { icon: png().replace("image/png", "image/gif") },
+    // Declared type and signature must agree.
+    { icon: data("image/png", "<svg></svg>") },
+    { icon: svg.replace("image/svg+xml", "image/png") },
+    { icon: data("image/svg+xml", "<html>not an image</html>") },
+    { icon: "data:image/png;base64,iVBO Rw0KGgo=" },
+    { icon: `${png()}=` },
+    { icon: png(APP_ICON_MAX_BYTES + 1) },
+  ])
+    expect(() => parse(change), JSON.stringify(change).slice(0, 80)).toThrow();
+});
+it("names a source icon file beside the manifest; packages embed it instead", () => {
+  const { script: _script, style: _style, ...source } = manifest;
+  const parse = (icon: unknown) =>
+    parseAppManifest(JSON.stringify({ ...source, icon }));
+  expect(parse("icon.svg").icon).toBe("icon.svg");
+  expect(parse("assets/app-icon.png").icon).toBe("assets/app-icon.png");
+  for (const icon of [
+    svg,
+    "../icon.png",
+    "/icon.png",
+    "assets\\icon.png",
+    "icon.gif",
+    "ICON.PNG",
+    "",
+  ])
+    expect(() => parse(icon), String(icon).slice(0, 40)).toThrow();
+  expect(() =>
+    parseAppPackage(JSON.stringify({ ...manifest, icon: "icon.svg" })),
+  ).toThrow();
 });
 it("keeps script/style closing tags inside package source rather than adding privileged markup", () => {
   const app = parseAppPackage(

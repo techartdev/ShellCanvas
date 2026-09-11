@@ -1,6 +1,6 @@
 # Your ShellCanvas app
 
-Run `npm install`, then `npm run build`. In ShellCanvas, open **Apps → Install app**, choose `dist/app.shellcanvas.json`, review its permissions and open it. Rebuilding and installing an update does not require rebuilding or restarting the desktop. Existing windows keep their original package; close and reopen to use the new version.
+Run `npm install`, then `npm run build`. In ShellCanvas, open **App Manager → Add apps → Choose package…**, choose `dist/app.shellcanvas.json`, review its permissions and open it. Rebuilding and installing an update does not require rebuilding or restarting the desktop. Existing windows keep their original package; close and reopen to use the new version.
 
 Edit `main.ts`, `style.css` and `shellcanvas.json`. The SDK types and manifest schema are installed locally. This starter uses shared dialogs, local app storage, capability discovery, state events and dirty/busy window reporting. No framework is required. The browser preview can show synthetic host services; it cannot connect to remote hosts.
 

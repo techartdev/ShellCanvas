@@ -5,17 +5,24 @@ import { readFile, mkdir, writeFile, rename, unlink } from "node:fs/promises";
 import { resolve, join, dirname } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { randomUUID, createHash } from "node:crypto";
-import { parseAppManifest, parseAppPackage } from "../dist/package.js";
+import {
+  APP_ICON_MAX_BYTES,
+  appIconTypes,
+  parseAppManifest,
+  parseAppPackage,
+  validAppIcon,
+} from "../dist/package.js";
 import { parseAppRepository, validRepositoryPath } from "../dist/repository.js";
 const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
-export async function repositoryManifest(directory, { path = "dist/app.shellcanvas.json", description = "" } = {}) {
+export async function repositoryManifest(directory, { path = "dist/app.shellcanvas.json", description } = {}) {
   if (!validRepositoryPath(path)) throw new Error("Package path must stay inside the repository.");
   directory = resolve(directory);
   const bytes = await readFile(join(directory, path));
   const app = parseAppPackage(new TextDecoder("utf-8", { fatal: true }).decode(bytes));
   const manifest = parseAppRepository(JSON.stringify({
-    format: 1, kind: "app-repository", id: app.id, version: app.version, title: app.title, description,
+    format: 1, kind: "app-repository", id: app.id, version: app.version, title: app.title,
+    description: description ?? app.description ?? "",
     package: { path, sha256: createHash("sha256").update(bytes).digest("hex") },
   }));
   const destination = join(directory, "shellcanvas.repo.json");
@@ -29,6 +36,18 @@ export async function repositoryManifest(directory, { path = "dist/app.shellcanv
   return destination;
 }
 
+/** Embed the manifest's icon file as a data URI, checking size and image type. */
+async function embeddedIcon(directory, path) {
+  const bytes = await readFile(join(directory, path));
+  if (bytes.length > APP_ICON_MAX_BYTES)
+    throw new Error(`${path} is larger than ${APP_ICON_MAX_BYTES / 1024} KiB.`);
+  const type = appIconTypes[path.slice(path.lastIndexOf(".") + 1)];
+  const icon = `data:${type};base64,${bytes.toString("base64")}`;
+  if (!validAppIcon(icon))
+    throw new Error(`${path} is not a valid ${type.slice(6).toUpperCase()} image.`);
+  return icon;
+}
+
 export async function packApp(directory, version) {
   directory = resolve(directory);
   let manifest = parseAppManifest(
@@ -36,6 +55,10 @@ export async function packApp(directory, version) {
   );
   if (version !== undefined)
     manifest = parseAppManifest(JSON.stringify({ ...manifest, version }));
+  const icon =
+    manifest.icon === undefined
+      ? undefined
+      : await embeddedIcon(directory, manifest.icon);
   const result = await build({
     entryPoints: [join(directory, "main.ts")],
     bundle: true,
@@ -57,6 +80,7 @@ export async function packApp(directory, version) {
     );
   const artifact = JSON.stringify({
     ...manifest,
+    ...(icon === undefined ? {} : { icon }),
     script: result.outputFiles[0].text,
     style: await readFile(join(directory, "style.css"), "utf8"),
   });
@@ -76,7 +100,7 @@ export async function packApp(directory, version) {
   return destination;
 }
 
-export async function createApp(directory, { id, title, sdk }) {
+export async function createApp(directory, { id, title, description, sdk }) {
   directory = resolve(directory);
   const manifest = parseAppManifest(
     JSON.stringify({
@@ -84,6 +108,7 @@ export async function createApp(directory, { id, title, sdk }) {
       kind: "app",
       id,
       title,
+      ...(description === undefined ? {} : { description }),
       version: "0.1.0",
       permissions: [
         "system.dialogs",
@@ -171,10 +196,12 @@ export async function createApp(directory, { id, title, sdk }) {
 }
 
 const help = `ShellCanvas app tools
-  shellcanvas-app init <new-directory> --id org.example.notes --title "Notes" [--sdk <sdk.tgz>]
+  shellcanvas-app init <new-directory> --id org.example.notes --title "Notes" [--description "Quick notes"] [--sdk <sdk.tgz>]
   shellcanvas-app build [directory] [--version 0.2.0]
   shellcanvas-app validate <app.shellcanvas.json>
   shellcanvas-app repository [directory] [--path dist/app.shellcanvas.json] [--description "App description"]
+Manifest "icon" names a PNG, JPEG, WebP or SVG file (at most 256 KiB) that build embeds.
+The repository description defaults to the package description.
 Install the generated project's dependencies, then run npm run build. No desktop rebuild is needed.`;
 export async function main(args) {
   if (!args.length || ["--help", "-h"].includes(args[0])) {
@@ -193,7 +220,7 @@ export async function main(args) {
     const key = arg.slice(2);
     if (
       !(
-        { init: ["id", "title", "sdk"], build: ["version"], validate: [], repository: ["path", "description"] }[
+        { init: ["id", "title", "description", "sdk"], build: ["version"], validate: [], repository: ["path", "description"] }[
           command
         ] ?? []
       ).includes(key) ||

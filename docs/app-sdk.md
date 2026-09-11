@@ -24,7 +24,7 @@ npm pack --workspace @techartdev/shellcanvas-app-sdk --pack-destination .local/s
 node packages/app-sdk/bin/shellcanvas-app.mjs init .local/my-notes --id org.example.notes --title "My Notes" --sdk .local/sdk-releases/shellcanvas-app-sdk-0.1.0.tgz
 ```
 
-In the generated directory, run `npm install` and `npm run build`. Install its `dist/app.shellcanvas.json` through the desktop Apps manager. An independent developer needs the SDK tarball and Node, not the ShellCanvas source checkout. The package includes built JavaScript, TypeScript declarations, schemas, a starter, build/validation tools and the MPL-2.0 license. See [the API and error reference](../packages/app-sdk/README.md).
+In the generated directory, run `npm install` and `npm run build`. Install its `dist/app.shellcanvas.json` through the desktop App Manager (**Add apps → From an app package**). An independent developer needs the SDK tarball and Node, not the ShellCanvas source checkout. The package includes built JavaScript, TypeScript declarations, schemas, a starter, build/validation tools and the MPL-2.0 license. See [the API and error reference](../packages/app-sdk/README.md).
 
 ## Start with one feature
 
