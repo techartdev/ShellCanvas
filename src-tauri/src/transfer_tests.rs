@@ -364,16 +364,32 @@ async fn chooser_download_preflights_all_roots_and_preserves_completed_items_on_
         }
         let memory = Memory::new(false);
         let (stop, cancel) = watch::channel(false);
+        let mut last = Progress {
+            items: None,
+            bytes: 0,
+            total: 0,
+            phase: "preparing",
+        };
         let result = execute(job, memory.clone(), &cancel, &mut |event| {
             if cancel_during_run && event.phase == "running" && event.items == Some(1) {
                 stop.send_replace(true);
             }
+            last = event;
         })
-        .await
-        .unwrap_err()
-        .to_string();
+        .await;
+        // The status and message the queue reports for this real result.
+        let reported = outcome(result.map(|path| (path, None)), &last);
+        let message = reported.message.unwrap_or_default();
         if cancel_during_run {
-            assert!(result.contains("completed items remain"), "{result}");
+            assert_eq!(reported.status, "canceled", "{message}");
+            assert!(message.starts_with("Transfer canceled"), "{message}");
+            assert!(
+                message.contains(&format!(
+                    "completed items remain at {}",
+                    folder.to_string_lossy()
+                )),
+                "{message}"
+            );
             assert_eq!(
                 std::fs::read(folder.join("item-0.bin")).unwrap(),
                 memory.data
@@ -381,7 +397,8 @@ async fn chooser_download_preflights_all_roots_and_preserves_completed_items_on_
             assert!(!folder.join("item-1.bin").exists());
             assert!(!folder.join("item-64.bin").exists());
         } else {
-            assert!(result.contains("already exists"), "{result}");
+            assert_eq!(reported.status, "failed", "{message}");
+            assert!(message.contains("already exists"), "{message}");
             assert!(!folder.join("item-0.bin").exists());
             assert_eq!(
                 std::fs::read(folder.join("item-64.bin")).unwrap(),
