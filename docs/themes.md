@@ -1,9 +1,10 @@
 # Themes and appearance
 
 Open **Desktop settings → Desktop**. Choose a theme and **Light**, **Dark**, or
-**Follow system**. Canvas, the built-in theme, has a pale alpine daytime palette
-and a deep blue-green evening palette. Changes apply to open windows, menus,
-shared dialogs, the editor and the terminal without reconnecting hosts.
+**Follow system**. Canvas, the built-in theme, uses neutral white and charcoal
+surfaces with blue accents, inspired by macOS and Windows 11. Changes apply to
+open windows, menus, shared dialogs, the editor and the terminal without
+reconnecting hosts.
 
 The same page controls the wallpaper, interface scale (80–150%), top toolbar
 height and dock icon size. Scaling changes text, controls and spacing through

@@ -90,14 +90,41 @@
 :root[data-theme] .bottom-status,
 :root[data-theme] .desktop-caption,
 :root[data-theme] .disconnect-button {
-  color: #e0efec;
-  text-shadow: 0 1px 3px #122330;
+  color: #f2f2f7;
+  text-shadow: 0 1px 3px #171725;
 }
 :root[data-theme] .bottom-status svg {
-  color: #a8d8c0;
+  color: var(--sc-accent);
 }
 :root[data-theme] .dock .running::after {
   background: var(--sc-accent);
+}
+/* Canvas's default chrome is neutral. App identity colors stay distinct, while
+   custom themes retain their own palette and the existing icon treatment. */
+:root[data-theme="org.shellcanvas.canvas"] .app-empty {
+  background: transparent;
+}
+:root[data-theme="org.shellcanvas.canvas"] .dock-app-icon {
+  background: linear-gradient(145deg, #656873, #383b45);
+  color: #f5f5f8;
+  border-color: #ffffff30;
+}
+:root[data-theme="org.shellcanvas.canvas"] .dock-app-icon.launcher-icon,
+:root[data-theme="org.shellcanvas.canvas"] .dock-app-icon.connections {
+  background: linear-gradient(145deg, #70b3ff, #266ace);
+  color: #ffffff;
+}
+:root[data-theme="org.shellcanvas.canvas"] .dock-app-icon.files {
+  background: linear-gradient(145deg, #ffe39a, #eeb54a);
+  color: #694711;
+}
+:root[data-theme="org.shellcanvas.canvas"] .dock-app-icon.editor {
+  background: linear-gradient(145deg, #d3c9fa, #9c8acb);
+  color: #3b305e;
+}
+:root[data-theme="org.shellcanvas.canvas"] .dock-app-icon.settings {
+  background: linear-gradient(145deg, #e1e2e9, #a8aab7);
+  color: #353641;
 }
 :root[data-custom-wallpaper="true"] .wallpaper-custom .landscape {
   background-color: var(--sc-base);
