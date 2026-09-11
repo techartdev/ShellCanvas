@@ -20,11 +20,10 @@ SSH is the first and default connection. Over time a workspace can combine adapt
 
 ## Where things stand
 
-- **Public preview releases.** [0.1.0](https://github.com/techartdev/ShellCanvas/releases/tag/v0.1.0) and [0.1.1](https://github.com/techartdev/ShellCanvas/releases/tag/v0.1.1) ship Windows NSIS and MSI installers from a public MPL-2.0 repository. The installers are not code-signed yet.
+- **Public preview releases.** Windows NSIS and MSI installers ship from a public MPL-2.0 repository; the latest is [0.1.2](https://github.com/techartdev/ShellCanvas/releases/tag/v0.1.2), with the app launcher, App Manager and the refreshed Canvas theme. The installers are not code-signed yet.
 - **SDKs in public registries.** `@techartdev/shellcanvas-app-sdk` on npm and `shellcanvas-adapter-sdk` and `shellcanvas-filesystem-sdk` on crates.io, all at a provisional 0.1.0.
 - **Canvas Assistant** is a separate public app, installable from GitHub through App Manager.
 - **[shellcanvas.com](https://shellcanvas.com)** hosts the website and user documentation.
-- **Next release, already on `main`:** the app launcher, App Manager, the refreshed Canvas theme and folder transfers without the 0.1.0 item cap. See the [changelog](CHANGELOG.md).
 
 ## Milestones
 
@@ -44,7 +43,6 @@ M3 can move alongside M2 whenever representative hosts are available. SDK contra
 
 The base API is complete. Next work closes real-world reliability and platform gaps instead of widening the API.
 
-- **Ship the next release** with the launcher, App Manager and refreshed theme.
 - **Reliability in the field:** physical network interruption (POST-01), native Explorer paste walkthroughs (POST-02), two real devices at once (POST-03), a real remote-settings change on a disposable host (POST-04).
 - **Platforms:** modern macOS and Apple Silicon (POST-06), the Linux client (POST-07), adapter child-process cleanup outside Windows (POST-08), and signed release packages (SHIP-02).
 - **Trust and recovery:** managing trusted host keys (POST-20) and recovering unsaved drafts after a crash (POST-18).

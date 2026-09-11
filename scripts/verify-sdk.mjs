@@ -139,6 +139,11 @@ try {
     join(repo, "examples/service-inspector/shellcanvas.json"),
     join(project, "shellcanvas.json"),
   );
+  // That manifest names an icon, which the packer reads beside it.
+  copyFileSync(
+    join(repo, "examples/service-inspector/icon.svg"),
+    join(project, "icon.svg"),
+  );
   writeFileSync(
     join(project, "main.ts"),
     readFileSync(

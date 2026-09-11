@@ -204,7 +204,7 @@ App listings show an icon, the title and an optional short description:
 - `icon` names a PNG, JPEG, WebP or SVG file (lowercase extension) inside the app directory. `shellcanvas-app build` embeds it in the package as a base64 data URI and refuses files over 256 KiB or whose contents do not match the extension. Square artwork of at least 128 pixels with its own background works best, because listings round the corners. The desktop never fetches icon URLs, and SVG icons render as images without running scripts.
 - Both fields are optional. Apps without an icon get the generic app icon. `shellcanvas-app repository` uses the package description unless `--description` is given.
 
-Packages with `description` or `icon` need a desktop newer than 0.1.0: the 0.1.0 parser rejects unknown package fields. Packages without them install on both.
+Packages with `description` or `icon` need desktop 0.1.2 or newer: the 0.1.0 and 0.1.1 parsers reject unknown package fields. Packages without them install on every release.
 
 All JavaScript must be bundled. External assets, runtime imports, networking, native Tauri IPC and Node APIs are unavailable in UI app frames. Use provider-owned desktop services for remote access. Native adapters are separate, explicitly trusted executable packages.
 

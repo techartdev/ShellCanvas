@@ -2,12 +2,12 @@
 
 Notable changes to ShellCanvas, newest first. Published SDK packages follow [semantic versioning](https://semver.org/), and desktop releases use the same version where practical. The project is pre-1.0, so a minor release may include breaking changes; those come with migration notes.
 
-## [Unreleased]
+## [0.1.2] - 2026-09-12
 
 ### Added
 
 - A full-desktop app launcher for every app that can open now, with search, keyboard navigation and running indicators.
-- **App packages and SDK:** optional one-line `description` and embedded `icon` fields. `shellcanvas-app build` embeds a PNG, JPEG, WebP or SVG icon of at most 256 KiB, and `shellcanvas-app init --description` and `repository` fill descriptions. Apps without an icon get a generic one. Packages that use the new fields need a desktop newer than 0.1.0; existing packages are unchanged.
+- **App packages and SDK:** optional one-line `description` and embedded `icon` fields. `shellcanvas-app build` embeds a PNG, JPEG, WebP or SVG icon of at most 256 KiB, and `shellcanvas-app init --description` and `repository` fill descriptions. Apps without an icon get a generic one. Packages that use the new fields need desktop 0.1.2 or newer; existing packages are unchanged.
 
 ### Changed
 
@@ -44,6 +44,6 @@ The initial public preview.
 
 See the repository documentation and release notes for current platform validation and known limitations.
 
-[Unreleased]: https://github.com/techartdev/ShellCanvas/compare/v0.1.1...HEAD
+[0.1.2]: https://github.com/techartdev/ShellCanvas/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/techartdev/ShellCanvas/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/techartdev/ShellCanvas/releases/tag/v0.1.0
