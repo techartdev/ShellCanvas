@@ -35,9 +35,6 @@
 
 <p align="center"><sub>Files, Terminal and the editor on one connected server. Screenshots use sample hosts and data.</sub></p>
 
-> [!NOTE]
-> ShellCanvas is a **public preview** for Windows. The app launcher, App Manager and the refreshed Canvas theme shown on this page are on `main` and ship in the next release; [0.1.1](https://github.com/techartdev/ShellCanvas/releases/tag/v0.1.1) has the earlier Apps window and theme. See [where things stand](#where-things-stand).
-
 ## Why ShellCanvas
 
 SSH gives you a shell. ShellCanvas gives you the rest of a computer: a file manager that feels local, an editor that saves safely, terminals side by side and apps that know which host they are working on. It all runs on your machine and talks to your server over plain SSH, the connection you already use.
