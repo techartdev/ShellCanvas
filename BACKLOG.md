@@ -1,21 +1,25 @@
 # Development backlog
 
-Updated: 2026-09-10. `[x]` means implemented and checked within the stated scope.
-`[ ]` means pending. No launch dates are promised.
+The task list behind the [roadmap](ROADMAP.md). Each item has a stable ID, a completion gate and a record of the evidence behind it. Updated 2026-09-12. No launch dates are promised.
 
-**Resume here:** [Work after the base API goal](docs/post-goal-backlog.md) consolidates
-the outstanding validation, deferred features and product decisions as of
-2026-09-10. It includes the subsequent Mac startup/layout fix and clear completion
-gates. Use that handoff for current remaining work; the detailed milestone notes
-below retain earlier slices and their original IDs.
+**Resume here:** [Work after the base API goal](docs/post-goal-backlog.md) is the consolidated handoff of outstanding validation, deferred features and product decisions, each with a clear completion gate. Use it for current remaining work. The sections below keep earlier slices under their original IDs.
 
-Current BASE-11 implementation, remaining requirements and evidence gates live in
-[the kernel roadmap](docs/kernel-roadmap.md). Runtime apps/adapters, composition,
-shared system services, SDKs and initial AI skills are implemented within their
-stated Windows validation scope. BASE-11 is complete; see the [eight-area acceptance audit](docs/kernel-acceptance.md). Additional platforms and product features remain below.
-Superseded checkpoint paragraphs are retained in [history](docs/kernel-history.md).
-The older milestone and validation notes below describe their recorded slices;
-the kernel roadmap takes precedence for current BASE-11 status.
+**How to read it.** `[x]` means implemented and checked within the stated scope; `[ ]` means pending or partly implemented, as the entry says. Scope matters: a fixture, a browser preview, a native build, a user confirmation and a live-host run are different kinds of evidence, and each entry names the ones it has. For BASE-11, the [kernel roadmap](docs/kernel-roadmap.md) and the [eight-area acceptance audit](docs/kernel-acceptance.md) take precedence over older notes here; superseded checkpoints live in the [kernel history](docs/kernel-history.md).
+
+## Status at a glance
+
+| Area | Done | In progress | Not started |
+| --- | --- | --- | --- |
+| **M1 · Extensible base** | BASE-01 to BASE-11 | | |
+| **M2 · Everyday workspace** | CORE-00, CORE-01a, CORE-05a, CORE-07, CORE-08, CORE-09a, CORE-10a, CORE-10b (themes) | CORE-01b, CORE-02, CORE-03, CORE-04, CORE-05, CORE-06, CORE-09b, CORE-10b (host settings), UX-01 | |
+| **File clipboard** | CORE-05b, CORE-05d, CORE-05e | | CORE-05c |
+| **M3 · Remote providers** | | HOST-02 | HOST-01, HOST-03, HOST-04 |
+| **M4 · External extensions** | EXT-01, EXT-02, EXT-04, EXT-05 | EXT-03 | |
+| **Connection adapters** | | | LINK-01 to LINK-04 |
+| **M5 · Optional AI assistant** | AI-00, AI-02, AI-03 | | AI-01 |
+| **M6 · Distribution and community** | SHIP-00, SHIP-01, COMM-00 | SHIP-02, COMM-01 | SHIP-03, SHIP-04 |
+
+"In progress" covers entries marked partly implemented or partly validated, and items with delivered parts. The [post-goal handoff](docs/post-goal-backlog.md) adds the POST, BRIDGE and later items.
 
 ## Immediate delivery focus — everyday basics
 
@@ -99,15 +103,17 @@ Scope is flexibility now, not implementing every protocol now. Pick the first re
 
 ## M6 — Distribution and community
 
-- [x] **SHIP-00 — Private source repository.** Initialized local Git on main and created `techartdev/ShellCanvas`, verified PRIVATE. Source includes architecture, backlog and fixtures; build output, dependencies and local credentials are excluded. No hosted workflows are added.
-- [x] **SHIP-01 — Local verification and releases.** `npm run verify` runs formatting, frontend build/tests, locked Rust tests and Clippy, with fail-fast reports and working-tree fingerprints; `--native` adds the current platform debug build. Full Windows verification, runner failure-path tests and invalid-option refusal passed. See the [verification guide and release checklist](docs/verification.md). Reports explicitly exclude manual/live-host/cross-platform claims. Public publication, hosted CI and the release matrix remain separate decisions.
+- [x] **SHIP-00 — Private source repository.** Initialized local Git on main and created `techartdev/ShellCanvas`, verified PRIVATE. Source includes architecture, backlog and fixtures; build output, dependencies and local credentials are excluded. No hosted workflows are added. _Update 2026-09-11: the repository is now public (see POST-24), and hosted workflows followed under POST-23._
+- [x] **SHIP-01 — Local verification and releases.** `npm run verify` runs formatting, frontend build/tests, locked Rust tests and Clippy, with fail-fast reports and working-tree fingerprints; `--native` adds the current platform debug build. Full Windows verification, runner failure-path tests and invalid-option refusal passed. See the [verification guide and release checklist](docs/verification.md). Reports explicitly exclude manual/live-host/cross-platform claims. Public publication, hosted CI and the release matrix remain separate decisions. _Update: publication and hosted CI were decided under POST-23; the release matrix continues as SHIP-02._
 - [ ] **SHIP-02 — Desktop release matrix.** Optimized Windows, macOS and Linux packages; startup/package size measurements; accessibility, key storage and platform prerequisites documented. Signing/update strategy follows verified builds.
 - [ ] **SHIP-03 — Tablet feasibility.** Tauri Android/iOS spikes covering SSH lifecycle, key import, terminal IME, external keyboard and touch window management. Gate: actual device tests; browser responsiveness is insufficient. Phone refinement follows tablet proof.
 - [ ] **SHIP-04 — Web gateway design.** Authenticated gateway, per-user host access, credential policy and private-network routing. Gate: threat model and deployment prototype before offering hosted access. Commercial terms remain open.
 - [x] **COMM-00 — Product name.** User selected ShellCanvas; app title, package/crate names, application identity and documentation updated. Workspace folder stays in its existing location.
 - [ ] **COMM-01 — Community launch.** Maintain contribution templates, the supported-system matrix, SDK examples and release notes. Domain/trademark checks and paid-tier planning remain separate work.
 
-## Validation record
+## Validation record (historical)
+
+Earlier slice-by-slice evidence, kept for reference. Current status lives in the entries above and in the handoff.
 
 - Permission slice: the actual SFTP adapter running as an unprivileged account on an authorized Linux test host denied private reads/downloads and forbidden create/save/rename/delete/upload, preserving original files without temporary leftovers. The same services then completed allowed editing and binary transfers. Exact disposable-file/directory cleanup and disconnect passed. Browser folder/editor refusal retained input/drafts and a later retry succeeded; all-target Clippy passed. See [permission validation](docs/permission-validation.md).
 

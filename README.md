@@ -1,114 +1,167 @@
-# ShellCanvas
+<p align="center">
+  <a href="https://shellcanvas.com">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="docs/assets/readme/banner-dark.webp">
+      <img src="docs/assets/readme/banner-light.webp" alt="ShellCanvas. Your machines. One canvas. A graphical desktop for your SSH servers." width="100%">
+    </picture>
+  </a>
+</p>
 
-A desktop canvas for remote devices. Built with **Tauri 2, Rust, and TypeScript/React**. The current SSH connector uses the remote machine's existing SSH server; file browsing additionally needs SFTP. No ShellCanvas agent is installed remotely.
+<p align="center">
+  <b>Turn the servers you reach over SSH into a real desktop.</b><br>
+  Files, terminals, an editor and apps, in windows you arrange, running on your computer.<br>
+  Nothing to install on the server.
+</p>
 
-This is an early working prototype, not a complete file manager or a hardened public release.
+<p align="center">
+  <a href="https://github.com/techartdev/ShellCanvas/releases/latest"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/assets/readme/button-download-dark.png"><img src="docs/assets/readme/button-download-light.png" alt="Download for Windows" height="62"></picture></a>
+  <a href="https://shellcanvas.com"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/assets/readme/button-website-dark.png"><img src="docs/assets/readme/button-website-light.png" alt="shellcanvas.com" height="62"></picture></a>
+  <a href="https://shellcanvas.com/docs/"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/assets/readme/button-docs-dark.png"><img src="docs/assets/readme/button-docs-light.png" alt="Documentation" height="62"></picture></a>
+</p>
 
-[User documentation](https://shellcanvas.com/docs/) · [Engineering documentation](docs/README.md) · [Security policy](SECURITY.md) · [Contributing](CONTRIBUTING.md) · [Changelog](CHANGELOG.md)
+<p align="center">
+  <a href="https://github.com/techartdev/ShellCanvas/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/techartdev/ShellCanvas?style=flat-square&label=release&color=2f6fe0"></a>
+  <img alt="Platform: Windows" src="https://img.shields.io/badge/platform-Windows-2f6fe0?style=flat-square">
+  <a href="LICENSE"><img alt="License: MPL-2.0" src="https://img.shields.io/badge/license-MPL--2.0-2f6fe0?style=flat-square"></a>
+  <img alt="Built with Tauri 2, Rust and React" src="https://img.shields.io/badge/built_with-Tauri_2_%C2%B7_Rust_%C2%B7_React-2f6fe0?style=flat-square">
+</p>
 
-## Downloads
+<br>
 
-Windows NSIS and MSI installers are attached to versioned [GitHub Releases](https://github.com/techartdev/ShellCanvas/releases). The public preview is unsigned, so Windows may show an unknown-publisher warning. Check the release's `SHA256SUMS.txt` before installing. Other native platforms remain development targets with the validation limits described below.
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/readme/hero-dark.webp">
+  <img src="docs/assets/readme/hero-light.webp" alt="The ShellCanvas desktop connected to a server: a Files window, a terminal showing docker compose ps and git log, and compose.yaml open in the editor.">
+</picture>
 
-The architecture is evolving toward a connection-neutral desktop: SSH is the first/default adapter. [Installed native adapters](docs/adapter-packages.md) can provide files, consoles, optional text/file changes and remote settings through independently assigned connections in one workspace, alongside **SSH (built in)**. These assignments can be stored in [saved workspace profiles](docs/workspace-profiles.md), with credentials omitted and revision-checked updates. See [the composition design](docs/connections.md). Production Serial, Telnet, FTP and device API adapters are not implemented yet.
+<p align="center"><sub>Files, Terminal and the editor on one connected server. Screenshots use sample hosts and data.</sub></p>
 
-## Run
+> [!NOTE]
+> ShellCanvas is a **public preview** for Windows. The app launcher, App Manager and the refreshed Canvas theme shown on this page are on `main` and ship in the next release; [0.1.1](https://github.com/techartdev/ShellCanvas/releases/tag/v0.1.1) has the earlier Apps window and theme. See [where things stand](#where-things-stand).
 
-Development prerequisites: Node.js 22+, Rust 1.93+, and the [Tauri platform prerequisites](https://v2.tauri.app/start/prerequisites/).
+## Why ShellCanvas
+
+SSH gives you a shell. ShellCanvas gives you the rest of a computer: a file manager that feels local, an editor that saves safely, terminals side by side and apps that know which host they are working on. It all runs on your machine and talks to your server over plain SSH, the connection you already use.
+
+- **A desktop, not a dashboard.** Move, resize, tile and minimize real windows between a top bar and a dock. Open several Files and Terminal windows per host.
+- **Nothing to install on the server.** ShellCanvas uses the SSH server your machine already runs, with SFTP for files. No agent, no daemon, only SSH.
+- **Trust you can see.** A new host's key is shown for review before you sign in, and a changed key is refused. Passwords and passphrases are never saved.
+- **Room to grow.** Install apps straight from GitHub, switch themes, or build your own apps and connection adapters with the public SDKs.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/readme/how-it-works-dark.webp">
+  <img src="docs/assets/readme/how-it-works-light.webp" alt="How it works: ShellCanvas runs on your computer and connects to your servers over an encrypted SSH connection. The host key is checked first; SFTP carries files and a PTY carries terminals. Nothing is installed on the servers.">
+</picture>
+
+## A quick tour
+
+### Files that feel local
+
+<img src="docs/assets/readme/files.webp" alt="The Files window browsing a workspace folder, with a transfer queue uploading a photos folder and two queued archives.">
+
+Browse with places, a path bar and a filter. Select many items at once, and reach everyday actions from a context menu with the shortcuts you expect: rename with <kbd>F2</kbd>, cut and paste between Files windows with <kbd>Ctrl</kbd>+<kbd>X</kbd> and <kbd>Ctrl</kbd>+<kbd>V</kbd>, move or copy to another folder, delete. Upload and download files or whole folders through a queue that shows progress and can be cancelled. ShellCanvas never overwrites something that already exists.
+
+On Windows, copy files and folders from ShellCanvas and paste them into File Explorer, or the other way round.
+
+### Terminal and editor, side by side
+
+<img src="docs/assets/readme/terminal-editor.webp" alt="A terminal showing docker compose ps and git log output next to the editor with compose.yaml open.">
+
+Terminals are real shells over SSH. Open several at once, each with its own session, a right-click menu, and <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>C</kbd> / <kbd>V</kbd> for the clipboard while <kbd>Ctrl</kbd>+<kbd>C</kbd> still interrupts.
+
+The editor opens UTF-8 text files up to 256 KiB, with find, undo, word wrap and Save As. Before it saves, ShellCanvas checks that nobody changed the file on the server in the meantime, then replaces it atomically on servers that support it, such as OpenSSH.
+
+### Every host gets its own space
+
+<img src="docs/assets/readme/workspaces.webp" alt="The workspace switcher open in the top bar, listing three connected hosts, with a Raspberry Pi workspace in front.">
+
+Connect to several machines at once and switch between them from the top bar. Each workspace keeps its own windows, folders and terminal output. If a connection drops, reconnect in place: your windows, folders and unsaved drafts are still there, and terminals start fresh shells.
+
+### Connect with confidence
+
+<img src="docs/assets/readme/connect.webp" alt="Left: the connect dialog with four saved hosts. Right: the host verification dialog showing a new host's SHA-256 fingerprint.">
+
+Pick a saved host or import one from `~/.ssh/config`, then sign in with a key or a password. Host keys are checked against your OpenSSH `known_hosts` and ShellCanvas's own trust store before authentication. A new server shows its fingerprint for you to confirm, and a server whose key changed is blocked.
+
+### Apps, whenever you want them
+
+<img src="docs/assets/readme/launcher.webp" alt="The app launcher showing Text editor, Files, Terminal, Host details, App Manager and three installed apps.">
+
+Open everything from the launcher, and add more with App Manager. Install from a public GitHub repository or a package file, review exactly what each app may access, and check for updates later. On Windows, installed apps run in an isolated frame and get only the access you approve.
+
+<img src="docs/assets/readme/app-manager.webp" alt="App Manager listing installed apps as tiles: Canvas Assistant, Device Services and Field Notes.">
+
+Want an assistant on the desktop? [Canvas Assistant](https://github.com/techartdev/ShellCanvas-Assistant) is an optional app that talks to an OpenAI-compatible model you configure. It can look through files in your workspace, and every file change or terminal command it proposes waits for your approval.
+
+### Make it yours
+
+<img src="docs/assets/readme/themes.webp" alt="The same desktop split diagonally between the dark and light Canvas theme.">
+
+Canvas, the built-in theme, comes in light and dark and can follow your system. Choose a wallpaper or use your own photo, scale the interface from 80 to 150 percent and size the dock to taste. Themes are plain data files you can install from disk or GitHub, so anyone can make one; start from [Canvas Study](examples/themes/canvas-study).
+
+## Get started
+
+1. **Download** the latest [release](https://github.com/techartdev/ShellCanvas/releases/latest): the `.exe` setup installs for your user account, or use the `.msi` package. Preview builds are not code-signed yet, so Windows may warn about an unknown publisher. Each release lists SHA-256 checksums in `SHA256SUMS.txt`.
+2. **Add a host.** Enter its address, your user name and a private key or password, or choose an entry from `~/.ssh/config`.
+3. **Verify and connect.** Compare the fingerprint, confirm it, and your workspace opens with Files and a terminal.
+
+**You need** Windows (x64) with the Microsoft Edge WebView2 runtime, which Windows 11 includes, and a server running SSH. Files, the editor and transfers also need SFTP, which OpenSSH provides.
+
+## Where things stand
+
+ShellCanvas is young and says so. Support claims come from tests on real systems, and this table lists only what has been checked.
+
+| Area | Status |
+| --- | --- |
+| **Windows client** | Released as NSIS and MSI installers (x64, not yet code-signed). |
+| **macOS client** | Builds from source. Launch, layout and Settings are confirmed on an Intel Mac running Catalina; SSH workflows on the Mac client are not validated yet. |
+| **Linux client** | Not validated yet. |
+| **Linux servers** | Files, terminal, editing and transfers are verified on an Ubuntu test server. Other distributions use the same SSH and SFTP path but have not been tested. |
+| **macOS servers** | Browsing files and a live shell are confirmed; writes and transfers are not validated yet. |
+| **Windows OpenSSH servers** | Not validated yet. |
+
+Also on the way: signed installers, validated macOS and Linux clients, and [Drive Bridge](https://github.com/techartdev/ShellCanvas-DriveBridge), a separate free app in preview that attaches a remote folder as a local drive. The connection model is ready for more than SSH (for example serial, Telnet, FTP or a device API per workspace), but those adapters are not built yet. See the [roadmap](ROADMAP.md).
+
+## Build for ShellCanvas
+
+**Apps.** The [app SDK](docs/app-sdk.md) generates a project, type-checks it and builds a single installable package. No desktop rebuild or restart is needed.
+
+```sh
+npx --package @techartdev/shellcanvas-app-sdk shellcanvas-app init my-notes --id org.example.notes --title "My Notes"
+cd my-notes
+npm install
+npm run build   # writes dist/app.shellcanvas.json
+```
+
+In App Manager, choose **Add apps → Choose package…** and pick the result. To share it, run `npx shellcanvas-app repository . --description "What it does"` and commit the generated `shellcanvas.repo.json` so others can install it from GitHub.
+
+**Connection adapters.** The Rust [`shellcanvas-adapter-sdk`](https://docs.rs/shellcanvas-adapter-sdk) and its `shellcanvas-adapter` CLI create, build and validate native adapters that add file, console, settings or custom services to a workspace. See the [adapter SDK guide](docs/adapter-sdk.md) and the [filesystem SDK](crates/filesystem-sdk).
+
+Both SDKs are at 0.1 and still provisional. The repository's [AI development skills](docs/ai-development-skills.md) help coding agents build apps and adapters against them.
+
+## Build from source
+
+You need Node.js 22+, Rust 1.93+ and the [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/) for your platform.
 
 ```sh
 npm ci
-npm run desktop
+npm run desktop           # run the desktop app with live reload
+npm run dev               # browser design preview with sample data, no SSH
+npm run verify            # formatting, tests and lint; add -- --native to also build the app
+npm run release:windows   # NSIS and MSI installers
 ```
 
-`npm run dev` opens the **browser design preview** at `http://127.0.0.1:1420`. It uses explicitly labeled synthetic data. It cannot make SSH connections, and failed native connections never fall back to sample data.
+The [engineering documentation](docs/README.md) covers the architecture, contracts and verification records.
 
-Build an executable with embedded frontend assets:
+## Contributing
 
-```sh
-npm run tauri -- build --debug --no-bundle
-```
-
-Windows output: `target/debug/shellcanvas.exe`. This debug build is for local evaluation. Installers, signing, release optimization, and macOS/Linux/mobile packaging are not validated yet. Windows requires the WebView2 runtime, but end users do not need Node or Rust for a packaged build.
-
-For the Catalina Intel test machine, use `sh scripts/build-macos-legacy.sh`.
-This explicit debug build includes a dependency-specific startup workaround; see
-the [Mac validation record and remaining limits](docs/macos-validation.md).
-
-## Included
-
-- A custom desktop shell with mountain wallpapers, a dock, launcher, local clock, and floating app windows.
-- An app launcher for everything you can open, and runtime app installation and updates through **App Manager**, with reviewed permissions, isolated app frames on Windows, pinned running versions and protected drafts. See [runtime apps](docs/runtime-apps.md).
-- Direct [GitHub app installation](docs/repository-apps.md) from a verified prebuilt package and root descriptor, with reviewed updates and no registry/build scripts at install time.
-- [Canvas Assistant](https://github.com/techartdev/ShellCanvas-Assistant), a separately built app with OpenAI Responses/compatible Chat Completions, streaming chat, local history, text/image attachments and reviewed remote file/console tools. See [verification and scope](docs/assistant-goal.md). Model keys stay in the desktop's [connection service](docs/app-network.md).
-- Shared system dialogs, app-owned persistent [data/settings](docs/app-storage.md), [environment events/service discovery](docs/app-events.md), and permission-checked [text clipboard access](docs/app-clipboard.md) through the developing app API. The full extension objective is tracked in [the kernel roadmap](docs/kernel-roadmap.md).
-- Persistent settings for desktop appearance/clock/motion, terminal text/cursor/history, editor text/wrap/indentation, and Files visibility/order/density. The Hosts section opens saved connection settings. [Settings behavior and limits](docs/settings.md).
-- Provider-defined remote settings in Host details: static hostname and timezone on supported Linux/systemd hosts, review before apply, read-only reasons, revision checks and verified readback. [Remote settings and validation limits](docs/remote-settings.md).
-- Move, resize, maximize, minimize, and reopen windows across the full desktop between the top toolbar and bottom dock. Windows can cover desktop widgets, which remain clickable when uncovered. Narrow displays use stacked layouts.
-- Real SSH connections with private-key/passphrase or password authentication.
-- Multiple simultaneous host workspaces. Use the host pill in the top bar to switch; each workspace keeps its Files navigation, terminal buffer and window layout. Add host opens another connection; Disconnect releases the selected connection and retains its windows/drafts. Close workspace removes that workspace with an unsaved-work guard.
-- Cancel pending connections and reconnect a lost host in its existing workspace, preserving folders, windows and editor drafts. Reconnection opens fresh shells. [Recovery behavior and limits](docs/connection-recovery.md).
-- Strict verification against the user's `~/.ssh/known_hosts` and ShellCanvas's own trust store. New hosts require explicit fingerprint review; changed/revoked keys remain blocked before authentication. No automatic trust enrollment or security downgrade.
-- Import of basic, explicit `Host` blocks from `~/.ssh/config`. Select the profile and supply any missing username.
-- Save, edit and remove named host profiles in the native connection dialog. Saved entries live in the application data directory, independently of SSH config; passwords and passphrases are excluded. Use **Save host** before connecting if you want to keep an entry.
-- An xterm.js terminal with binary output streaming, input, PTY resize, and independent SSH channels.
-- Terminal right-click menu: Copy, Paste, Select all, Clear scrollback and New shell. Ctrl+Shift+C/V (or Cmd+C/V on macOS) handles clipboard actions; Ctrl+C remains the remote interrupt. Shift+F10 opens the menu. The terminal viewport stays contained above its footer while resizing.
-- SFTP directory browsing, filtering, parent/back navigation, UTF-8 previews, new folders, rename, **Move to folder…** with destination browsing and no replacement, and confirmed deletion of files/links/empty folders. [File-action behavior and limits](docs/file-actions.md).
-- Native upload/download dialogs, **Copy to folder…** for regular remote files, per-window transfer queues, bounded streaming, progress and cancellation. Existing destinations are preserved. [Transfer behavior and limits](docs/transfers.md).
-- A remote text editor with independent windows, undo/redo, find, word wrap, clipboard actions and saving existing UTF-8 files up to 256 KiB. Open editors follow workspace file/folder renames and moves while keeping drafts. Atomic SFTP replacement and revision checks detect conflicts; unsupported servers keep preview/draft access. [Save behavior and limits](docs/text-editor.md).
-- Files context menus for open/preview, open folder in a new window, copy name/path/text, navigation and clipboard access. Shift+F10 opens menus; Ctrl+C copies the file/folder selection, while copying names/paths remains an explicit text action. Ctrl+L focuses the path field, F5 refreshes, and Alt+Left/Up navigates. A folder-actions button provides pointer/touch access. See [file clipboard behavior](docs/system-clipboard.md).
-- Cut (Ctrl+X) and Paste here (Ctrl+V) move an item between Files windows in the same workspace. A shared banner shows the pending item; Escape cancels the cut. Existing destinations are never replaced. [File clipboard behavior](docs/file-clipboard.md).
-- Files windows, Back history and previews follow confirmed workspace renames/moves. Background refresh preserves filters and typed addresses; stale responses cannot restore old locations. [Navigation behavior](docs/file-navigation.md).
-- Multiple Files and Terminal instances per workspace, with numbered titles, independent buffers/navigation and close/minimize behavior. The titlebar plus button creates another instance; the dock context menu lists existing windows. Desktop and titlebar context menus provide common window actions.
-- Linux detection behind a system-provider interface; generic SSH fallback when no provider matches.
-- A bundled app registry with local/host scope and required/optional capabilities. App service handles reject undeclared calls and keep transfer tickets scoped to their app. [Service declarations](docs/app-services.md).
-- Versioned bundled app manifests, generic window layouts, per-app render failure recovery, and a Host details reference app. Minimize preserves an app; close releases it (closing Terminal ends its shell).
-- Unavailable apps cannot be newly launched. Existing windows remain accessible after capability loss so local drafts can be recovered. Limited devices retain their supported tools; independent command probing is optional and device detection has a total time budget.
-
-## Current boundaries
-
-Files and Editor now consume [provider-owned navigation metadata](docs/filesystem-contract.md), including opaque paths and multiple roots. The production adapter still uses POSIX SFTP conventions; other path models are verified through synthetic providers.
-
-- Files and Terminal support multiple instances; other apps opt in through their manifest. Workspace state survives switching during this app run; it is not restored after closing the workspace or restarting the app. Reconnecting starts a new session and shell; it does not restore remote processes.
-- File and folder transfers use streaming contents and paged, disk-backed tree metadata. Remote Copy/Paste stays within one file-service binding; Windows Explorer Copy/Paste supports files and folders in both directions. Resume, cross-host copying and cross-device deletion-after-transfer remain follow-ups. In-app transfers preserve existing destinations; Explorer owns its own collision prompts. See [transfer guarantees](docs/transfers.md) and [clipboard coverage](docs/system-clipboard.md). **The terminal is a real shell with all permissions of the authenticated account**, including root when selected.
-- Editor drafts survive workspace switches and connection loss. Deliberate window/workspace/app closure guards unsaved work; forced termination can still lose in-memory drafts. Save As supports new names and explicit replacement review with revision checks. Crash recovery is not implemented yet.
-- Passwords and key passphrases are not persisted. Key files remain in their existing location. Named SSH profiles are stored as versioned `hosts.json` in Tauri's app data directory (Windows: `%APPDATA%/dev.shellcanvas.client`), with atomic replacement and a cross-process lock. Unrecognized/corrupt files are reported and preserved. Secure credential-vault integration remains future work. Non-secret desktop/app preferences use versioned local WebView storage; they are separate from host profiles and editor drafts.
-- The importer is not a full OpenSSH configuration interpreter: `Include`, `Match`, wildcard defaults, `ProxyCommand`, `ProxyJump`, SSH agents, hardware keys, and host certificates are unsupported. Imported fields are editable before connecting.
-- Host-key checks support ordinary/hashed entries, wildcard and negated patterns, ports, aliases and revocation. Unrelated markers do not block known hosts; certificate verification remains unsupported. Malformed trust files fail closed. [SSH trust behavior and limits](docs/ssh-host-trust.md).
-- Connection loss is detected through SSH transport closure and keepalives; it can take roughly a minute to recognize an unreachable network peer.
-- Bundled apps remain trusted source modules. Runtime UI packages use an isolated frame and permission-checked broker on Windows; other native platforms remain gated pending equivalent isolation checks. [Native adapter packages](docs/adapter-packages.md) require explicit native-code trust and supply optional file/console/settings services, streaming file/folder transfers and independent source replacement. Standalone adapter tooling, publisher authentication and a marketplace remain future work. See [the boundary and validation scope](docs/runtime-apps.md#isolation-boundary-and-unfinished-gates).
-- Tablet/phone layouts are browser-checked. Native Android/iOS builds and touch-keyboard behavior are not yet validated.
-
-## Verify
-
-```sh
-npm run verify
-npm run verify -- --native
-```
-
-The second command also builds the current platform's debug executable. Both stop on failure and write a local report; neither launches UI walkthroughs or remote probes. See [verification scope and release checklist](docs/verification.md).
-
-For an explicitly authorized host already present in `known_hosts`:
-
-```sh
-cargo run -p shellcanvas-core --example probe -- HOST USER KEY_PATH
-```
-
-The probe checks authentication, Linux detection, home-directory SFTP listing, `/etc/os-release` text preview, PTY negotiation, shell input/output, terminal dimensions, and disconnect. It does not print remote file contents or credentials. Its shell command unsets `HISTFILE` before printing a marker, checking `stty size`, and exiting. Normal server authentication/audit activity can still occur.
-
-## Architecture and contribution
-
-Personalize the desktop with [installable themes](docs/themes.md), light/dark
-Canvas variants, local wallpapers, interface scaling and toolbar/dock sizing.
-Theme authors can start from [Canvas Study](examples/themes/canvas-study) without
-an SDK or build step.
-
-Start with [the documentation map](docs/README.md), [roadmap](ROADMAP.md), [development backlog](BACKLOG.md), and [kernel/API roadmap](docs/kernel-roadmap.md). Build independent apps with the [standalone app SDK and starter](docs/app-sdk.md). See [the architecture](docs/architecture.md), [bundled app guide](docs/apps.md), [runtime app guide](docs/runtime-apps.md), [remote support matrix](docs/providers.md), [WispCrew AI integration assessment](docs/ai-integration.md), and [contribution guide](CONTRIBUTING.md). The public SDK remains provisional while the interfaces settle. Commercial packaging is intentionally undecided.
-
-Device integrations can use the [standalone Rust adapter SDK and CLI](docs/adapter-sdk.md).
-The repository's [AI development skills](docs/ai-development-skills.md) guide
-app creation, protocol/device adapters and package lifecycle using these APIs.
+Bug reports, compatibility reports from new systems and focused pull requests are all welcome. Start with the [contributing guide](CONTRIBUTING.md). Report security issues privately as described in the [security policy](SECURITY.md), and follow the [code of conduct](CODE_OF_CONDUCT.md). Changes are tracked in the [changelog](CHANGELOG.md).
 
 ## License
 
-[MPL-2.0](LICENSE). Distributed modifications to covered files remain under MPL. Separate extensions may use other licenses, including proprietary licenses, subject to their dependencies and the MPL's requirements. No contributor relicensing or copyright assignment is assumed.
+ShellCanvas is licensed under the [Mozilla Public License 2.0](LICENSE). Modified MPL-covered files stay under the MPL when distributed; separate apps, themes and adapters may use their own licenses.
+
+<br>
+
+<p align="center">
+  <sub>Made with Tauri, Rust and React · <a href="https://shellcanvas.com">shellcanvas.com</a></sub>
+</p>
