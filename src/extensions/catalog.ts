@@ -48,7 +48,7 @@ const identity = /^[a-zA-Z0-9-]{1,100}$/;
 /** Repository descriptions are free text; listings show them on one line. */
 export function listingText(value: unknown): string | undefined {
   if (typeof value !== "string" || value.length > 1000) return undefined;
-  const text = value.replace(/[\s\u0000-\u001f\u007f]+/g, " ").trim();
+  const text = value.replace(/[\s\u0000-\u001f\u007f-\u009f]+/g, " ").trim();
   return text || undefined;
 }
 function grantsFor(app: AppPackage, grants: readonly string[]) {

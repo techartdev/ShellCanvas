@@ -56,6 +56,11 @@ it("lists apps as large icons with running and unavailable states", () => {
     'aria-label="Terminal, unavailable: Connect a host with a terminal"',
   );
   expect(markup).toContain('aria-disabled="true"');
+  // The reason is visible, not only a hover tooltip.
+  expect(markup).toContain(
+    '<small class="app-launcher-note">Connect a host with a terminal</small>',
+  );
+  expect(markup).not.toContain(">Unavailable<");
   expect(markup.match(/data-size="launcher"/g)).toHaveLength(3);
   expect(markup).not.toContain("No apps match");
 });

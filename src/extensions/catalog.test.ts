@@ -140,7 +140,19 @@ it("keeps a repository listing as one line, only with its repository source", as
     undefined,
   );
   const stored = (await saved.api.read()) as CatalogSnapshot;
-  for (const listing of ["Two\nlines", " padded", "", "x".repeat(1001), 7])
+  expect(
+    (await catalog.review(raw(), source, "Line\u2028and\u0085next"))
+      .listing,
+  ).toBe("Line and next");
+  for (const listing of [
+    "Two\nlines",
+    "Line\u2028separator",
+    "C1\u0085control",
+    " padded",
+    "",
+    "x".repeat(1001),
+    7,
+  ])
     expect(() =>
       parseCatalog({
         ...stored,

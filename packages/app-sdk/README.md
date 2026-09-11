@@ -200,7 +200,7 @@ App listings show an icon, the title and an optional short description:
 }
 ```
 
-- `description` is one line of at most 160 UTF-16 code units, without control characters.
+- `description` is one line of at most 160 UTF-16 code units, without control characters (C0 or C1) or Unicode line and paragraph separators.
 - `icon` names a PNG, JPEG, WebP or SVG file (lowercase extension) inside the app directory. `shellcanvas-app build` embeds it in the package as a base64 data URI and refuses files over 256 KiB or whose contents do not match the extension. Square artwork of at least 128 pixels with its own background works best, because listings round the corners. The desktop never fetches icon URLs, and SVG icons render as images without running scripts.
 - Both fields are optional. Apps without an icon get the generic app icon. `shellcanvas-app repository` uses the package description unless `--description` is given.
 

@@ -59,6 +59,8 @@
   grid-template-columns: repeat(auto-fit, 7.692308rem);
   justify-content: center;
   align-content: start;
+  /* A tile with a reason is taller; others keep their running dot by the name. */
+  align-items: start;
   row-gap: 1.230769rem;
   column-gap: 0.615385rem;
   padding: 0.461538rem;
@@ -110,11 +112,21 @@
   font-size: 0.923077rem;
   font-weight: 500;
 }
+/* The reason is visible text, not only a tooltip: touch and keyboard users
+   cannot hover. Long provider reasons clamp; the full text stays in the title
+   and accessible name. */
 .app-launcher-note {
-  position: absolute;
-  bottom: 0.153846rem;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  max-width: 100%;
+  margin-top: -0.307692rem;
   color: var(--sc-muted, #9cb2bd);
   font-size: 0.692308rem;
+  line-height: 1.3;
+  text-align: center;
+  overflow-wrap: anywhere;
 }
 .app-launcher-running {
   position: absolute;

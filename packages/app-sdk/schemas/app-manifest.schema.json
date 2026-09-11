@@ -38,7 +38,7 @@
       "description": "One-line summary shown with the title in app listings.",
       "type": "string",
       "maxLength": 160,
-      "pattern": "^[^\\u0000-\\u001f\\u007f]*[^\\s\\u0000-\\u001f\\u007f][^\\u0000-\\u001f\\u007f]*$"
+      "pattern": "^[^\\u0000-\\u001f\\u007f-\\u009f\\u2028\\u2029]*[^\\s\\u0000-\\u001f\\u007f-\\u009f\\u2028\\u2029][^\\u0000-\\u001f\\u007f-\\u009f\\u2028\\u2029]*$"
     },
     "icon": {
       "description": "PNG, JPEG, WebP or SVG file relative to this manifest. Packaging embeds it; square artwork of at least 128 pixels is recommended.",

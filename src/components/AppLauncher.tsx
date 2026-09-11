@@ -30,6 +30,9 @@ export function AppLauncher({
   connect(): void;
 }) {
   const [query, setQuery] = useState("");
+  const dialog = useRef<HTMLDivElement>(null);
+  const dismiss = useRef(close);
+  dismiss.current = close;
   const grid = useRef<HTMLDivElement>(null);
   const search = useRef<HTMLInputElement>(null);
   const launched = useRef(false);
@@ -48,6 +51,37 @@ export function AppLauncher({
     return () => {
       if (!launched.current && opener?.isConnected) opener.focus();
     };
+  }, []);
+  useEffect(() => {
+    // Modal like the desktop dialogs: Tab stays inside. The dock stays
+    // clickable to toggle the launcher, so focus there is brought back and
+    // Escape still closes.
+    function keys(event: globalThis.KeyboardEvent) {
+      const root = dialog.current;
+      if (!root || event.defaultPrevented) return;
+      const inside = root.contains(document.activeElement);
+      if (event.key === "Escape" && !inside) {
+        event.preventDefault();
+        dismiss.current();
+        return;
+      }
+      if (event.key !== "Tab") return;
+      const controls = [...root.querySelectorAll<HTMLElement>("input, button")];
+      const first = controls[0];
+      const last = controls.at(-1);
+      if (!inside) {
+        event.preventDefault();
+        (event.shiftKey ? last : first)?.focus();
+      } else if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last?.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first?.focus();
+      }
+    }
+    document.addEventListener("keydown", keys);
+    return () => document.removeEventListener("keydown", keys);
   }, []);
   const items = () => [
     ...(grid.current?.querySelectorAll<HTMLButtonElement>("button") ?? []),
@@ -82,6 +116,7 @@ export function AppLauncher({
   };
   return (
     <div
+      ref={dialog}
       className="app-launcher"
       role="dialog"
       aria-modal="true"
@@ -148,7 +183,7 @@ export function AppLauncher({
               />
               <span className="app-launcher-name">{app.title}</span>
               {reason ? (
-                <small className="app-launcher-note">Unavailable</small>
+                <small className="app-launcher-note">{reason}</small>
               ) : (
                 active && <span className="app-launcher-running" />
               )}

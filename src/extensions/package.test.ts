@@ -59,6 +59,11 @@ it("accepts a one-line description and an embedded icon whose bytes match its de
     { description: "   " },
     { description: "x".repeat(161) },
     { description: "Two\nlines" },
+    // C1 controls and Unicode line/paragraph separators also break one line.
+    { description: "Next\u0085line" },
+    { description: "Line\u2028separator" },
+    { description: "Paragraph\u2029separator" },
+    { description: "C1\u009fcontrol" },
     { description: 3 },
     { icon: "https://example.invalid/icon.png" },
     { icon: png().replace("image/png", "image/gif") },

@@ -73,7 +73,7 @@ function validDescription(value: unknown) {
     typeof value === "string" &&
     /\S/.test(value) &&
     value.length <= APP_DESCRIPTION_MAX_LENGTH &&
-    !/[\u0000-\u001f\u007f]/.test(value)
+    !/[\u0000-\u001f\u007f-\u009f\u2028\u2029]/.test(value)
   );
 }
 /** Editor schema metadata is accepted in source manifests, never in executable packages. */
