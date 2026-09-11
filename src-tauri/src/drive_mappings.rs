@@ -362,7 +362,9 @@ pub async fn attach_drive(
     }
     // Read the local OS table before reserving, without probing filesystem contents.
     if crate::local_mounts::reserved_for_attachment(&target)? {
-        return Err("That local location is already mounted or reserved. Choose another location.".into());
+        return Err(
+            "That local location is already mounted or reserved. Choose another location.".into(),
+        );
     }
     let registry = state.registry.lock().await;
     let session = registry
