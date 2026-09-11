@@ -143,3 +143,79 @@ test("packer preserves the last valid artifact after bad source, manifest or ver
   await assert.rejects(packApp(directory));
   assert.equal(await readFile(output, "utf8"), before);
 });
+const svgIcon = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 8 8"><rect width="8" height="8"/></svg>';
+const pngBytes = (size = 12) =>
+  Buffer.concat([
+    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+    Buffer.alloc(size - 8),
+  ]);
+test("schemas and the host parser agree on listing descriptions and icons", async () => {
+  const ajv = new Ajv();
+  const compile = async (name) =>
+    ajv.compile(
+      JSON.parse(await readFile(new URL(`../schemas/${name}`, import.meta.url))),
+    );
+  const sourceSchema = await compile("app-manifest.schema.json");
+  const packageSchema = await compile("app-package.schema.json");
+  const embedded = `data:image/svg+xml;base64,${Buffer.from(svgIcon).toString("base64")}`;
+  for (const [patch, source, executable] of [
+    [{ description: "Quick notes" }, true, true],
+    [{ description: "é ✓ unicode" }, true, true],
+    [{ description: "" }, false, false],
+    [{ description: "   " }, false, false],
+    [{ description: "x".repeat(161) }, false, false],
+    [{ description: "two\nlines" }, false, false],
+    [{ description: "next\u0085line" }, false, false],
+    [{ description: "line\u2028separator" }, false, false],
+    [{ description: "paragraph\u2029separator" }, false, false],
+    [{ description: "c1\u009fcontrol" }, false, false],
+    [{ icon: "icon.svg" }, true, false],
+    [{ icon: "assets/icon.png" }, true, false],
+    [{ icon: "../icon.png" }, false, false],
+    [{ icon: "icon.gif" }, false, false],
+    [{ icon: embedded }, false, true],
+    [{ icon: "https://example.invalid/icon.png" }, false, false],
+  ]) {
+    const value = { ...manifest, ...patch };
+    const packaged = { ...value, script: "void 0;", style: "" };
+    const label = JSON.stringify(patch).slice(0, 60);
+    assert.equal(sourceSchema(value), source, label);
+    assert.equal(packageSchema(packaged), executable, label);
+    if (source) assert.doesNotThrow(() => parseAppManifest(JSON.stringify(value)), label);
+    else assert.throws(() => parseAppManifest(JSON.stringify(value)), label);
+    if (executable) assert.doesNotThrow(() => parseAppPackage(JSON.stringify(packaged)), label);
+    else assert.throws(() => parseAppPackage(JSON.stringify(packaged)), label);
+  }
+});
+test("packer embeds the manifest icon and refuses oversized or mislabeled images", async (t) => {
+  const directory = await fixture(t, "shellcanvas-sdk-icon-");
+  const write = (icon, description) =>
+    writeFile(
+      join(directory, "shellcanvas.json"),
+      JSON.stringify({ ...manifest, icon, description }),
+    );
+  await writeFile(join(directory, "main.ts"), "void 0;");
+  await writeFile(join(directory, "style.css"), "");
+  await writeFile(join(directory, "icon.svg"), svgIcon);
+  await write("icon.svg", "Quick notes");
+  const output = await packApp(directory);
+  const packaged = parseAppPackage(await readFile(output, "utf8"));
+  assert.equal(packaged.description, "Quick notes");
+  assert.equal(
+    packaged.icon,
+    `data:image/svg+xml;base64,${Buffer.from(svgIcon).toString("base64")}`,
+  );
+  const before = await readFile(output, "utf8");
+  await writeFile(join(directory, "big.png"), pngBytes(256 * 1024 + 1));
+  await write("big.png", "Quick notes");
+  await assert.rejects(packApp(directory), /larger than 256 KiB/);
+  await writeFile(join(directory, "fake.png"), svgIcon);
+  await write("fake.png", "Quick notes");
+  await assert.rejects(packApp(directory), /not a valid PNG image/);
+  await write("missing.png", "Quick notes");
+  await assert.rejects(packApp(directory));
+  assert.equal(await readFile(output, "utf8"), before);
+  await writeFile(join(directory, "exact.png"), pngBytes(256 * 1024));
+  await write("exact.png", "Quick notes");
+  assert.ok(parseAppPackage(await readFile(await packApp(directory), "utf8")).icon);
+});

@@ -1,6 +1,6 @@
 # Install apps from GitHub
 
-Open **Apps → Install from GitHub** and enter `owner/repository` or its GitHub
+Open **App Manager → Add apps → From GitHub** and enter `owner/repository` or its GitHub
 HTTPS URL. Choose a branch, tag or commit (default `main`). The desktop reads
 `shellcanvas.repo.json` directly from GitHub's raw file host, then downloads the
 named prebuilt package. No app server, registry, GitHub REST/GraphQL API, local
@@ -34,6 +34,10 @@ Generate the real digest; the example is illustrative. The public SDK command:
 npm run build
 shellcanvas-app repository . --description "A small independent app."
 ```
+
+Without `--description`, the command uses the package's own `description`. The
+App Manager shows the repository description only for apps whose package has
+none.
 
 `--path` selects another repository-relative package path. The command reads an
 already built valid package and atomically writes the descriptor. Commit the

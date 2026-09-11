@@ -143,13 +143,33 @@ pub(super) async fn scan(
 }
 
 /// Root selections share one database and one directory cursor, regardless of root count.
+/// Transfers have no total-tree limit; disk space for the catalog is the bound.
 pub(super) async fn scan_catalog(
     catalog: Arc<Catalog>,
     service: Arc<dyn FileTransferService>,
     cancel: &watch::Receiver<bool>,
     progress: &mut (dyn FnMut(Progress) + Send),
 ) -> Result<Arc<Catalog>> {
+    scan_catalog_limited(catalog, service, cancel, progress, None).await
+}
+
+/// `limit` is for consumers that must materialize one record per item in memory,
+/// such as an Explorer clipboard offer. It stops discovery as soon as it is exceeded.
+pub(super) async fn scan_catalog_limited(
+    catalog: Arc<Catalog>,
+    service: Arc<dyn FileTransferService>,
+    cancel: &watch::Receiver<bool>,
+    progress: &mut (dyn FnMut(Progress) + Send),
+    limit: Option<(u64, &'static str)>,
+) -> Result<Arc<Catalog>> {
+    let within_limit = |catalog: &Catalog| -> Result<()> {
+        match limit {
+            Some((items, message)) if catalog.len() > items => bail!("{message}"),
+            _ => Ok(()),
+        }
+    };
     checkpoint(cancel)?;
+    within_limit(&catalog)?;
     progress(Progress {
         items: Some(catalog.len()),
         bytes: 0,
@@ -185,6 +205,7 @@ pub(super) async fn scan_catalog(
                 .await??;
                 read = returned;
                 catalog.add(Some(&node), entries)?;
+                within_limit(&catalog)?;
                 progress(Progress {
                     items: Some(catalog.len()),
                     bytes: 0,
@@ -212,6 +233,7 @@ pub(super) async fn scan_catalog(
                     if entries.is_empty() { break; }
                     if entries.len() > TRANSFER_DIRECTORY_PAGE { bail!("Provider exceeded the directory page budget"); }
                     catalog.add(Some(&node), entries.into_iter().map(|entry| (entry,None)).collect())?;
+                    within_limit(&catalog)?;
                     progress(Progress { items: Some(catalog.len()), bytes: 0, total: catalog.size(), phase: "preparing" });
                     tokio::task::yield_now().await;
                 }

@@ -149,11 +149,9 @@ async fn selection_catalog_keeps_distinct_roots_and_nested_descriptor_paths() {
     assert_eq!(catalog.get(131).unwrap().display, "Root\\binary.bin");
     #[cfg(windows)]
     {
-        let sources = crate::clipboard_stream::Sources::catalogs(
-            vec![catalog.clone()],
-            service,
-            tokio::runtime::Handle::current(),
-        );
+        let sources = explorer_sources(catalog.clone(), service, &cancel)
+            .await
+            .unwrap();
         assert_eq!(sources.len(), 131);
         assert_eq!(sources.get(130).unwrap().display_path, "Root\\binary.bin");
         assert_eq!(sources.get(130).unwrap().entry.path, "file@opaque");
@@ -162,6 +160,54 @@ async fn selection_catalog_keeps_distinct_roots_and_nested_descriptor_paths() {
     assert!(catalog
         .add(None, vec![(entry("another@root", "ROOT", true, 0), None)])
         .is_err());
+}
+/// Shortened display paths are presentation only. An Explorer offer whose path
+/// does not fit a descriptor is refused before any sources exist to publish,
+/// while each node keeps its full provider path and name for transfers.
+#[cfg(windows)]
+#[tokio::test]
+async fn overlong_explorer_paths_refuse_the_offer_and_keep_full_provider_paths() {
+    let catalog = Arc::new(catalog::Catalog::new(true).unwrap());
+    let folder = "F".repeat(120);
+    catalog
+        .add(None, vec![(entry("root@opaque", &folder, true, 0), None)])
+        .unwrap();
+    let root = catalog.get(1).unwrap();
+    // Distinct names sharing their first 200 characters: shortened displays collide.
+    let stem = "n".repeat(200);
+    let children: Vec<_> = ["first", "second"]
+        .into_iter()
+        .map(|tail| {
+            let name = format!("{stem}-{tail}.bin");
+            (
+                entry(&format!("/srv/{folder}/{name}"), &name, false, 1),
+                None,
+            )
+        })
+        .collect();
+    catalog.add(Some(&root), children.clone()).unwrap();
+    for (id, (expected, _)) in (2..).zip(&children) {
+        let node = catalog.get(id).unwrap();
+        assert_eq!(node.entry.path, expected.path);
+        assert_eq!(node.entry.name, expected.name);
+        assert!(node.entry.path.len() > catalog::DESCRIPTOR_PATH_UNITS);
+        assert_eq!(
+            node.display.encode_utf16().count(),
+            catalog::DESCRIPTOR_PATH_UNITS
+        );
+    }
+    assert_eq!(
+        catalog.get(2).unwrap().display,
+        catalog.get(3).unwrap().display
+    );
+    let (_stop, cancel) = watch::channel(false);
+    let Err(error) = explorer_sources(catalog.clone(), provider(None), &cancel).await else {
+        panic!("an ambiguous shortened path must not become an Explorer descriptor");
+    };
+    assert!(
+        error.to_string().contains("too long for Explorer"),
+        "{error:#}"
+    );
 }
 #[tokio::test]
 async fn local_folder_plan_keeps_metadata_and_empty_directories_without_open_files() {

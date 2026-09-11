@@ -616,7 +616,8 @@ export function ConnectAdapterDialog({
             )}
             {!loading && !installed.length && (
               <p>
-                No connection adapters installed yet. Open Apps to install one.
+                No connection adapters installed yet. Open App Manager to
+                install one.
               </p>
             )}
           </fieldset>

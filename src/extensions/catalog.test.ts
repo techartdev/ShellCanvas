@@ -110,6 +110,59 @@ it("retains verified repository provenance and rejects a mismatched artifact has
   lease.close();
 });
 
+it("keeps a repository listing as one line, only with its repository source", async () => {
+  const saved = storage();
+  const catalog = new AppCatalog(saved.api);
+  await catalog.load();
+  const sha256 = [
+    ...new Uint8Array(
+      await crypto.subtle.digest("SHA-256", new TextEncoder().encode(raw())),
+    ),
+  ]
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("");
+  const source = { owner: "example", repository: "notes", ref: "main", sha256 };
+  const review = await catalog.review(
+    raw(),
+    source,
+    "  Quick notes\n\tfor your hosts\u0007 ",
+  );
+  expect(review.listing).toBe("Quick notes for your hosts");
+  await catalog.install(review, []);
+  const reloaded = new AppCatalog(saved.api);
+  await reloaded.load();
+  expect(reloaded.snapshot()[0].listing).toBe("Quick notes for your hosts");
+  // Listings belong to repository installs; blank text is not a listing.
+  expect((await catalog.review(raw(), undefined, "Local")).listing).toBe(
+    undefined,
+  );
+  expect((await catalog.review(raw(), source, " \n ")).listing).toBe(
+    undefined,
+  );
+  const stored = (await saved.api.read()) as CatalogSnapshot;
+  expect(
+    (await catalog.review(raw(), source, "Line\u2028and\u0085next"))
+      .listing,
+  ).toBe("Line and next");
+  for (const listing of [
+    "Two\nlines",
+    "Line\u2028separator",
+    "C1\u0085control",
+    " padded",
+    "",
+    "x".repeat(1001),
+    7,
+  ])
+    expect(() =>
+      parseCatalog({
+        ...stored,
+        apps: [{ ...stored.apps[0], listing }],
+      }),
+    ).toThrow();
+  // A local package update replaces the repository source and its listing.
+  await catalog.install(await catalog.review(raw("2.0.0")), []);
+  expect(catalog.snapshot()[0].listing).toBeUndefined();
+});
 it("revalidates stale launchers and retains leases across another catalog's update and disable", async () => {
   const saved = storage();
   const locks = new Map<string, number>();

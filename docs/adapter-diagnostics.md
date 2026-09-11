@@ -1,6 +1,6 @@
 # Adapter connection diagnostics
 
-Open **Apps → Connection adapters → Connection diagnostics** to inspect recent
+Open **App Manager → Connection adapters → Connection diagnostics** to inspect recent
 installed native adapter connections. The same panel is available after a
 connection error. Expand it, choose a connection, use **Refresh** for new events,
 or **Copy report** to put a JSON report on the clipboard. Opening or refreshing

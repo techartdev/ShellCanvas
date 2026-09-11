@@ -1,0 +1,544 @@
+/* SPDX-License-Identifier: MPL-2.0 */
+/* App Manager: store-style listing, details and manual installation. Shared
+   `.extension-*` rules (also used by connection adapters) stay in
+   ExtensionManager.css; this file only adds and scopes the app views. */
+.app-manager {
+  container: app-manager / inline-size;
+  background: var(--sc-surface, #1c303c);
+}
+.app-manager-header {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  column-gap: 1.230769rem;
+  row-gap: 0.923077rem;
+  padding: 1.076923rem 2.153846rem;
+  background: var(--sc-surface, #1c303c);
+  border-bottom: 1px solid var(--sc-border, #354e5b);
+}
+.app-manager-heading {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  column-gap: 0.846154rem;
+  min-width: 0;
+}
+.app-manager-mark {
+  display: grid;
+  place-items: center;
+  width: 2.461538rem;
+  height: 2.461538rem;
+  color: var(--sc-accent, #a0cbbb);
+  background: rgba(var(--sc-accent-rgb, 122, 184, 255), 0.14);
+  border-radius: 0.769231rem;
+}
+.app-manager-heading h2 {
+  margin: 0;
+  color: var(--sc-text, #dce7ec);
+  font-size: 1.230769rem;
+  font-weight: 600;
+}
+.app-manager-heading p {
+  margin: 0.153846rem 0 0;
+  overflow: hidden;
+  color: var(--sc-muted, #9cb2bd);
+  font-size: 0.846154rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.app-manager-tabs {
+  display: grid;
+  grid-auto-flow: column;
+  column-gap: 0.230769rem;
+  padding: 0.230769rem;
+  background: var(--sc-inset, #142a35);
+  border: 1px solid var(--sc-border, #354e5b);
+  border-radius: 0.769231rem;
+}
+.app-manager-tabs button {
+  padding: 0.461538rem 0.923077rem;
+  color: var(--sc-muted, #9cb2bd);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 0.538462rem;
+  font: inherit;
+  font-size: 0.846154rem;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.app-manager-tabs button:hover {
+  color: var(--sc-text, #dce7ec);
+}
+.app-manager-tabs button[aria-pressed="true"] {
+  color: var(--sc-text, #dce7ec);
+  background: var(--sc-raised, #293e49);
+  border-color: var(--sc-border, #425963);
+  box-shadow: 0 1px 0.230769rem rgba(var(--sc-shadow-rgb, 8, 8, 13), 0.2);
+}
+.app-manager-tabs button:focus-visible,
+.app-manager-page button:focus-visible,
+.app-search input:focus-visible {
+  outline: 0.153846rem solid var(--sc-accent, #b0ddcb);
+  outline-offset: 0.153846rem;
+}
+.extension-manager.app-manager-page {
+  padding: 1.538462rem 2.153846rem 2.153846rem;
+  overflow: visible;
+}
+/* Connection adapters keep their own view; align its scale with the app pages. */
+.app-manager > .extension-manager:not(.app-manager-page) {
+  padding: 1.538462rem 2.153846rem 2.153846rem;
+  overflow: visible;
+}
+.app-manager > .extension-manager:not(.app-manager-page) h2 {
+  font-size: 1.538462rem;
+  font-weight: 600;
+}
+.app-manager-page > .app-manager-tabs {
+  justify-self: start;
+  width: max-content;
+  margin-bottom: 1.230769rem;
+}
+.app-manager-page > .extension-error {
+  margin: 0 0 1.230769rem;
+}
+.app-manager-page > .extension-repository-progress {
+  padding-top: 0;
+}
+
+/* Installed */
+.app-toolbar {
+  display: grid;
+  grid-template-columns: minmax(0, 26.153846rem) auto;
+  justify-content: space-between;
+  align-items: center;
+  column-gap: 0.923077rem;
+  row-gap: 0.769231rem;
+}
+.app-search {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  column-gap: 0.615385rem;
+  padding: 0 0.846154rem;
+  color: var(--sc-muted, #9cb2bd);
+  background: var(--sc-inset, #142a35);
+  border: 1px solid var(--sc-border, #486471);
+  border-radius: 0.615385rem;
+}
+.app-search:focus-within {
+  border-color: var(--sc-accent, #a0cbbb);
+}
+.app-search input {
+  min-width: 0;
+  padding: 0.692308rem 0;
+  color: var(--sc-text, #e0ebf0);
+  background: transparent;
+  border: 0;
+  font: inherit;
+  font-size: 0.923077rem;
+  outline: 0;
+}
+.app-search input::placeholder {
+  color: var(--sc-muted, #9cb2bd);
+}
+.app-search input::-webkit-search-cancel-button {
+  cursor: pointer;
+}
+.extension-manager .app-section-title {
+  margin: 1.846154rem 0 0.923077rem;
+  font-size: 0.923077rem;
+  font-weight: 600;
+}
+.app-section-title span {
+  margin-left: 0.461538rem;
+  color: var(--sc-muted, #9cb2bd);
+  font-weight: 400;
+}
+.app-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(17.692308rem, 1fr));
+  gap: 0.923077rem;
+}
+.app-grid:empty {
+  display: none;
+}
+.app-tile {
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto;
+  min-width: 0;
+  background: var(--sc-raised, #243e49);
+  border: 1px solid var(--sc-border, #354e5b);
+  border-radius: 1.076923rem;
+  box-shadow: 0 0.153846rem 0.615385rem
+    rgba(var(--sc-shadow-rgb, 8, 8, 13), 0.12);
+  transition:
+    border-color 0.15s,
+    transform 0.15s;
+}
+.app-tile:hover {
+  border-color: rgba(var(--sc-accent-rgb, 122, 184, 255), 0.55);
+  transform: translateY(-0.076923rem);
+}
+.app-tile-main {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  column-gap: 1rem;
+  padding: 1.076923rem 1.076923rem 0.769231rem;
+  color: inherit;
+  text-align: left;
+  background: transparent;
+  border: 0;
+  border-radius: 1.076923rem 1.076923rem 0 0;
+  font: inherit;
+  cursor: pointer;
+}
+.app-tile-text {
+  display: grid;
+  row-gap: 0.307692rem;
+  min-width: 0;
+}
+.app-tile-text strong {
+  overflow: hidden;
+  color: var(--sc-text, #dce7ec);
+  font-size: 1rem;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.app-tile-text span {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  min-height: 2.8em;
+  color: var(--sc-muted, #9cb2bd);
+  font-size: 0.846154rem;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+.app-tile.inactive .app-icon,
+.app-tile.inactive .app-tile-text strong {
+  opacity: 0.6;
+}
+.app-tile-footer {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  column-gap: 0.769231rem;
+  padding: 0.615385rem 1.076923rem 0.923077rem;
+}
+.app-tile-meta {
+  display: grid;
+  grid-auto-flow: column;
+  justify-content: start;
+  align-items: center;
+  column-gap: 0.461538rem;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--sc-muted, #9cb2bd);
+  font-size: 0.769231rem;
+  white-space: nowrap;
+}
+.app-badge {
+  padding: 0.153846rem 0.538462rem;
+  color: var(--sc-muted, #9cb2bd);
+  background: var(--sc-hover, #355461);
+  border-radius: 999px;
+  font-size: 0.692308rem;
+  font-weight: 600;
+}
+.app-badge.warning {
+  color: var(--sc-warning, #edce91);
+  background: var(--sc-warningSoft, #413527);
+}
+.app-open {
+  min-width: 4.615385rem;
+  padding: 0.384615rem 1.076923rem;
+  color: var(--sc-onAccent, #102745);
+  background: var(--sc-accent, #a0cbbb);
+  border: 0;
+  border-radius: 999px;
+  font: inherit;
+  font-size: 0.846154rem;
+  font-weight: 650;
+  cursor: pointer;
+}
+.app-open:hover:not(:disabled) {
+  filter: brightness(1.08);
+}
+.app-open:disabled {
+  color: var(--sc-muted, #9cb2bd);
+  background: var(--sc-hover, #355461);
+  cursor: default;
+}
+.extension-manager .app-quiet {
+  margin: 1.846154rem 0 0;
+  font-size: 0.923077rem;
+}
+.app-empty-state {
+  row-gap: 0.307692rem;
+}
+.extension-manager .app-empty-state h3 {
+  margin: 0.923077rem 0 0;
+}
+.app-empty-state .extension-actions {
+  justify-content: center;
+  margin-top: 0.769231rem;
+}
+
+/* Details and review share the product-page hero. Reading pages stay a
+   comfortable width in maximized windows; the tile grid uses the full width. */
+.app-details,
+.app-review,
+.app-add {
+  max-width: 64.615385rem;
+}
+.app-back {
+  display: inline-grid;
+  grid-auto-flow: column;
+  align-items: center;
+  column-gap: 0.461538rem;
+  margin: 0 0 1.230769rem -0.461538rem;
+  padding: 0.384615rem 0.615385rem;
+  color: var(--sc-accent, #a0cbbb);
+  background: transparent;
+  border: 0;
+  border-radius: 0.538462rem;
+  font: inherit;
+  font-size: 0.923077rem;
+  cursor: pointer;
+}
+.app-back:hover {
+  background: var(--sc-hover, #355461);
+}
+.app-hero {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  column-gap: 1.538462rem;
+}
+.app-hero-text {
+  min-width: 0;
+}
+.extension-manager .app-hero-text h3 {
+  margin: 0;
+  font-size: 1.538462rem;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.extension-manager .app-hero-summary {
+  margin: 0.307692rem 0 0.923077rem;
+  font-size: 1rem;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+.app-hero .extension-actions button {
+  padding: 0.538462rem 0.923077rem;
+}
+.app-hero .extension-actions .app-open-wide {
+  min-width: 6.153846rem;
+  border-radius: 999px;
+}
+.extension-actions .app-danger {
+  color: var(--sc-danger, #f2c5bd);
+}
+.extension-actions .app-danger-solid {
+  color: var(--sc-danger, #f2c5bd);
+  background: var(--sc-dangerSoft, #533a3f);
+  border-color: var(--sc-danger, #f2c5bd);
+  font-weight: 600;
+}
+.app-confirm {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  column-gap: 1.230769rem;
+  row-gap: 0.615385rem;
+  margin-top: 1.230769rem;
+  padding: 0.923077rem 1.230769rem;
+  background: var(--sc-dangerSoft, #533a3f);
+  border-radius: 0.769231rem;
+}
+.extension-manager .app-confirm p {
+  margin: 0;
+  color: var(--sc-text, #dce7ec);
+  font-size: 0.923077rem;
+  line-height: 1.5;
+}
+.app-details .extension-error {
+  margin-top: 1.230769rem;
+}
+.app-facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(12.307692rem, 1fr));
+  gap: 0.615385rem;
+  margin: 1.846154rem 0 0;
+}
+.app-facts > div {
+  min-width: 0;
+  padding: 0.769231rem 0.923077rem;
+  background: var(--sc-raised, #243e49);
+  border: 1px solid var(--sc-border, #354e5b);
+  border-radius: 0.769231rem;
+}
+.app-facts .app-fact-wide {
+  grid-column: 1 / -1;
+}
+.app-facts dt {
+  color: var(--sc-muted, #9cb2bd);
+  font-size: 0.692308rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.app-facts dd {
+  margin: 0.307692rem 0 0;
+  color: var(--sc-text, #dce7ec);
+  font-size: 0.923077rem;
+  overflow-wrap: anywhere;
+}
+.app-access {
+  margin-top: 1.846154rem;
+}
+.extension-manager .app-access h4 {
+  margin: 0 0 0.615385rem;
+  font-size: 0.923077rem;
+  font-weight: 600;
+}
+.app-access ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border: 1px solid var(--sc-border, #354e5b);
+  border-radius: 0.769231rem;
+  overflow: hidden;
+}
+.app-access li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  column-gap: 0.923077rem;
+  padding: 0.692308rem 0.923077rem;
+  font-size: 0.923077rem;
+}
+.app-access li + li {
+  border-top: 1px solid var(--sc-border, #354e5b);
+}
+.app-access li small {
+  color: var(--sc-success, #91d6a3);
+  font-size: 0.769231rem;
+}
+.app-access li.declined span,
+.app-access li.declined small {
+  color: var(--sc-muted, #9cb2bd);
+}
+.app-review {
+  margin: 0;
+}
+.app-review .app-hero {
+  margin-bottom: 1.230769rem;
+}
+.extension-manager .app-review-kind {
+  display: inline-grid;
+  grid-auto-flow: column;
+  align-items: center;
+  column-gap: 0.384615rem;
+  margin: 0 0 0.461538rem;
+}
+.extension-manager .app-review-version {
+  margin: 0;
+  font-size: 0.846154rem;
+  overflow-wrap: anywhere;
+}
+
+/* Add apps */
+.extension-manager .app-add-intro h3 {
+  margin: 0;
+  font-size: 1.230769rem;
+  font-weight: 600;
+}
+.extension-manager .app-add-intro p {
+  max-width: 44rem;
+  margin: 0.461538rem 0 0;
+}
+.app-sources {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(18.461538rem, 1fr));
+  gap: 0.923077rem;
+  margin-top: 1.538462rem;
+}
+.app-source {
+  display: grid;
+  grid-template-rows: auto auto auto 1fr;
+  align-content: start;
+  min-width: 0;
+  padding: 1.384615rem;
+  background: var(--sc-raised, #243e49);
+  border: 1px solid var(--sc-border, #354e5b);
+  border-radius: 1.076923rem;
+}
+.app-source-icon {
+  display: grid;
+  place-items: center;
+  width: 2.769231rem;
+  height: 2.769231rem;
+  margin-bottom: 0.923077rem;
+  color: var(--sc-accent, #a0cbbb);
+  background: rgba(var(--sc-accent-rgb, 122, 184, 255), 0.14);
+  border-radius: 0.769231rem;
+}
+.extension-manager .app-source h4 {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+}
+.extension-manager .app-source p {
+  margin: 0.307692rem 0 0;
+  font-size: 0.923077rem;
+  line-height: 1.5;
+}
+.app-source code {
+  font-size: 0.846154rem;
+}
+.app-source .extension-repository-fields {
+  margin: 1.230769rem 0 0;
+}
+.app-source > .extension-actions {
+  align-self: end;
+  margin-top: 1.230769rem;
+}
+.app-add > .extension-footnote {
+  margin-top: 1.538462rem;
+}
+
+/* The manager lives in a resizable window, so narrow layouts follow its width. */
+@container app-manager (max-width: 700px) {
+  .app-manager-header {
+    grid-template-columns: minmax(0, 1fr);
+    padding: 0.923077rem 1.384615rem;
+  }
+  .app-manager-header .app-manager-tabs {
+    justify-self: start;
+    max-width: 100%;
+    overflow-x: auto;
+  }
+  .extension-manager.app-manager-page,
+  .app-manager > .extension-manager:not(.app-manager-page) {
+    padding: 1.230769rem 1.384615rem 1.538462rem;
+  }
+  .app-toolbar {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+  .app-hero {
+    grid-template-columns: minmax(0, 1fr);
+    row-gap: 1rem;
+  }
+  .app-confirm {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

@@ -788,13 +788,20 @@ async function run() {
     await until(
       () =>
         document.querySelector<HTMLButtonElement>(
-          'button[aria-label="Open Apps"]',
+          'button[aria-label="Open App Manager"]',
         ),
-      "Apps dock button",
+      "App Manager dock button",
     )
   ).click();
   await install("1.0.0");
-  (await until(() => button("Open app"), "open installed app")).click();
+  (
+    await until(
+      () =>
+        document.querySelector(".app-details") &&
+        button("Open", document.querySelector(".app-details")!),
+      "open installed app",
+    )
+  ).click();
   const first = await until(
     () =>
       document.querySelector<HTMLIFrameElement>('iframe[title="Native Notes"]'),
@@ -1208,10 +1215,17 @@ async function run() {
     staleFiles?.actionRejected === true && fileActions === 5;
   await frameState(first, (state) => state.ready);
   document
-    .querySelector<HTMLButtonElement>('button[aria-label="Open Apps"]')!
+    .querySelector<HTMLButtonElement>('button[aria-label="Open App Manager"]')!
     .click();
   await install("2.0.0");
-  (await until(() => button("Open app"), "open updated app")).click();
+  (
+    await until(
+      () =>
+        document.querySelector(".app-details") &&
+        button("Open", document.querySelector(".app-details")!),
+      "open updated app",
+    )
+  ).click();
   const second = await until(
     () =>
       [
@@ -1459,13 +1473,14 @@ async function run() {
     )
   ).status.includes("required permission");
   document
-    .querySelector<HTMLButtonElement>('button[aria-label="Open Apps"]')!
+    .querySelector<HTMLButtonElement>('button[aria-label="Open App Manager"]')!
     .click();
   button("Disable").click();
   await until(() => catalog.snapshot()[0]?.enabled === false, "disabled");
   checks.disabledKeepsDraft =
     (await ask(first)).text === "A draft kept across package updates.";
   button("Remove").click();
+  (await until(() => button("Remove app"), "removal confirmation")).click();
   await until(
     () =>
       document
@@ -1495,6 +1510,7 @@ async function run() {
   );
   checks.windowCleanClose = !second.isConnected;
   button("Remove").click();
+  (await until(() => button("Remove app"), "removal confirmation")).click();
   await until(() => !catalog.snapshot().length, "package removed");
   checks.removedAfterClose = true;
   const remembered = await localData.get(

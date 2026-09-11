@@ -720,6 +720,40 @@ pub async fn cancel_clipboard_preparation(
     cancel.send_replace(true);
     Ok(())
 }
+/// Windows renders FileGroupDescriptorW as one contiguous in-memory array with a
+/// 592-byte FILEDESCRIPTORW per item, so Explorer offers need a count bound
+/// (about 141 MiB here). Queue transfers stream through the disk catalog and
+/// have no such limit.
+#[cfg(windows)]
+pub(crate) const EXPLORER_CLIPBOARD_ITEMS: u64 = 250_000;
+#[cfg(windows)]
+const EXPLORER_CLIPBOARD_LIMIT: &str = "Explorer's clipboard format needs one in-memory descriptor per item, and this selection has more than 250,000 items. Use Download for large folders.";
+/// The only way a catalog becomes descriptor sources for publication. Every
+/// display path must be shorter than FILEDESCRIPTORW's 260-UTF-16-code-unit name
+/// field (which includes the terminator); a path of 260 code units or more
+/// refuses the whole offer rather than publishing an ambiguous shortened name.
+/// Display paths are presentation only: transfers use each node's full entry.
+#[cfg(windows)]
+async fn explorer_sources(
+    catalog: Arc<catalog::Catalog>,
+    service: Arc<dyn FileTransferService>,
+    cancel: &watch::Receiver<bool>,
+) -> Result<crate::clipboard_stream::Sources> {
+    for id in 1..=catalog.len() {
+        checkpoint(cancel)?;
+        if catalog.get(id)?.display.encode_utf16().count() >= catalog::DESCRIPTOR_PATH_UNITS {
+            bail!("A folder path is too long for Explorer's clipboard, which requires fewer than 260 UTF-16 code units. Use Download instead.");
+        }
+        if id % shellcanvas_core::TRANSFER_DIRECTORY_PAGE as u64 == 0 {
+            tokio::task::yield_now().await;
+        }
+    }
+    Ok(crate::clipboard_stream::Sources::catalogs(
+        vec![catalog],
+        service,
+        tokio::runtime::Handle::current(),
+    ))
+}
 #[cfg(windows)]
 async fn prepare_clipboard(
     state: &DesktopState,
@@ -765,15 +799,10 @@ async fn prepare_clipboard(
             roots.add(None, vec![(tree.root.entry, tree.root.local)])?;
             tokio::task::yield_now().await;
         }
-        let catalog = tree::scan_catalog(roots, service.clone(), &cancel, &mut |event| {
+        let catalog = tree::scan_catalog_limited(roots, service.clone(), &cancel, &mut |event| {
                 if last.elapsed().as_millis() >= 100 { let _ = on_event.send(event); last = Instant::now(); }
-            }).await?;
-            // The descriptor format itself has a fixed-size path field.
-            for id in 1..=catalog.len() {
-                checkpoint(&cancel)?;
-                if catalog.get(id)?.display.encode_utf16().count() >= 260 { bail!("A folder path is too long for Explorer's clipboard (259 characters). Use Download instead."); }
-                if id % shellcanvas_core::TRANSFER_DIRECTORY_PAGE as u64 == 0 { tokio::task::yield_now().await; }
-            }
+            }, Some((EXPLORER_CLIPBOARD_ITEMS, EXPLORER_CLIPBOARD_LIMIT))).await?;
+        let sources = explorer_sources(catalog.clone(), service.clone(), &cancel).await?;
         checkpoint(&cancel)?;
         state.registry.lock().await.sessions.get(&session).ok_or_else(|| anyhow::anyhow!("Host disconnected while preparing clipboard"))?
             .check_source(&ServiceRole::Files, binding.as_ref()).map_err(anyhow::Error::msg)?;
@@ -781,7 +810,6 @@ async fn prepare_clipboard(
             Some(cut) => RemoteClipboardSelection::Cut(cut),
             None => RemoteClipboardSelection::Copy { owner: session, service: service.clone(), catalog: catalog.clone() },
         };
-        let sources = crate::clipboard_stream::Sources::catalogs(vec![catalog], service, tokio::runtime::Handle::current());
         crate::windows_clipboard::publish_selection(sources, sequence, Some(remote)).await.map_err(anyhow::Error::msg)
     }.await;
     state.transfers.lock().await.preparations.remove(&operation);
@@ -1346,7 +1374,16 @@ pub async fn run_transfer(
     }
     .await;
     state.transfers.lock().await.jobs.remove(&transfer_id);
-    Ok(match result {
+    Ok(outcome(result, &last))
+}
+
+/// Only an unfinished operation stopped by the user is "canceled". Storage,
+/// provider and validation failures remain "failed" with their own message.
+fn outcome(
+    result: Result<(String, Option<shellcanvas_services::FileRelocation>)>,
+    last: &Progress,
+) -> Outcome {
+    match result {
         Ok((path, relocation)) => Outcome {
             status: "completed",
             bytes: last.bytes,
@@ -1370,5 +1407,5 @@ pub async fn run_transfer(
                 relocation: None,
             }
         }
-    })
+    }
 }

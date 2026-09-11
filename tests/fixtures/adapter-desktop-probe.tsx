@@ -340,10 +340,10 @@ async function closeApps() {
       () =>
         Array.from(
           document.querySelectorAll<HTMLButtonElement>(
-            'button[aria-label^="Close Apps"]',
+            'button[aria-label^="Close App Manager"]',
           ),
         ).find((button) => button.getClientRects().length > 0),
-      "close current Apps window",
+      "close current App Manager window",
     )
   ).click();
 }
@@ -456,15 +456,14 @@ async function installCustom(granted: boolean) {
     (await label("Open and control remote consoles", review)).click();
   }
   await click("Install app", review);
-  const card = await until(
+  const details = await until(
     () =>
-      Array.from(document.querySelectorAll(".extension-list article")).find(
-        (item) =>
-          item.querySelector("h3")?.textContent?.trim().startsWith(title),
+      Array.from(document.querySelectorAll(".app-details")).find((item) =>
+        item.querySelector("h3")?.textContent?.trim().startsWith(title),
       ),
-    "custom app card",
+    "custom app details",
   );
-  await click("Open app", card);
+  await click("Open", details);
   const frame = await until(
     () => document.querySelector<HTMLIFrameElement>(`iframe[title="${title}"]`),
     "custom frame",
@@ -494,7 +493,7 @@ async function run() {
       />
     </StrictMode>,
   );
-  await named("Open Apps");
+  await named("Open App Manager");
   await click("Connection adapters");
   await install();
   await stage("installed");
@@ -571,8 +570,8 @@ async function run() {
   let customFrame: HTMLIFrameElement | undefined;
   let originalBinding: string | undefined;
   if (native) {
-    await named("Open Apps");
-    await click("Desktop apps");
+    await named("Open App Manager");
+    await click("Installed");
     const denied = await installCustom(false);
     const discovery = (await askCustom(denied, "list"))
       .value as ServiceMethodInfo[];
@@ -663,7 +662,7 @@ async function run() {
     await closeApps();
     await stage("custom-services");
   }
-  await named("Open Apps");
+  await named("Open App Manager");
   await click("Connection adapters");
   version = 2;
   await install();
@@ -784,7 +783,7 @@ async function run() {
       () => true,
     );
   }
-  await named("Open Apps");
+  await named("Open App Manager");
   await click("Connection adapters");
   form = await openConnections();
   input(await label("Workspace name", form), "Mixed device");
@@ -946,7 +945,7 @@ async function run() {
       !limited.info.capabilities.includes("terminal") &&
       limited.services?.find((service) => service.capability === "terminal")
         ?.state === "unsupported";
-    await named("Open Apps");
+    await named("Open App Manager");
     await click("Connection adapters");
     let extendedForm = await openConnections();
     input(await label("Workspace name", extendedForm), "Extended device");
@@ -984,7 +983,7 @@ async function run() {
       savedWorkspace.profile.bindings["host.settings"] ===
         savedWorkspace.profile.sources[0].key;
     await named("Close adapter connection");
-    await named("Open Apps");
+    await named("Open App Manager");
     await click("Connection adapters");
     extendedForm = await openConnections();
     const savedPicker = await until(
@@ -1162,7 +1161,7 @@ async function run() {
         () => true,
       );
     await stage("adapter-transfers");
-    await named("Open Apps");
+    await named("Open App Manager");
     await click("Connection adapters");
     const removeForm = await openConnections();
     const removePicker = await until(
@@ -1218,7 +1217,7 @@ async function run() {
       ],
       bindings: { files: firstSource.key, console: "ssh" },
     });
-    await named("Open Apps");
+    await named("Open App Manager");
     await click("Connection adapters");
     const mixedForm = await openConnections();
     const mixedPicker = await until(
@@ -1269,7 +1268,7 @@ async function run() {
     ).some((item) => item.id === mixedProfile.id);
     await stage("builtin-ssh-composition");
   }
-  await named("Open Apps");
+  await named("Open App Manager");
   await click("Connection adapters");
   await click("Remove");
   await click(
@@ -1338,7 +1337,7 @@ async function run() {
           payload,
         ),
       ) === JSON.stringify(payload);
-    await named("Open Apps");
+    await named("Open App Manager");
     await click("Connection adapters");
     await click("Remove");
     await click(

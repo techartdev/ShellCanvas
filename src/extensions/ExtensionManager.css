@@ -58,24 +58,6 @@
   height: 100%;
   overflow: auto;
 }
-.extension-tabs {
-  display: flex;
-  gap: 0.461538rem;
-  padding: 1.230769rem 2.153846rem 0;
-}
-.extension-tabs button {
-  border: 1px solid transparent;
-  border-radius: 0.615385rem;
-  padding: 0.692308rem 1.076923rem;
-  color: var(--sc-muted, #9cb2bd);
-  background: transparent;
-  cursor: pointer;
-}
-.extension-tabs button[aria-pressed="true"] {
-  color: var(--sc-text, #dce7ec);
-  background: var(--sc-raised, #293e49);
-  border-color: var(--sc-border, #425963);
-}
 .adapter-trust {
   display: flex;
   align-items: center;
@@ -151,7 +133,7 @@
 .extension-actions .extension-primary {
   background: var(--sc-accent, #a0cbbb);
   border-color: var(--sc-border, #a0cbbb);
-  color: var(--sc-onAccent);
+  color: var(--sc-onAccent, #10302a);
   font-weight: 600;
 }
 .extension-review {
