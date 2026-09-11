@@ -340,8 +340,8 @@ mod tests {
         assert!(identity("org.example.app", "../other").is_err());
         // Installed apps are keyed by their installation principal.
         assert_eq!(
-            identity("bcc5c175-c6e8-42fc-a712-c6d4b71f43fb", "model").unwrap(),
-            "bcc5c175-c6e8-42fc-a712-c6d4b71f43fb/model"
+            identity("123e4567-e89b-42d3-a456-426614174000", "model").unwrap(),
+            "123e4567-e89b-42d3-a456-426614174000/model"
         );
         for bad in [
             "",
