@@ -6,7 +6,7 @@ This repository publishes the Windows desktop through GitHub Releases, the TypeS
 
 1. Update the version in `package.json`, `packages/app-sdk/package.json`, the publishable crate manifests and `src-tauri/tauri.conf.json`.
 2. Update `CHANGELOG.md` and confirm the README's platform boundaries.
-3. Run `npm ci`, `npm run verify`, `npm run verify:sdk`, `npm run verify:adapter-sdk`, `cargo package --locked` for each published crate, and `npm pack --workspace @shellcanvas/app-sdk --dry-run`.
+3. Run `npm ci`, `npm run verify`, `npm run verify:sdk`, `npm run verify:adapter-sdk`, `cargo package --locked` for each published crate, and `npm pack --workspace @techartdev/shellcanvas-app-sdk --dry-run`.
 4. Build the Windows installers with `npm run tauri -- build --bundles nsis,msi`. Install and launch both formats on disposable Windows test environments before release.
 5. Create and push an annotated `vX.Y.Z` tag only from a clean, reviewed commit. The release workflow attaches installers and SHA-256 checksums.
 
@@ -14,7 +14,7 @@ The current installer pipeline does not apply Authenticode signing. Windows may 
 
 ## SDK registries
 
-`@shellcanvas/app-sdk` is a public scoped npm package. The first publish needs an npm account allowed to publish the `@shellcanvas` scope. After that, configure npm trusted publishing for `techartdev/ShellCanvas` and `publish-sdks.yml`; OIDC then avoids a long-lived npm token and supplies provenance from the public repository.
+`@techartdev/shellcanvas-app-sdk` is a public scoped npm package. The first publish needs the `techartdev` npm account and a current two-factor authentication code. After that, configure npm trusted publishing for `techartdev/ShellCanvas` and `publish-sdks.yml`; OIDC then avoids a long-lived npm token and supplies provenance from the public repository.
 
 `shellcanvas-adapter-sdk` and `shellcanvas-filesystem-sdk` publish to crates.io. The workflow uses a protected `CARGO_REGISTRY_TOKEN` secret. Keep the token out of local files and logs. Publish the filesystem SDK first if the adapter SDK later depends on it.
 

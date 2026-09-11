@@ -21,7 +21,7 @@ The Rust `CustomService` trait lives in `shellcanvas-services`. The process brid
 Declare `services.acme.sensor` in the app manifest. The normal installer lets the user approve or deny it. This grant covers the advertised methods of that service, not other service namespaces or unrestricted native commands. Existing windows retain their reviewed package/grant generation when the app is updated.
 
 ```ts
-import { connectToShellCanvas } from "@shellcanvas/app-sdk";
+import { connectToShellCanvas } from "@techartdev/shellcanvas-app-sdk";
 
 const desktop = await connectToShellCanvas();
 const method = (await desktop.services.list()).find(

@@ -12,7 +12,7 @@ The public [clipboard API](app-clipboard.md) supports text and RGBA images with
 separate grants. Its native fixture uses synthetic clipboard content and native
 image resources; it does not replace the user's system clipboard.
 
-The canonical runtime client and public types now live in `packages/app-sdk`. The desktop re-exports these same implementations, so the standalone package and host contract do not maintain separate copies. Native host brokers and storage/clipboard ownership remain in the desktop. The existing Field Notes example imports `@shellcanvas/app-sdk` by package name.
+The canonical runtime client and public types now live in `packages/app-sdk`. The desktop re-exports these same implementations, so the standalone package and host contract do not maintain separate copies. Native host brokers and storage/clipboard ownership remain in the desktop. The existing Field Notes example imports `@techartdev/shellcanvas-app-sdk` by package name.
 
 The package is not published to npm yet. From a fresh repository checkout:
 
@@ -20,7 +20,7 @@ The package is not published to npm yet. From a fresh repository checkout:
 npm ci
 npm run test:sdk
 New-Item -ItemType Directory -Force .local/sdk-releases
-npm pack --workspace @shellcanvas/app-sdk --pack-destination .local/sdk-releases
+npm pack --workspace @techartdev/shellcanvas-app-sdk --pack-destination .local/sdk-releases
 node packages/app-sdk/bin/shellcanvas-app.mjs init .local/my-notes --id org.example.notes --title "My Notes" --sdk .local/sdk-releases/shellcanvas-app-sdk-0.1.0.tgz
 ```
 
@@ -33,7 +33,7 @@ not the minimum required for an app. For a first local utility, replace `main.ts
 with the following and reduce `shellcanvas.json` permissions to `["system.dialogs"]`:
 
 ```ts
-import { connectToShellCanvas } from "@shellcanvas/app-sdk";
+import { connectToShellCanvas } from "@techartdev/shellcanvas-app-sdk";
 
 const root = document.querySelector<HTMLDivElement>("#root")!;
 root.innerHTML =
@@ -98,6 +98,6 @@ For the existing lifecycle/permissions/clipboard walkthrough using the same inde
 
 The SDK also supports [custom adapter services](custom-services.md) through explicit per-service grants. `verify:sdk` independently builds the Device Services example, which uses `services.list` and `services.call`. Set `SHELLCANVAS_SDK_PROBE=1` and build `src-tauri/tauri.adapter-probe.conf.json` to exercise that artifact alongside the separate adapter process in the Windows fixture.
 
-This establishes the app SDK packaging path. The [adapter SDK/schema/custom-service starter](adapter-sdk.md), [AI development skills](ai-development-skills.md) and [window lifecycle API](app-window.md) are also implemented. Remaining work is tracked in the current [kernel delivery gates](kernel-roadmap.md). No package has been published to a registry by this workflow.
+This establishes the app SDK packaging path. The [adapter SDK/schema/custom-service starter](adapter-sdk.md), [AI development skills](ai-development-skills.md) and [window lifecycle API](app-window.md) are also implemented. Remaining work is tracked in the current [kernel delivery gates](kernel-roadmap.md). Registry publication is an explicit release action through the manual SDK workflow.
 
 The SDK also exposes [remote consoles](app-console.md) with `system.console` permission, byte streams, flow control, optional resizing and window-owned cleanup. The adapter integration fixture checks binary I/O through the independently built SDK app and actual native process transport. [File transfers](app-transfers.md) have preparation, progress, cancellation and window-owned handles, verified through Windows integration. [Remote settings](app-host-settings.md) have separate read/write grants, provider-defined fields, revision-checked apply and host-owned busy guards. The current Windows installed-app walkthrough passes 91 checks, including remote settings cancellation, read-only grants, reconnect protection and clipboard ownership. Earlier checkpoint counts are historical; see the [acceptance audit](kernel-acceptance.md) for the retained evidence. These process-adapter bridges and the initial developer tooling are implemented; remaining requirements and platform evidence are tracked in the kernel roadmap.

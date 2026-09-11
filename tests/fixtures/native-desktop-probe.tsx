@@ -37,7 +37,7 @@ const catalog = new AppCatalog(
 const localData = indexedAppStorage("shellcanvas-desktop-probe-data");
 let clipboardText = "Fixture clipboard";
 let clipboardReads = 0;
-let clipboardImage: import("@shellcanvas/app-sdk").ClipboardImage = {
+let clipboardImage: import("@techartdev/shellcanvas-app-sdk").ClipboardImage = {
   width: 1,
   height: 1,
   rgba: new Uint8Array([1, 2, 3, 255]),
@@ -591,7 +591,7 @@ function ask(frame: HTMLIFrameElement, action = "snapshot") {
     files?: Record<string, boolean>;
     transfers?: Record<string, boolean>;
     hostSettings?: Record<string, boolean>;
-    windowState?: import("@shellcanvas/app-sdk").AppWindowState;
+    windowState?: import("@techartdev/shellcanvas-app-sdk").AppWindowState;
     windowError?: string;
     environment?: AppEnvironment;
     services?: readonly ServiceMethodInfo[];

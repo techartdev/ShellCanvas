@@ -30,7 +30,7 @@ npm run dev
 
 Open `http://127.0.0.1:1420/tests/fixtures/runtime-app.html` and choose **Load built sample**. The package is `examples/dialog-app/dist/app.shellcanvas.json`. **Load package** also accepts a compiled package selected from disk. Rebuilding the app and loading it again needs no desktop rebuild or Vite restart. **Unload app** retires its channel and system-dialog scope.
 
-The Field Notes example imports `connectToShellCanvas` from `@shellcanvas/app-sdk`. It opens a desktop message box, selects files using the shared picker, and saves text to an in-memory fixture provider through the shared Save As workflow. No real host or native filesystem is touched. The fixture provider supports new text files but deliberately does not offer replacement. Loaded package permissions are automatically granted in this developer-only workbench.
+The Field Notes example imports `connectToShellCanvas` from `@techartdev/shellcanvas-app-sdk`. It opens a desktop message box, selects files using the shared picker, and saves text to an in-memory fixture provider through the shared Save As workflow. No real host or native filesystem is touched. The fixture provider supports new text files but deliberately does not offer replacement. Loaded package permissions are automatically granted in this developer-only workbench.
 
 The compatibility packer delegates to the [standalone SDK's CLI](app-sdk.md), using `main.ts`, `style.css`, and `shellcanvas.json`. The SDK tarball now includes type declarations, schemas, a starter generator and build/validation tools. It is not yet published to npm. [Adapter tooling](adapter-sdk.md) and [repository AI skills](ai-development-skills.md) are also implemented; remaining work is listed in the kernel roadmap.
 

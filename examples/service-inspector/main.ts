@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
-import { connectToShellCanvas } from "@shellcanvas/app-sdk";
+import { connectToShellCanvas } from "@techartdev/shellcanvas-app-sdk";
 
 document.body.innerHTML = `<main>
   <header><span class="eyebrow">DEVICE WORKSPACE</span><h1>Device Services</h1>

@@ -25,8 +25,8 @@ jobs:
           registry-url: https://registry.npmjs.org
       - run: npm ci
       - run: npm run release:check -- "${{ inputs.version }}"
-      - run: npm test --workspace @shellcanvas/app-sdk
-      - run: npm publish --workspace @shellcanvas/app-sdk --access public
+      - run: npm test --workspace @techartdev/shellcanvas-app-sdk
+      - run: npm publish --workspace @techartdev/shellcanvas-app-sdk --access public
 
   crates:
     runs-on: ubuntu-latest

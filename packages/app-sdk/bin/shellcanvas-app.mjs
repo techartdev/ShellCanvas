@@ -120,7 +120,7 @@ export async function createApp(directory, { id, title, sdk }) {
             build: "npm run check && shellcanvas-app build .",
           },
           devDependencies: {
-            "@shellcanvas/app-sdk": dependency,
+            "@techartdev/shellcanvas-app-sdk": dependency,
             typescript: "5.8.3",
           },
         },
@@ -131,7 +131,7 @@ export async function createApp(directory, { id, title, sdk }) {
       JSON.stringify(
         {
           $schema:
-            "./node_modules/@shellcanvas/app-sdk/schemas/app-manifest.schema.json",
+            "./node_modules/@techartdev/shellcanvas-app-sdk/schemas/app-manifest.schema.json",
           ...manifest,
         },
         null,

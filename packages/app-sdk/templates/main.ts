@@ -3,7 +3,7 @@ import {
   connectToShellCanvas,
   RpcError,
   type AppValue,
-} from "@shellcanvas/app-sdk";
+} from "@techartdev/shellcanvas-app-sdk";
 
 const root = document.querySelector<HTMLDivElement>("#root")!;
 root.innerHTML = `<main><header><p class="eyebrow">YOUR WORKSPACE · YOUR IDEAS</p><h1></h1><p>A small notebook using the desktop’s shared services.</p></header><label for="note">Your note</label><textarea id="note" placeholder="Start with an idea…"></textarea><div class="actions"><button id="message">Message box</button><button id="browse">Browse files</button><button id="save">Save as…</button><button id="remember">Remember locally</button></div><output role="status">Connecting to ShellCanvas…</output></main>`;

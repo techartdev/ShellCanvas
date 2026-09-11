@@ -28,7 +28,7 @@ Preserve package bytes with a final `dist/app.shellcanvas.json -text` rule in
 `.gitattributes`. Users choose **Apps → Install from GitHub** and review the exact
 downloaded package. Installation downloads files directly; it runs no npm scripts
 and requires no registry or GitHub API token. See the repository schema exported
-at `@shellcanvas/app-sdk/schemas/app-repository.schema.json`.
+at `@techartdev/shellcanvas-app-sdk/schemas/app-repository.schema.json`.
 
 For a user-configured HTTP service, declare `system.network` and use
 `network.configure({slot, suggestedEndpoint})` to open ShellCanvas's credential
@@ -41,7 +41,7 @@ remote host files or console access. Apps can open locally with unavailable host
 actions disabled.
 
 ```ts
-import { connectToShellCanvas, RpcError } from "@shellcanvas/app-sdk";
+import { connectToShellCanvas, RpcError } from "@techartdev/shellcanvas-app-sdk";
 
 const desktop = await connectToShellCanvas();
 try {
@@ -73,7 +73,7 @@ try {
 | Text clipboard         | `clipboard.readText(signal?)`, `writeText(text, signal?)`                           | `system.clipboard.read` or `system.clipboard.write`                                         |
 | Custom device services | `services.call(method, params?, signal?)`                                           | `services.<service-id>` for the selected adapter service                                    |
 
-Service calls are asynchronous. `events.subscribe` synchronously returns an unsubscribe function, and `dispose()` synchronously closes the instance channel; page teardown does this automatically. `connectToShellCanvas(timeoutMs?)` must run inside a desktop-owned app frame. Named types, `Json`, `RpcCode` and `RpcError` are exported from the package root. Manifest parsers/types are available from `@shellcanvas/app-sdk/package`.
+Service calls are asynchronous. `events.subscribe` synchronously returns an unsubscribe function, and `dispose()` synchronously closes the instance channel; page teardown does this automatically. `connectToShellCanvas(timeoutMs?)` must run inside a desktop-owned app frame. Named types, `Json`, `RpcCode` and `RpcError` are exported from the package root. Manifest parsers/types are available from `@techartdev/shellcanvas-app-sdk/package`.
 
 Window actions affect only the calling window in the active workspace. `getState()`
 returns visibility, focus, layout mode and `canMaximize`; maximize is unavailable
