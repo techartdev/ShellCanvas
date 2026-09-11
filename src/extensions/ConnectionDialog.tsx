@@ -140,8 +140,8 @@ export function ConnectionDialog({
         <p className="app-connection-note">
           <ShieldCheck size={15} />
           <span>
-            Private to {request.app}. Your key stays out of app storage and
-            conversation history.
+            Private to this installation of {request.title}. Your key stays out
+            of app storage and conversation history.
           </span>
         </p>
         <div className="app-connection-actions">

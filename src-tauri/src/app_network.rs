@@ -39,9 +39,16 @@ impl StoredProfile {
 }
 static PROFILES: LazyLock<Mutex<HashMap<String, StoredProfile>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
+/// `app` is the installation principal (a UUID, or a legacy generation) for
+/// installed apps, or the app id for frames without an installation. Both
+/// are plain ASCII tokens; the principal keeps a reinstalled app from
+/// inheriting an earlier installation's credentials.
 fn identity(app: &str, slot: &str) -> Result<String, String> {
     if app.len() > 200
-        || !app.contains('.')
+        || !app
+            .bytes()
+            .next()
+            .is_some_and(|b| b.is_ascii_alphanumeric())
         || !app
             .bytes()
             .all(|b| b.is_ascii_alphanumeric() || b".-".contains(&b))
@@ -331,6 +338,22 @@ mod tests {
         }
         assert!(identity("org.example.app", "model").is_ok());
         assert!(identity("org.example.app", "../other").is_err());
+        // Installed apps are keyed by their installation principal.
+        assert_eq!(
+            identity("123e4567-e89b-42d3-a456-426614174000", "model").unwrap(),
+            "123e4567-e89b-42d3-a456-426614174000/model"
+        );
+        for bad in [
+            "",
+            ".hidden",
+            "-lead",
+            "a/b",
+            "a b",
+            "ünï",
+            &"a".repeat(201),
+        ] {
+            assert!(identity(bad, "model").is_err(), "{bad:?}");
+        }
         let p = StoredProfile {
             endpoint: "https://host/api".into(),
             key: "secret".into(),

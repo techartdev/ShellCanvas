@@ -13,6 +13,10 @@ ShellCanvas follows semantic versioning for published SDK packages. Desktop rele
 - Added (app packages and SDK): optional one-line `description` and embedded `icon` fields. `shellcanvas-app build` embeds a PNG, JPEG, WebP or SVG icon of at most 256 KiB, and `shellcanvas-app init --description` and `repository` fill descriptions. Apps without an icon get a generic one. Packages that use the new fields need a desktop newer than 0.1.0; existing packages are unchanged.
 - Fixed: installed apps opened in a workspace without an SSH target (connection adapters, the preview) now finish starting. Their environment event carried an undefined `host.target`, which the event journal rejected; the field is now omitted.
 
+## 0.1.1
+
+- Fixed: installed apps could not save, read or use API connections ("Invalid app connection identity"). Connections are keyed by the app's installation, whose identifier the desktop's native check wrongly rejected. A key saved by an earlier build under the app ID must be entered once more.
+
 ## 0.1.0
 
 Initial public preview:

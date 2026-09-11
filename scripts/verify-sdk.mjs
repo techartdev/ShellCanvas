@@ -37,7 +37,12 @@ try {
     "--pack-destination",
     root,
   ]);
-  const archive = join(root, "shellcanvas-app-sdk-0.1.0.tgz");
+  // npm names scoped tarballs scope-name-version.tgz.
+  const sdk = JSON.parse(
+    readFileSync(join(repo, "packages/app-sdk/package.json"), "utf8"),
+  );
+  const tarball = `${sdk.name.replace(/^@/, "").replace("/", "-")}-${sdk.version}.tgz`;
+  const archive = join(root, tarball);
   const tooling = join(root, "tools");
   mkdirSync(tooling);
   writeFileSync(
@@ -78,7 +83,7 @@ try {
     join(project, "dist/app.shellcanvas.json"),
     join(output, "starter.shellcanvas.json"),
   );
-  copyFileSync(archive, join(output, "shellcanvas-app-sdk-0.1.0.tgz"));
+  copyFileSync(archive, join(output, tarball));
   report.checks.packedSdk = true;
   report.checks.generatedStarter = true;
   report.checks.independentTypecheckAndBuild = true;
