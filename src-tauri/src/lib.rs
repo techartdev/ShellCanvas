@@ -740,6 +740,9 @@ async fn request_app_close(
     state: State<'_, DesktopState>,
 ) -> Result<(), String> {
     let mut closing = state.mount_transition.lock().await;
+    if *closing {
+        return Ok(());
+    }
     if state.mappings.has_running() {
         use tauri::Emitter;
         let _ = window.emit("drive-mappings-close-blocked", ());
