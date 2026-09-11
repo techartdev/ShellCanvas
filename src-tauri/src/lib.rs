@@ -51,7 +51,9 @@ use workspace_services::WorkspaceServices as ActiveSession;
 #[derive(Default)]
 struct DesktopState {
     mappings: drive_mappings::Mappings,
-    mount_transition: Mutex<()>,
+    // True once final window destruction has been requested; attachments waiting
+    // for this lock must not start after the UI has gone away.
+    mount_transition: Mutex<bool>,
     directories: directories::DirectoryReaders,
     registry: Arc<Mutex<SessionRegistry<ActiveSession>>>,
     next_id: AtomicU64,
@@ -730,6 +732,30 @@ async fn close_terminal(
     Ok(())
 }
 
+/// The frontend always prevents Tauri's automatic destroy. Serialize the final
+/// close with attachment reservation so a newly starting mount cannot lose its UI.
+#[tauri::command]
+async fn request_app_close(
+    window: tauri::Window,
+    state: State<'_, DesktopState>,
+) -> Result<(), String> {
+    let mut closing = state.mount_transition.lock().await;
+    if *closing {
+        return Ok(());
+    }
+    if state.mappings.has_running() {
+        use tauri::Emitter;
+        let _ = window.emit("drive-mappings-close-blocked", ());
+        return Err("Detach local drives in Settings → Files before quitting ShellCanvas.".into());
+    }
+    *closing = true;
+    if let Err(error) = window.destroy() {
+        *closing = false;
+        return Err(error.to_string());
+    }
+    Ok(())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -794,6 +820,7 @@ pub fn run() {
             }
             let handler: fn(tauri::ipc::Invoke<tauri::Wry>) -> bool = tauri::generate_handler![
                 client_platform,
+                request_app_close,
                 drive_mappings::cancel_drive_startup,
                 drive_bridge_install::drive_bridge_installation,
                 drive_bridge_install::review_drive_bridge,

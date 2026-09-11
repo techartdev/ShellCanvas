@@ -2,6 +2,14 @@
 
 Updated 2026-09-11. Goal remains active. This is not a release/completion claim.
 
+Resumed after the Codex restart. The corrected isolated desktop build completed
+successfully (3m 14s; executable timestamp 2026-09-11 01:43:23 local). After the
+detach fix, the user confirmed the Windows flow worked end to end. This is manual,
+user-reported acceptance of the attach/detach/quit checklist. Further testing is
+stopped to conserve their OpenAI weekly quota; no additional CI was triggered. The
+disposable test folder is `/tmp/shellcanvas-quit-check-Ijl8MnLz`. The desktop
+changes are committed; the detailed local handoff is `.local/drive-bridge-resume.md`.
+
 ## Accepted scope
 
 Implement optional core filesystem operations and machinery, with Windows
@@ -12,6 +20,44 @@ Include the dependencies' licensing/distribution limitations in that app.
 
 ## Current implementation
 
+- Manual Windows testing found detach stuck on two handles on the empty fixture.
+  The bridge counted passive directory browsing as busy. Read-only directory
+  contexts now release their detach blocker; all file contexts (including mapped
+  files) and mutation-capable directory contexts remain blockers. Three focused
+  bookkeeping tests pass. The native regression now holds a browsing directory
+  across detach. It is now executed and passes in `native_windows_mount` when
+  `SHELLCANVAS_NATIVE_WINDOWS_TEST=1` and
+  `SHELLCANVAS_SKIP_PRIVILEGED_VOLUME_FLUSH=1` are set. Updated bridge binary
+  built 2026-09-11 01:49:46 local; the old isolated helper was stopped only
+  verifying its profile, W: target, and empty directory, to recover the stuck
+  test mount.
+- WinFsp is installed on the development PC and its launcher is running. Local
+  native acceptance passes, including I/O, mapped files, metadata, native copy,
+  injected failures, busy-detach refusal, ordinary detach and pipe-loss cleanup.
+  This account cannot open a volume for privileged volume-wide flushing; the
+  explicit `SHELLCANVAS_SKIP_PRIVILEGED_VOLUME_FLUSH=1` test switch omits only
+  that subtest. Per-file flush remains exercised and the CI default still runs
+  the privileged check. No CI was triggered for this verification.
+- A separate `dev.shellcanvas.driveprobe` profile exercised the actual Windows
+  file chooser (including cancellation), hash review, bridge installation,
+  attachment of a disposable SFTP folder on an authorized test host as W:, and
+  Open folder in Explorer. Native file creation, directory creation and Unicode-file rename
+  succeeded. Notepad opened and saved the remote text file; an independent SSH
+  read confirmed the exact saved text. The normal app profile was not changed.
+  Detach with open handles was refused with a visible explanation.
+- The live quit test exposed a Tauri interaction: JavaScript `onCloseRequested`
+  destroys the window unless its callback prevents default, even if Rust blocks
+  close. The frontend now always prevents this automatic destruction and asks
+  the backend to close. The final backend check is serialized with attachment
+  reservation and marks closing before destruction so waiting attachments cannot
+  start afterwards. The subsequent attach/detach/quit checklist was confirmed
+  successful by the user; no further automated UI retest was run.
+- Windows attachment selection and preflight now also reserve remembered,
+  disconnected network-drive letters via `WNetGetConnectionW`; active mount
+  checks alone omitted this PC's X: and Y:. The standalone bridge and its native
+  harness apply the same check. Mount cleanup deliberately still checks active
+  mounts, so a remembered network connection is not mistaken for a live bridge.
+  The updated bridge native suite passes locally (10.96 seconds).
 - Unconfirmed SFTP CLOSE now retains cleanup ownership in a guard until the
   server acknowledges success. Caller cancellation, rejection, timeout, or a
   dropped cleanup task retires the mount's dedicated channel, releasing remote
@@ -282,9 +328,9 @@ Include the dependencies' licensing/distribution limitations in that app.
   use isolated temporary profiles; no bridge was installed into the user's profile.
   Three installer tests pass, including changed-review rejection preserving the
   previous installation. Frontend production build, desktop clippy and 640px
-  preview overflow checks pass. Native chooser/approval still needs end-to-end use.
-  Native chooser/approval and an actual desktop-launched Windows mapping remain
-  unverified; the implementation is a development preview.
+  preview overflow checks pass. Native chooser/approval and a desktop-launched
+  Windows SFTP mapping subsequently passed in the isolated profile above;
+  the implementation remains a development preview until the other gates close.
 - Files now offers **Attach to this computer…** for folders/current directories,
   and an Attach action beside mounted volume locations. The dialog checks optional
   provider support and installation, defaults to read-only, offers a Windows drive
@@ -373,10 +419,11 @@ Include the dependencies' licensing/distribution limitations in that app.
   disposable FUSE test rather than changing the server's installed toolchain.
 - Verified the official WinFsp 2.1.25156 MSI signature (Navimatics). Installation
   failed with Windows Installer 1925 / exit 1603: administrator privileges needed.
-  No successful driver installation on this PC has been established. CI now
+  The user subsequently installed WinFsp successfully; local acceptance is recorded
+  above. CI also
   installs the official runtime on its disposable Windows runner, checking the
-  pinned MSI SHA-256 and Authenticode signer before native tests. The local UAC question
-  is pending. This is an OS privilege issue, not an automatic approval rejection.
+  pinned MSI SHA-256 and Authenticode signer before native tests. The earlier
+  installer failure was an OS privilege issue, not an automatic approval rejection.
   Installer/log are under `.local/bridge-tools`. Workspace-only libclang 18.1.1
   is available at `.local/bridge-tools/python/clang/native` for Windows builds.
 
@@ -426,10 +473,11 @@ driver, remote account, normal app profile, or CI run was used by these checks.
 
 ## Remaining completion gates
 
-1. Native end-to-end installation verification and an actual desktop-created
-   mapping, including chooser cancel, missing driver and changed executable.
-   The manager/UI/source leases are implemented; native user-flow verification
-   remains, including disconnect/source replacement/quit with busy local files.
+1. Native chooser cancel, installation, desktop-created SFTP mapping, Explorer
+   launch, Notepad save and busy-detach refusal now pass on this PC. Remaining:
+   changed-executable/source-retirement and source-replacement user flows, plus
+   full failure recovery. The corrected ordinary detach/quit flow has subsequent
+   user-reported end-to-end acceptance.
 2. Open folder and explicit Retry cleanup controls are implemented. Retry retains
    the original helper/job ownership and connection reservation. After process
    shutdown, native OS mount-table checks must confirm the location is unmounted;
@@ -454,10 +502,10 @@ driver, remote account, normal app profile, or CI run was used by these checks.
    chooser/source-retirement race remains to be exercised without touching the
    normal user profile.
 4. Native Windows file API, replacement-save, capacity, basic error and busy-detach
-   checks now pass in disposable WinFsp CI. Remaining: desktop-created SFTP mapping,
-   Explorer/ordinary editor acceptance (native directory rename/open-handle
-   semantics are now verified above),
-   disconnect behavior and failure recovery. Local driver setup is still pending.
+   checks pass in disposable WinFsp CI and locally. Local driver setup and the
+   desktop-created SFTP/Explorer/Notepad path are now verified above. Remaining:
+   full desktop failure recovery. The corrected Windows lifecycle checklist has
+   user-reported end-to-end acceptance; wider failure matrices remain unverified.
 5. Native Linux FUSE file operations, directory rewind/rename, truncate, flush,
    mapped files, busy detach and ordinary unmount now pass as root and as an
    unprivileged user on Linux 6.8. Pipe loss with an open file also passes in both
@@ -467,6 +515,8 @@ driver, remote account, normal app profile, or CI run was used by these checks.
    other supported runtimes. Do not infer those from one kernel/runtime.
 6. Verify modern macOS compilation and native runtime as available. fuser's
    kernel/libfuse backend is implemented; FSKit operation is not established.
+   On this Windows machine, modern macOS runtime verification cannot be
+   executed yet, so this gate remains unverified here.
    Do not claim an OS version/runtime works solely because Linux compiled.
 7. Resolve currently documented limits before calling the release ready:
    Windows cleanup-time deletion warnings and busy-detach control are implemented

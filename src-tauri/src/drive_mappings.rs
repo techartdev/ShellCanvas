@@ -357,9 +357,12 @@ pub async fn attach_drive(
     // Reserve while holding the registry lock: disconnect/replacement use the same
     // order and cannot retire this source between validation and grant ownership.
     let _transition = state.mount_transition.lock().await;
+    if *_transition {
+        return Err("ShellCanvas is closing; no new drive can be attached.".into());
+    }
     // Read the local OS table before reserving, without probing filesystem contents.
-    if crate::local_mounts::occupied(&target)? {
-        return Err("That local location is already mounted. Choose another location.".into());
+    if crate::local_mounts::reserved_for_attachment(&target)? {
+        return Err("That local location is already mounted or reserved. Choose another location.".into());
     }
     let registry = state.registry.lock().await;
     let session = registry

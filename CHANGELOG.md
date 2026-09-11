@@ -12,6 +12,9 @@ ShellCanvas follows semantic versioning for published SDK packages. Desktop rele
 - Changed: **Apps** is now **App Manager**, a store-style manager with tiles, search, per-app details (status, source, approved access, update, disable and confirmed removal) and an **Add apps** page for GitHub and package-file installs.
 - Added (app packages and SDK): optional one-line `description` and embedded `icon` fields. `shellcanvas-app build` embeds a PNG, JPEG, WebP or SVG icon of at most 256 KiB, and `shellcanvas-app init --description` and `repository` fill descriptions. Apps without an icon get a generic one. Packages that use the new fields need a desktop newer than 0.1.0; existing packages are unchanged.
 - Fixed: installed apps opened in a workspace without an SSH target (connection adapters, the preview) now finish starting. Their environment event carried an undefined `host.target`, which the event journal rejected; the field is now omitted.
+- Fixed: closing ShellCanvas while a local drive is attached no longer hides the window and leaves ShellCanvas and the Drive Bridge running in the background. Quitting is refused with a message until drives are detached, and no drive can start attaching once the window is closing.
+- Fixed (Windows): drive letters held by remembered but disconnected network drives are no longer offered or accepted for drive attachment.
+- Changed: the built-in Canvas theme (1.1.0) uses neutral white and charcoal surfaces with blue accents in both light and dark, replacing the green-tinted palette. Custom themes are unchanged.
 
 ## 0.1.1
 

@@ -137,7 +137,7 @@ describe("installed theme collection", () => {
       createThemeStore(() => storage)
         .getSnapshot()
         .themes.map((theme) => theme.version),
-    ).toEqual(["1.0.0", "1.1.0"]);
+    ).toEqual([canvasTheme.version, "1.1.0"]);
     expect(() => store.install(canvasTheme)).toThrow("cannot be replaced");
     expect(() => store.remove(canvasTheme.id)).toThrow("built in");
     store.remove("studio.paper");

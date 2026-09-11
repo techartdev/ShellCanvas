@@ -154,12 +154,21 @@ export default function App({
       void import("@tauri-apps/api/window")
         .then(async ({ getCurrentWindow }) => {
           const stop = await getCurrentWindow().onCloseRequested((event) => {
+            // Tauri destroys the window after this callback unless we prevent it,
+            // even when Rust has independently rejected the close request.
+            event.preventDefault();
             if (
               !closeAllowed.current &&
               (closeState.current.hasUnsaved || closeState.current.hasBusy)
             ) {
-              event.preventDefault();
               setCloseApp(true);
+            } else {
+              void import("@tauri-apps/api/core")
+                .then(({ invoke }) => invoke("request_app_close"))
+                .catch((error) => {
+                  closeAllowed.current = false;
+                  setToast(String(error));
+                });
             }
           });
           if (disposed) stop();
