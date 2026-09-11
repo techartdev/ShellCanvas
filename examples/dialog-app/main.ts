@@ -2,7 +2,7 @@
 import {
   connectToShellCanvas,
   type RemoteTextDocument,
-} from "@shellcanvas/app-sdk";
+} from "@techartdev/shellcanvas-app-sdk";
 
 const root = document.querySelector<HTMLDivElement>("#root")!;
 root.innerHTML = `<main><p class="eyebrow">SHELLCANVAS · SAMPLE APP</p><h1>Field Notes</h1><p class="intro">A separately built app, using the desktop’s shared dialogs.</p><textarea aria-label="Notes" placeholder="Write a note for this workspace…"></textarea><div class="actions"><button id="message">Message box</button><button id="open">Browse files</button><button id="save">Save note as…</button><button id="denied">Check unavailable service</button></div><output aria-live="polite">Connecting to the desktop…</output></main>`;

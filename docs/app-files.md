@@ -11,7 +11,7 @@ app manifest. A read-only viewer can omit the save call and `files.edit` grant.
 import {
   connectToShellCanvas,
   type RemoteTextDocument,
-} from "@shellcanvas/app-sdk";
+} from "@techartdev/shellcanvas-app-sdk";
 const desktop = await connectToShellCanvas();
 const { binding } = await desktop.environment.get();
 if (!binding) throw new Error("Connect to a workspace first.");

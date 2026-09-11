@@ -9,8 +9,8 @@
   ],
   "scripts": {
     "postinstall": "npm run build:sdk",
-    "build:sdk": "npm run build --workspace @shellcanvas/app-sdk",
-    "test:sdk": "npm run build:sdk && npm test --workspace @shellcanvas/app-sdk",
+    "build:sdk": "npm run build --workspace @techartdev/shellcanvas-app-sdk",
+    "test:sdk": "npm run build:sdk && npm test --workspace @techartdev/shellcanvas-app-sdk",
     "verify:sdk": "node scripts/verify-sdk.mjs",
     "verify:adapter-sdk": "node scripts/verify-adapter-sdk.mjs",
     "release:check": "node scripts/check-release-version.mjs",

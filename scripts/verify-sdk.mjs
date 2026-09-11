@@ -33,7 +33,7 @@ try {
     npm,
     "pack",
     "--workspace",
-    "@shellcanvas/app-sdk",
+    "@techartdev/shellcanvas-app-sdk",
     "--pack-destination",
     root,
   ]);
@@ -45,14 +45,14 @@ try {
     JSON.stringify({
       private: true,
       dependencies: {
-        "@shellcanvas/app-sdk": `file:${archive.replaceAll("\\", "/")}`,
+        "@techartdev/shellcanvas-app-sdk": `file:${archive.replaceAll("\\", "/")}`,
       },
     }),
   );
   run(tooling, [npm, "install", "--no-audit", "--no-fund"]);
   const cli = join(
     tooling,
-    "node_modules/@shellcanvas/app-sdk/bin/shellcanvas-app.mjs",
+    "node_modules/@techartdev/shellcanvas-app-sdk/bin/shellcanvas-app.mjs",
   );
   const project = join(root, "starter");
   run(root, [
@@ -108,7 +108,7 @@ try {
     .replace('"../../examples/dialog-app/main"', '"./app"')
     .replace(
       '"../../src/extensions/environment-api"',
-      '"@shellcanvas/app-sdk"',
+      '"@techartdev/shellcanvas-app-sdk"',
     );
   writeFileSync(join(project, "main.ts"), probe);
   copyFileSync(

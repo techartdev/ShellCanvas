@@ -12,22 +12,22 @@ let capturedDocument:
     >
   | undefined;
 let capturedListing:
-  AsyncIterator<import("@shellcanvas/app-sdk").RemoteDirectoryPage> | undefined;
+  AsyncIterator<import("@techartdev/shellcanvas-app-sdk").RemoteDirectoryPage> | undefined;
 let watching = false;
 let fileExportAbort: AbortController | undefined;
 let fileExport: Promise<boolean> | undefined;
-let clipboardMove: import("@shellcanvas/app-sdk").RemoteTransfer | undefined;
-let transfer: import("@shellcanvas/app-sdk").RemoteTransfer | undefined;
+let clipboardMove: import("@techartdev/shellcanvas-app-sdk").RemoteTransfer | undefined;
+let transfer: import("@techartdev/shellcanvas-app-sdk").RemoteTransfer | undefined;
 let transferRunning:
-  Promise<import("@shellcanvas/app-sdk").TransferResult> | undefined;
+  Promise<import("@techartdev/shellcanvas-app-sdk").TransferResult> | undefined;
 let lateChooserAbort: AbortController | undefined;
 let lateChooser: Promise<boolean> | undefined;
 let capturedSetting:
-  import("@shellcanvas/app-sdk").RemoteHostSetting | undefined;
+  import("@techartdev/shellcanvas-app-sdk").RemoteHostSetting | undefined;
 let settingsAbort: AbortController | undefined;
 let pendingSetting: Promise<boolean> | undefined;
 let capturedEntry:
-  import("@shellcanvas/app-sdk").RemoteEntryLocation | undefined;
+  import("@techartdev/shellcanvas-app-sdk").RemoteEntryLocation | undefined;
 window.addEventListener("message", async (event) => {
   if (event.source !== parent || event.data?.type !== "desktop-probe") return;
   const note = document.querySelector<HTMLTextAreaElement>("textarea")!;
@@ -45,7 +45,7 @@ window.addEventListener("message", async (event) => {
   let files: Record<string, boolean> | undefined;
   let transfers: Record<string, boolean> | undefined;
   let hostSettings: Record<string, boolean> | undefined;
-  let windowState: import("@shellcanvas/app-sdk").AppWindowState | undefined;
+  let windowState: import("@techartdev/shellcanvas-app-sdk").AppWindowState | undefined;
   let windowError: string | undefined;
   let imageClipboard: Record<string, boolean> | undefined;
   let fileClipboard: Record<string, boolean> | undefined;

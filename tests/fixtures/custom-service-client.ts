@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 // Only the integration package adds this control channel to the public example.
 import { connection } from "../../examples/service-inspector/main";
-import type { RemoteConsole } from "@shellcanvas/app-sdk";
+import type { RemoteConsole } from "@techartdev/shellcanvas-app-sdk";
 let retainedConsole: RemoteConsole | undefined;
 window.addEventListener("message", async (event) => {
   if (event.source !== parent || event.data?.type !== "custom-service-probe")

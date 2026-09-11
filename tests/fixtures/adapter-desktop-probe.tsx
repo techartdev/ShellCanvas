@@ -21,7 +21,7 @@ import {
   indexedCatalogStorage,
 } from "../../src/extensions/catalog";
 import type { HostServices, Session, TerminalSession } from "../../src/sdk";
-import type { ServiceMethodInfo } from "@shellcanvas/app-sdk";
+import type { ServiceMethodInfo } from "@techartdev/shellcanvas-app-sdk";
 import customScript from "../../.local/native-extension-probe/custom-client.js?raw";
 import customStyle from "../../examples/service-inspector/style.css?raw";
 import "../../src/styles.css";
