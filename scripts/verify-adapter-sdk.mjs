@@ -11,7 +11,10 @@ import {
 import { tmpdir } from "node:os";
 import { resolve, join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { checkAdapterSchemas } from "./check-adapter-schemas.mjs";
+import {
+  adapterSdkVersion,
+  checkAdapterSchemas,
+} from "./check-adapter-schemas.mjs";
 const repo = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const root = mkdtempSync(join(tmpdir(), "shellcanvas adapter sdk "));
 const reportDir = join(repo, ".local/adapter-sdk-verification");
@@ -40,10 +43,11 @@ try {
     "--target-dir",
     exported,
   ]);
-  const archive = join(exported, "package/shellcanvas-adapter-sdk-0.1.0.crate");
+  const crate = `shellcanvas-adapter-sdk-${adapterSdkVersion(repo)}`;
+  const archive = join(exported, `package/${crate}.crate`);
   report.archive = archive;
   run(root, "tar", ["-xzf", archive, "-C", root]);
-  const source = join(root, "shellcanvas-adapter-sdk-0.1.0");
+  const source = join(root, crate);
   const manifest = join(source, "Cargo.toml");
   if (
     readFileSync(manifest, "utf8")

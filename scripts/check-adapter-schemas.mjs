@@ -4,6 +4,15 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+/** The exported crate directory is named after the manifest version. */
+export function adapterSdkVersion(repo) {
+  const version = readFileSync(
+    join(repo, "crates/adapter-sdk/Cargo.toml"),
+    "utf8",
+  ).match(/^version\s*=\s*"([^"]+)"/m)?.[1];
+  if (!version) throw new Error("Adapter SDK version not found.");
+  return version;
+}
 export function checkAdapterSchemas(source, project, packaged) {
   const ajv = new Ajv();
   for (const [kind, directory] of [
@@ -66,7 +75,10 @@ if (
   );
   assert.equal(report.success, true);
   checkAdapterSchemas(
-    join(report.root, "shellcanvas-adapter-sdk-0.1.0"),
+    join(
+      report.root,
+      `shellcanvas-adapter-sdk-${adapterSdkVersion(fileURLToPath(new URL("..", import.meta.url)))}`,
+    ),
     join(report.root, "generated device"),
     join(report.root, "generated package"),
   );
