@@ -9,11 +9,58 @@ pub(crate) fn available_drive_letters() -> Result<Vec<String>, String> {
     if mask == 0 {
         return Err(std::io::Error::last_os_error().to_string());
     }
-    Ok((b'D'..=b'Z')
-        .rev()
-        .filter(|letter| mask & (1 << (letter - b'A')) == 0)
-        .map(|letter| format!("{}:", char::from(letter)))
-        .collect())
+    let mut available = Vec::new();
+    for letter in (b'D'..=b'Z').rev() {
+        let target = format!("{}:", char::from(letter));
+        if mask & (1 << (letter - b'A')) == 0 && !network_drive_reserved(&target)? {
+            available.push(target);
+        }
+    }
+    Ok(available)
+}
+
+#[cfg(windows)]
+fn network_drive_reserved(target: &str) -> Result<bool, String> {
+    use windows::{core::HSTRING, Win32::NetworkManagement::WNet::WNetGetConnectionW};
+    let mut remote = [0u16; 256];
+    let mut length = remote.len() as u32;
+    let status = unsafe {
+        WNetGetConnectionW(
+            &HSTRING::from(target),
+            Some(windows::core::PWSTR(remote.as_mut_ptr())),
+            &mut length,
+        )
+    };
+    network_connection_reserved(status.0)
+}
+
+#[cfg(windows)]
+fn network_connection_reserved(status: u32) -> Result<bool, String> {
+    use windows::Win32::Foundation::{
+        ERROR_CONNECTION_UNAVAIL, ERROR_MORE_DATA, ERROR_NOT_CONNECTED, NO_ERROR,
+    };
+    match status {
+        s if s == NO_ERROR.0 || s == ERROR_MORE_DATA.0 || s == ERROR_CONNECTION_UNAVAIL.0 => {
+            Ok(true)
+        }
+        s if s == ERROR_NOT_CONNECTED.0 => Ok(false),
+        other => Err(format!(
+            "Unable to check reserved network drives: {}",
+            std::io::Error::from_raw_os_error(other as i32)
+        )),
+    }
+}
+
+/// Reservations include remembered disconnected network drives. Cleanup checks
+/// deliberately use occupied() instead: a remembered drive is not our live mount.
+pub(crate) fn reserved_for_attachment(target: &Path) -> Result<bool, String> {
+    if occupied(target)? {
+        return Ok(true);
+    }
+    #[cfg(windows)]
+    return network_drive_reserved(target.to_str().ok_or("Invalid local drive")?);
+    #[cfg(not(windows))]
+    Ok(false)
 }
 
 #[cfg(windows)]
@@ -127,6 +174,24 @@ pub(crate) fn occupied(_: &Path) -> Result<bool, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(windows)]
+    #[test]
+    fn disconnected_network_connections_still_reserve_the_letter() {
+        use windows::Win32::Foundation::*;
+        for status in [NO_ERROR, ERROR_MORE_DATA, ERROR_CONNECTION_UNAVAIL] {
+            assert_eq!(network_connection_reserved(status.0), Ok(true));
+        }
+        assert_eq!(
+            network_connection_reserved(ERROR_NOT_CONNECTED.0),
+            Ok(false)
+        );
+        assert!(network_connection_reserved(ERROR_ACCESS_DENIED.0).is_err());
+        let available = available_drive_letters().expect("Read local drive reservations");
+        for letter in &available {
+            assert!(!reserved_for_attachment(Path::new(letter)).unwrap());
+        }
+        println!("Available attachment letters: {available:?}");
+    }
     #[test]
     fn native_system_volume_is_present_without_filesystem_io() {
         #[cfg(windows)]
