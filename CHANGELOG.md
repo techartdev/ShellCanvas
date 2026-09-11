@@ -2,7 +2,7 @@
 
 ShellCanvas follows semantic versioning for published SDK packages. Desktop releases use the same version where practical. The project is pre-1.0, so minor releases may include breaking changes with migration notes.
 
-## Unreleased
+## 0.1.1
 
 - Fixed: installed apps could not save, read or use API connections ("Invalid app connection identity"). Connections are keyed by the app's installation, whose identifier the desktop's native check wrongly rejected. A key saved by an earlier build under the app ID must be entered once more.
 
