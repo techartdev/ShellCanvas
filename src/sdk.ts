@@ -511,6 +511,10 @@ export interface DesktopApp {
   /** Services the app may use when available, without blocking startup. */
   optional?: readonly Capability[];
   icon: ComponentType<{ size?: number; strokeWidth?: number }>;
+  /** Packaged artwork (data URI). Listings fall back to `icon` when absent or unreadable. */
+  image?: string;
+  /** Listing text for installed apps, whose subtitle identifies the running version. */
+  description?: string;
   component: ComponentType<AppContext>;
   window?: {
     layout?: "primary" | "secondary" | "standard";

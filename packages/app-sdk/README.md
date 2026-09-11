@@ -15,7 +15,7 @@ npm install
 npm run build
 ```
 
-The output is `dist/app.shellcanvas.json`. Open ShellCanvas's **Apps → Install app**, select it, review the permissions and open the app. No desktop rebuild/restart is needed. For an update, change the manifest version and rebuild. Existing windows keep their code and grants until closed; a new window uses the installed version.
+The output is `dist/app.shellcanvas.json`. Open ShellCanvas's **App Manager → Add apps → Choose package…**, select it, review the permissions and open the app. No desktop rebuild/restart is needed. For an update, change the manifest version and rebuild. Existing windows keep their code and grants until closed; a new window uses the installed version.
 
 The generator requires a new directory and never overwrites an existing project. Until publication, pass `--sdk` to point the generated dependency at the local tarball. `shellcanvas-app build [directory] --version 0.2.0` overrides the artifact's version without editing the manifest. `shellcanvas-app validate <package>` invokes the same package parser used by the desktop.
 
@@ -25,7 +25,7 @@ To distribute through GitHub, build first and run
 `shellcanvas-app repository . --description "What your app does"`.
 Commit both the generated root `shellcanvas.repo.json` and its referenced package.
 Preserve package bytes with a final `dist/app.shellcanvas.json -text` rule in
-`.gitattributes`. Users choose **Apps → Install from GitHub** and review the exact
+`.gitattributes`. Users choose **App Manager → Add apps → From GitHub** and review the exact
 downloaded package. Installation downloads files directly; it runs no npm scripts
 and requires no registry or GitHub API token. See the repository schema exported
 at `@techartdev/shellcanvas-app-sdk/schemas/app-repository.schema.json`.
@@ -189,6 +189,22 @@ User dismissal normally returns `null` from dialogs and save workflows. Host-ori
 ## Package and compatibility
 
 Edit `main.ts`, `style.css` and `shellcanvas.json`. The bundled schemas describe the source manifest and executable package. Source manifests may contain `$schema` for editor completion; packaging removes it. The desktop enforces additional resource bounds: 16 Mi UTF-16 units for a package and 100 UTF-16 units for a title. These are app metadata/control limits, not remote file-tree limits.
+
+App listings show an icon, the title and an optional short description:
+
+```json
+{
+  "title": "Notes",
+  "description": "Quick notes for your remote hosts.",
+  "icon": "icon.svg"
+}
+```
+
+- `description` is one line of at most 160 UTF-16 code units, without control characters.
+- `icon` names a PNG, JPEG, WebP or SVG file (lowercase extension) inside the app directory. `shellcanvas-app build` embeds it in the package as a base64 data URI and refuses files over 256 KiB or whose contents do not match the extension. Square artwork of at least 128 pixels with its own background works best, because listings round the corners. The desktop never fetches icon URLs, and SVG icons render as images without running scripts.
+- Both fields are optional. Apps without an icon get the generic app icon. `shellcanvas-app repository` uses the package description unless `--description` is given.
+
+Packages with `description` or `icon` need a desktop newer than 0.1.0: the 0.1.0 parser rejects unknown package fields. Packages without them install on both.
 
 All JavaScript must be bundled. External assets, runtime imports, networking, native Tauri IPC and Node APIs are unavailable in UI app frames. Use provider-owned desktop services for remote access. Native adapters are separate, explicitly trusted executable packages.
 

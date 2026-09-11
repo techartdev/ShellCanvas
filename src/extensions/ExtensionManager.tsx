@@ -1,11 +1,27 @@
 // SPDX-License-Identifier: MPL-2.0
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
-import { Github, Package, Plus, RefreshCw, ShieldCheck } from "lucide-react";
+import {
+  ArrowLeft,
+  FileUp,
+  Github,
+  Plus,
+  RefreshCw,
+  Search,
+  ShieldCheck,
+} from "lucide-react";
 import { capabilityLabels, type Capability } from "../sdk";
-import { AppCatalog, type AppLease, type InstallReview } from "./catalog";
+import {
+  AppCatalog,
+  type AppLease,
+  type InstallReview,
+  type InstalledApp,
+} from "./catalog";
 import "./ExtensionManager.css";
+import "./AppManager.css";
 import { inspectRepository } from "./repository";
 import { clientPlatformLabels } from "../../packages/app-sdk/src/client-platform";
+import { AppIcon } from "../components/AppIcon";
+import { appSummary, byTitle, matchesSearch } from "./app-listing";
 
 function permissionName(name: string) {
   if (name === "system.network")
@@ -33,18 +49,73 @@ function permissionName(name: string) {
     ? "Shared desktop dialogs"
     : (capabilityLabels[name as Capability] ?? name);
 }
+
+export type ManagerPage = "installed" | "add";
+export const managerPages: readonly (readonly [ManagerPage, string])[] = [
+  ["installed", "Installed"],
+  ["add", "Add apps"],
+];
+
+export function ManagerTabs<T extends string>({
+  tabs,
+  current,
+  select,
+}: {
+  tabs: readonly (readonly [T, string])[];
+  current: T;
+  select(tab: T): void;
+}) {
+  return (
+    <nav className="app-manager-tabs" aria-label="App Manager sections">
+      {tabs.map(([id, label]) => (
+        <button
+          key={id}
+          aria-pressed={current === id}
+          onClick={() => select(id)}
+        >
+          {label}
+        </button>
+      ))}
+    </nav>
+  );
+}
+
+function platforms(app: InstalledApp["package"]) {
+  return (
+    app.clientPlatforms
+      ?.map((platform) => clientPlatformLabels[platform])
+      .join(", ") ?? "Any ShellCanvas client"
+  );
+}
+
+/**
+ * Installed apps, their details and manual installation. `page` and `visit`
+ * let a parent own the section tabs; without them this renders its own.
+ */
 export function ExtensionManager({
   catalog,
   launch,
   sample,
   open,
+  page,
+  navigate,
+  visit = 0,
 }: {
   catalog: AppCatalog;
   launch?(lease: AppLease): void;
   open?(id: string): void;
   sample?: () => Promise<string>;
+  page?: ManagerPage;
+  navigate?(page: ManagerPage): void;
+  /** Changes whenever the parent's tab is chosen, returning to that section's start. */
+  visit?: number;
 }) {
   const apps = useSyncExternalStore(catalog.subscribe, catalog.snapshot);
+  const [ownPage, setOwnPage] = useState<ManagerPage>("installed");
+  const current = page ?? ownPage;
+  const [selected, setSelected] = useState<string | null>(null);
+  const [query, setQuery] = useState("");
+  const [removing, setRemoving] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -53,10 +124,16 @@ export function ExtensionManager({
   const sequence = useRef(0);
   const file = useRef<HTMLInputElement>(null);
   const download = useRef<AbortController | null>(null);
-  const [repositoryForm, setRepositoryForm] = useState(false);
   const [repository, setRepository] = useState("");
   const [reference, setReference] = useState("main");
   const [fetching, setFetching] = useState(false);
+  const show = (next: ManagerPage) => (navigate ?? setOwnPage)(next);
+  const leave = () => {
+    setSelected(null);
+    setRemoving(null);
+    setReview(null);
+    setError("");
+  };
   const refresh = async () => {
     setLoading(true);
     try {
@@ -75,6 +152,7 @@ export function ExtensionManager({
       download.current?.abort();
     };
   }, [catalog]);
+  useEffect(leave, [visit]);
   const run = async (action: () => Promise<unknown>) => {
     setBusy(true);
     try {
@@ -86,19 +164,22 @@ export function ExtensionManager({
       setBusy(false);
     }
   };
+  const reviewing = (next: InstallReview) => {
+    setReview(next);
+    setGrants(
+      next.replaces
+        ? next.replaces.grants.filter((grant) =>
+            next.package.permissions.includes(grant),
+          )
+        : next.package.permissions,
+    );
+  };
   const inspect = async (read: () => Promise<string>) => {
     const expected = ++sequence.current;
     await run(async () => {
       const next = await catalog.review(await read());
       if (sequence.current !== expected) return;
-      setReview(next);
-      setGrants(
-        next.replaces
-          ? next.replaces.grants.filter((grant) =>
-              next.package.permissions.includes(grant),
-            )
-          : next.package.permissions,
-      );
+      reviewing(next);
     });
   };
   const fromRepository = async (
@@ -118,104 +199,487 @@ export function ExtensionManager({
         throw new Error(
           "This repository now points to a different app. Its update was not installed.",
         );
-      const next = await catalog.review(result.raw, result.source);
-      if (controller.signal.aborted || sequence.current !== expected) return;
-      setReview(next);
-      setGrants(
-        next.replaces
-          ? next.replaces.grants.filter((grant) =>
-              next.package.permissions.includes(grant),
-            )
-          : next.package.permissions,
+      const next = await catalog.review(
+        result.raw,
+        result.source,
+        result.manifest.description,
       );
-      setRepositoryForm(false);
+      if (controller.signal.aborted || sequence.current !== expected) return;
+      reviewing(next);
     });
     if (sequence.current === expected) setFetching(false);
     if (download.current === controller) download.current = null;
   };
-  return (
-    <section className="extension-manager" aria-label="Installed apps">
-      <header>
-        <div>
-          <p className="extension-eyebrow">YOUR WORKSPACE, EXTENDED</p>
-          <h2>Apps</h2>
-          <p>
-            Add tools that make this desktop yours. Client:{" "}
-            {clientPlatformLabels[catalog.client.platform]}.
+  const openEntry = async (entry: InstalledApp) => {
+    let lease: AppLease | undefined;
+    try {
+      if (open) open(entry.package.id);
+      else if (launch) {
+        const opening = sequence.current;
+        lease = await catalog.launch(entry.package.id);
+        if (opening !== sequence.current) {
+          lease.close();
+          return;
+        }
+        launch(lease);
+      } else throw new Error("The desktop cannot open this app.");
+      setError("");
+    } catch (failure) {
+      lease?.close();
+      setError(String(failure));
+    }
+  };
+  const status = (entry: InstalledApp) =>
+    catalog.compatibilityReason(entry.package)
+      ? "Incompatible"
+      : entry.enabled
+        ? undefined
+        : "Disabled";
+  const canOpen = (entry: InstalledApp) =>
+    !busy &&
+    !loading &&
+    entry.enabled &&
+    !catalog.compatibilityReason(entry.package);
+  const entry = selected
+    ? apps.find((item) => item.package.id === selected)
+    : undefined;
+  const listed = byTitle(apps).filter((item) =>
+    matchesSearch(query, [
+      item.package.title,
+      appSummary(item),
+      item.package.id,
+      item.source && `${item.source.owner}/${item.source.repository}`,
+    ]),
+  );
+
+  const reviewPage = review && (
+    <section
+      className="extension-review app-review"
+      aria-label="Review app installation"
+    >
+      <div className="app-hero">
+        <AppIcon
+          id={review.package.id}
+          image={review.package.icon}
+          size="hero"
+        />
+        <div className="app-hero-text">
+          <p className="extension-eyebrow app-review-kind">
+            <ShieldCheck size={13} />
+            {review.replaces ? "REVIEW UPDATE" : "REVIEW NEW APP"}
+          </p>
+          <h3>
+            {review.replaces ? "Update" : "Install"} {review.package.title}
+          </h3>
+          <p className="app-hero-summary">
+            {review.package.description ??
+              review.listing ??
+              "This package has no description."}
+          </p>
+          <p className="app-review-version">
+            {review.replaces ? `${review.replaces.package.version} → ` : ""}
+            {review.package.version} · {review.package.id}
           </p>
         </div>
+      </div>
+      {review.source && (
+        <p className="extension-source">
+          From {review.source.owner}/{review.source.repository} ·{" "}
+          {review.source.ref}
+        </p>
+      )}
+      <p>Client support: {platforms(review.package)}</p>
+      {catalog.compatibilityReason(review.package) && (
+        <p className="extension-error" role="status">
+          {catalog.compatibilityReason(review.package)}
+        </p>
+      )}
+      {review.replaces?.source &&
+        (!review.source ||
+          review.replaces.source.owner !== review.source.owner ||
+          review.replaces.source.repository !== review.source.repository) && (
+          <p className="extension-error">
+            The source differs from the installed version. Check that you trust
+            this replacement.
+          </p>
+        )}
+      <p>
+        Approve the access this version can use. Existing windows keep their
+        current version and permissions.
+      </p>
+      <fieldset disabled={busy}>
+        <legend>App permissions</legend>
+        {review.package.permissions.length ? (
+          review.package.permissions.map((permission) => (
+            <label key={permission}>
+              <input
+                type="checkbox"
+                checked={grants.includes(permission)}
+                onChange={(event) =>
+                  setGrants(
+                    event.target.checked
+                      ? [...grants, permission]
+                      : grants.filter((grant) => grant !== permission),
+                  )
+                }
+              />
+              <span>
+                {permissionName(permission)}
+                {review.replaces &&
+                  !review.replaces.grants.includes(permission) && (
+                    <small>New access request</small>
+                  )}
+              </span>
+            </label>
+          ))
+        ) : (
+          <p>No workspace permissions requested.</p>
+        )}
+      </fieldset>
+      <details>
+        <summary>Package fingerprint</summary>
+        <code>{review.digest}</code>
+        {review.source && (
+          <>
+            <p>Repository artifact SHA-256</p>
+            <code>{review.source.sha256}</code>
+          </>
+        )}
+        <p>
+          This identifies the reviewed content; it does not verify its
+          publisher.
+        </p>
+      </details>
+      <div className="extension-actions">
+        <button
+          disabled={busy}
+          onClick={() => {
+            sequence.current++;
+            setReview(null);
+          }}
+        >
+          Cancel
+        </button>
+        <button
+          className="extension-primary"
+          disabled={busy || !!catalog.compatibilityReason(review.package)}
+          onClick={() =>
+            void run(async () => {
+              const installed = await catalog.install(review, grants);
+              setReview(null);
+              setQuery("");
+              setSelected(installed.package.id);
+              show("installed");
+            })
+          }
+        >
+          {busy
+            ? "Saving…"
+            : review.replaces
+              ? "Install update"
+              : "Install app"}
+        </button>
+      </div>
+    </section>
+  );
+
+  const detailsPage = entry && (
+    <section
+      className="app-details"
+      aria-label={`${entry.package.title} details`}
+    >
+      <button className="app-back" onClick={() => leave()}>
+        <ArrowLeft size={15} />
+        Installed apps
+      </button>
+      <div className="app-hero">
+        <AppIcon id={entry.package.id} image={entry.package.icon} size="hero" />
+        <div className="app-hero-text">
+          <h3>{entry.package.title}</h3>
+          <p className="app-hero-summary">{appSummary(entry)}</p>
+          <div className="extension-actions">
+            <button
+              className="extension-primary app-open-wide"
+              disabled={!canOpen(entry)}
+              onClick={() => void openEntry(entry)}
+            >
+              Open
+            </button>
+            {entry.source && (
+              <button
+                disabled={busy || loading}
+                onClick={() =>
+                  void fromRepository(
+                    `${entry.source!.owner}/${entry.source!.repository}`,
+                    entry.source!.ref,
+                    entry.package.id,
+                  )
+                }
+              >
+                Check for update
+              </button>
+            )}
+            <button
+              disabled={
+                busy ||
+                loading ||
+                (!entry.enabled && !!catalog.compatibilityReason(entry.package))
+              }
+              onClick={() =>
+                void run(() =>
+                  catalog.setEnabled(
+                    entry.package.id,
+                    entry.generation,
+                    !entry.enabled,
+                  ),
+                )
+              }
+            >
+              {entry.enabled ? "Disable" : "Enable"}
+            </button>
+            <button
+              className="app-danger"
+              disabled={busy || loading}
+              onClick={() => setRemoving(entry.package.id)}
+            >
+              Remove
+            </button>
+          </div>
+        </div>
+      </div>
+      {removing === entry.package.id && (
+        <div className="app-confirm" role="group" aria-label="Confirm removal">
+          <p>
+            Remove {entry.package.title}? Close its windows first. Removal
+            retires access to this installation’s local data.
+          </p>
+          <div className="extension-actions">
+            <button disabled={busy} onClick={() => setRemoving(null)}>
+              Keep app
+            </button>
+            <button
+              className="app-danger-solid"
+              disabled={busy}
+              onClick={() =>
+                void run(async () => {
+                  try {
+                    await catalog.remove(entry.package.id, entry.generation);
+                    setSelected(null);
+                  } finally {
+                    setRemoving(null);
+                  }
+                })
+              }
+            >
+              Remove app
+            </button>
+          </div>
+        </div>
+      )}
+      {catalog.compatibilityReason(entry.package) && (
+        <p className="extension-error" role="status">
+          {catalog.compatibilityReason(entry.package)}
+        </p>
+      )}
+      <dl className="app-facts">
+        <div>
+          <dt>Status</dt>
+          <dd>
+            {status(entry) === "Disabled"
+              ? "Disabled · open windows keep running"
+              : (status(entry) ?? "Ready")}
+          </dd>
+        </div>
+        <div>
+          <dt>Version</dt>
+          <dd>{entry.package.version}</dd>
+        </div>
+        <div>
+          <dt>Source</dt>
+          <dd>
+            {entry.source
+              ? `GitHub · ${entry.source.owner}/${entry.source.repository} · ${entry.source.ref}`
+              : "App package file"}
+          </dd>
+        </div>
+        <div>
+          <dt>Client support</dt>
+          <dd>{platforms(entry.package)}</dd>
+        </div>
+        <div className="app-fact-wide">
+          <dt>Identifier</dt>
+          <dd>{entry.package.id}</dd>
+        </div>
+      </dl>
+      <section className="app-access" aria-label="App permissions">
+        <h4>Access</h4>
+        {entry.package.permissions.length ? (
+          <ul>
+            {entry.package.permissions.map((permission) => (
+              <li
+                key={permission}
+                className={
+                  entry.grants.includes(permission) ? undefined : "declined"
+                }
+              >
+                <span>{permissionName(permission)}</span>
+                <small>
+                  {entry.grants.includes(permission)
+                    ? "Approved"
+                    : "Not approved"}
+                </small>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p>No workspace permissions requested.</p>
+        )}
+        <p className="extension-footnote">
+          Access changes take effect when you install an update. Disabling stops
+          new launches; removal requires this app’s windows to be closed.
+        </p>
+      </section>
+    </section>
+  );
+
+  const installedPage = (
+    <>
+      <div className="app-toolbar">
+        <label className="app-search">
+          <Search size={15} />
+          <input
+            type="search"
+            value={query}
+            placeholder="Search installed apps"
+            aria-label="Search installed apps"
+            spellCheck={false}
+            onChange={(event) => setQuery(event.target.value)}
+          />
+        </label>
         <div className="extension-actions">
-          <button
-            disabled={loading || busy}
-            onClick={() => setRepositoryForm(!repositoryForm)}
-          >
-            <Github size={16} />
-            Install from GitHub
-          </button>
           <button
             onClick={() => void refresh()}
             disabled={loading || busy}
             aria-label="Refresh installed apps"
+            title="Refresh installed apps"
           >
             <RefreshCw size={16} />
           </button>
-          <button
-            onClick={() => file.current?.click()}
-            disabled={loading || busy}
-          >
+          <button className="extension-primary" onClick={() => show("add")}>
             <Plus size={16} />
-            Install package
+            Add app
           </button>
-          {sample && (
-            <button
-              onClick={() => void inspect(sample)}
-              disabled={loading || busy}
-            >
-              Review built sample
-            </button>
-          )}
-          <input
-            ref={file}
-            type="file"
-            accept=".json"
-            aria-label="Select app package"
-            hidden
-            onChange={(event) => {
-              const selected = event.currentTarget.files?.[0];
-              event.currentTarget.value = "";
-              if (selected)
-                void inspect(async () => {
-                  if (selected.size > 32 * 1024 * 1024)
-                    throw new Error("This app package is too large.");
-                  return selected.text();
-                });
-            }}
-          />
         </div>
-      </header>
-      {repositoryForm && (
+      </div>
+      {!!apps.length && (
+        <h3 className="app-section-title">
+          Installed apps <span>{apps.length}</span>
+        </h3>
+      )}
+      <div className="app-grid">
+        {listed.map((item) => {
+          const label = status(item);
+          return (
+            <article
+              key={item.package.id}
+              className={`app-tile${label ? " inactive" : ""}`}
+            >
+              <button
+                className="app-tile-main"
+                title={`Show ${item.package.title} details`}
+                onClick={() => {
+                  setRemoving(null);
+                  setSelected(item.package.id);
+                }}
+              >
+                <AppIcon
+                  id={item.package.id}
+                  image={item.package.icon}
+                  size="tile"
+                />
+                <span className="app-tile-text">
+                  <strong>{item.package.title}</strong>
+                  <span>{appSummary(item)}</span>
+                </span>
+              </button>
+              <div className="app-tile-footer">
+                <span className="app-tile-meta">
+                  {label && (
+                    <span
+                      className={`app-badge${label === "Incompatible" ? " warning" : ""}`}
+                    >
+                      {label}
+                    </span>
+                  )}
+                  <span>
+                    Version {item.package.version}
+                    {item.source ? " · GitHub" : ""}
+                  </span>
+                </span>
+                <button
+                  className="app-open"
+                  disabled={!canOpen(item)}
+                  onClick={() => void openEntry(item)}
+                >
+                  Open
+                </button>
+              </div>
+            </article>
+          );
+        })}
+      </div>
+      {loading && !apps.length && (
+        <p className="app-quiet" role="status">
+          Loading installed apps…
+        </p>
+      )}
+      {!loading && !apps.length && (
+        <div className="extension-empty app-empty-state">
+          <AppIcon id="installed-app" size="tile" />
+          <h3>No apps installed yet</h3>
+          <p>Add an app from GitHub or from an app package file.</p>
+          <div className="extension-actions">
+            <button className="extension-primary" onClick={() => show("add")}>
+              <Plus size={16} />
+              Add app
+            </button>
+          </div>
+        </div>
+      )}
+      {!!apps.length && !listed.length && (
+        <p className="app-quiet" role="status">
+          No installed apps match “{query.trim()}”.
+        </p>
+      )}
+    </>
+  );
+
+  const addPage = (
+    <div className="app-add">
+      <div className="app-add-intro">
+        <h3>Add apps</h3>
+        <p>
+          Apps come directly from their creators. Before anything is installed,
+          you review the app, its version and the access it asks for.
+        </p>
+      </div>
+      <div className="app-sources">
         <form
-          className="extension-repository"
+          className="app-source"
           onSubmit={(event) => {
             event.preventDefault();
             void fromRepository();
           }}
         >
-          <div className="extension-review-heading">
-            <Github size={22} />
-            <div>
-              <h3>A new tool, straight from its creator</h3>
-              <p>
-                Enter a repository with a ShellCanvas app manifest. You’ll
-                review the app before installing.
-              </p>
-            </div>
-          </div>
+          <span className="app-source-icon">
+            <Github size={20} />
+          </span>
+          <h4>From GitHub</h4>
+          <p>A public repository that publishes a ShellCanvas app.</p>
           <div className="extension-repository-fields">
             <label>
               GitHub repository
               <input
-                autoFocus
                 required
                 placeholder="owner/repository"
                 value={repository}
@@ -235,13 +699,6 @@ export function ExtensionManager({
           </div>
           <div className="extension-actions">
             <button
-              type="button"
-              disabled={busy}
-              onClick={() => setRepositoryForm(false)}
-            >
-              Cancel
-            </button>
-            <button
               className="extension-primary"
               disabled={busy || loading}
               type="submit"
@@ -250,7 +707,71 @@ export function ExtensionManager({
             </button>
           </div>
         </form>
+        <div className="app-source">
+          <span className="app-source-icon">
+            <FileUp size={20} />
+          </span>
+          <h4>From an app package</h4>
+          <p>
+            A <code>.shellcanvas.json</code> file built with the ShellCanvas app
+            SDK.
+          </p>
+          <div className="extension-actions">
+            <button
+              className="extension-primary"
+              onClick={() => file.current?.click()}
+              disabled={loading || busy}
+            >
+              Choose package…
+            </button>
+            {sample && (
+              <button
+                onClick={() => void inspect(sample)}
+                disabled={loading || busy}
+              >
+                Review built sample
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+      <p className="extension-footnote">
+        This desktop is a {clientPlatformLabels[catalog.client.platform]}{" "}
+        client. A package fingerprint identifies reviewed content; it does not
+        verify the publisher.
+      </p>
+    </div>
+  );
+
+  return (
+    <section className="extension-manager app-manager-page" aria-label="Apps">
+      {!navigate && (
+        <ManagerTabs
+          tabs={managerPages}
+          current={current}
+          select={(tab) => {
+            leave();
+            setOwnPage(tab);
+          }}
+        />
       )}
+      <input
+        ref={file}
+        type="file"
+        accept=".json"
+        aria-label="Select app package"
+        hidden
+        onChange={(event) => {
+          const selectedFile = event.currentTarget.files?.[0];
+          event.currentTarget.value = "";
+          if (selectedFile)
+            void inspect(async () => {
+              if (selectedFile.size > 32 * 1024 * 1024)
+                throw new Error("This app package is too large.");
+              return selectedFile.text();
+            });
+        }}
+      />
       {fetching && (
         <div className="extension-repository-progress" role="status">
           <RefreshCw size={16} />
@@ -267,245 +788,8 @@ export function ExtensionManager({
           {error}
         </p>
       )}
-      {review && (
-        <section
-          className="extension-review"
-          aria-label="Review app installation"
-        >
-          <div className="extension-review-heading">
-            <ShieldCheck size={22} />
-            <div>
-              <h3>
-                {review.replaces ? "Update" : "Install"} {review.package.title}
-              </h3>
-              <p>
-                {review.replaces ? `${review.replaces.package.version} → ` : ""}
-                {review.package.version} · {review.package.id}
-              </p>
-            </div>
-          </div>
-          {review.source && (
-            <p className="extension-source">
-              From {review.source.owner}/{review.source.repository} ·{" "}
-              {review.source.ref}
-            </p>
-          )}
-          <p>
-            Client support:{" "}
-            {review.package.clientPlatforms
-              ?.map((platform) => clientPlatformLabels[platform])
-              .join(", ") ?? "No platform restriction declared"}
-          </p>
-          {catalog.compatibilityReason(review.package) && (
-            <p className="extension-error" role="status">
-              {catalog.compatibilityReason(review.package)}
-            </p>
-          )}
-          {review.replaces?.source &&
-            (!review.source ||
-              review.replaces.source.owner !== review.source.owner ||
-              review.replaces.source.repository !==
-                review.source.repository) && (
-              <p className="extension-error">
-                The source differs from the installed version. Check that you
-                trust this replacement.
-              </p>
-            )}
-          <p>
-            Approve the access this version can use. Existing windows keep their
-            current version and permissions.
-          </p>
-          <fieldset disabled={busy}>
-            <legend>App permissions</legend>
-            {review.package.permissions.length ? (
-              review.package.permissions.map((permission) => (
-                <label key={permission}>
-                  <input
-                    type="checkbox"
-                    checked={grants.includes(permission)}
-                    onChange={(event) =>
-                      setGrants(
-                        event.target.checked
-                          ? [...grants, permission]
-                          : grants.filter((grant) => grant !== permission),
-                      )
-                    }
-                  />
-                  <span>
-                    {permissionName(permission)}
-                    {review.replaces &&
-                      !review.replaces.grants.includes(permission) && (
-                        <small>New access request</small>
-                      )}
-                  </span>
-                </label>
-              ))
-            ) : (
-              <p>No workspace permissions requested.</p>
-            )}
-          </fieldset>
-          <details>
-            <summary>Package fingerprint</summary>
-            <code>{review.digest}</code>
-            {review.source && (
-              <>
-                <p>Repository artifact SHA-256</p>
-                <code>{review.source.sha256}</code>
-              </>
-            )}
-            <p>
-              This identifies the reviewed content; it does not verify its
-              publisher.
-            </p>
-          </details>
-          <div className="extension-actions">
-            <button
-              disabled={busy}
-              onClick={() => {
-                sequence.current++;
-                setReview(null);
-              }}
-            >
-              Cancel
-            </button>
-            <button
-              className="extension-primary"
-              disabled={busy || !!catalog.compatibilityReason(review.package)}
-              onClick={() =>
-                void run(async () => {
-                  await catalog.install(review, grants);
-                  setReview(null);
-                })
-              }
-            >
-              {busy
-                ? "Saving…"
-                : review.replaces
-                  ? "Install update"
-                  : "Install app"}
-            </button>
-          </div>
-        </section>
-      )}
-      <div className="extension-list">
-        {apps.map((entry) => (
-          <article key={entry.package.id}>
-            <div className="extension-icon">
-              <Package size={22} />
-            </div>
-            <div className="extension-description">
-              <h3>
-                {entry.package.title}
-                <span>
-                  {catalog.compatibilityReason(entry.package)
-                    ? "Incompatible"
-                    : entry.enabled
-                      ? "Ready"
-                      : "Disabled"}
-                </span>
-              </h3>
-              <p>
-                Version {entry.package.version} · {entry.package.id}
-              </p>
-              <small>{entry.grants.length} approved permissions</small>
-              {catalog.compatibilityReason(entry.package) && (
-                <p>{catalog.compatibilityReason(entry.package)}</p>
-              )}
-              {entry.source && (
-                <p>
-                  {entry.source.owner}/{entry.source.repository} ·{" "}
-                  {entry.source.ref}
-                </p>
-              )}
-            </div>
-            <div className="extension-actions">
-              {entry.source && (
-                <button
-                  disabled={busy || loading}
-                  onClick={() =>
-                    void fromRepository(
-                      `${entry.source!.owner}/${entry.source!.repository}`,
-                      entry.source!.ref,
-                      entry.package.id,
-                    )
-                  }
-                >
-                  Check update
-                </button>
-              )}
-              <button
-                disabled={
-                  busy ||
-                  loading ||
-                  !entry.enabled ||
-                  !!catalog.compatibilityReason(entry.package)
-                }
-                onClick={async () => {
-                  let lease: AppLease | undefined;
-                  try {
-                    if (open) open(entry.package.id);
-                    else if (launch) {
-                      const opening = sequence.current;
-                      lease = await catalog.launch(entry.package.id);
-                      if (opening !== sequence.current) {
-                        lease.close();
-                        return;
-                      }
-                      launch(lease);
-                    } else throw new Error("The desktop cannot open this app.");
-                    setError("");
-                  } catch (failure) {
-                    lease?.close();
-                    setError(String(failure));
-                  }
-                }}
-              >
-                Open app
-              </button>
-              <button
-                disabled={
-                  busy ||
-                  loading ||
-                  (!entry.enabled &&
-                    !!catalog.compatibilityReason(entry.package))
-                }
-                onClick={() =>
-                  void run(() =>
-                    catalog.setEnabled(
-                      entry.package.id,
-                      entry.generation,
-                      !entry.enabled,
-                    ),
-                  )
-                }
-              >
-                {entry.enabled ? "Disable" : "Enable"}
-              </button>
-              <button
-                disabled={busy || loading}
-                onClick={() =>
-                  void run(() =>
-                    catalog.remove(entry.package.id, entry.generation),
-                  )
-                }
-              >
-                Remove
-              </button>
-            </div>
-          </article>
-        ))}
-      </div>
-      {!loading && !apps.length && (
-        <div className="extension-empty">
-          <Package size={30} />
-          <h3>A place for your tools</h3>
-          <p>Install a ShellCanvas app package to get started.</p>
-        </div>
-      )}
-      <p className="extension-footnote">
-        Disabling stops new launches. Close an app’s running windows before
-        removing it. Removal retires access to that installation's local data.
-      </p>
+      {reviewPage ??
+        (current === "add" ? addPage : (detailsPage ?? installedPage))}
     </section>
   );
 }

@@ -1,0 +1,185 @@
+/* SPDX-License-Identifier: MPL-2.0 */
+/* Sits over the window layer (z-index 1) and under the system bar and dock
+   (z-index 10), so the dock's launcher button still toggles it. */
+.app-launcher {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 9;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  justify-items: center;
+  row-gap: 1.846154rem;
+  padding: calc(var(--sc-toolbar-height, 3.384615rem) + 2.461538rem) 1.846154rem
+    calc(var(--sc-dock-size, 3.230769rem) + 5.076923rem);
+  color: var(--sc-text, #dce7ec);
+  background: rgba(var(--sc-base-rgb, 25, 25, 28), 0.72);
+  -webkit-backdrop-filter: blur(1.846154rem) saturate(1.2);
+  backdrop-filter: blur(1.846154rem) saturate(1.2);
+  animation: app-launcher-fade 0.16s ease-out;
+}
+.app-launcher-search {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  column-gap: 0.615385rem;
+  width: min(23.076923rem, 100%);
+  padding: 0 0.923077rem;
+  color: var(--sc-muted, #9cb2bd);
+  background: rgba(var(--sc-raised-rgb, 48, 48, 52), 0.86);
+  border: 1px solid var(--sc-border, #48484f);
+  border-radius: 0.769231rem;
+  box-shadow: 0 0.461538rem 1.538462rem
+    rgba(var(--sc-shadow-rgb, 8, 8, 13), 0.25);
+}
+.app-launcher-search:focus-within {
+  border-color: var(--sc-accent, #7ab8ff);
+}
+.app-launcher-search input {
+  min-width: 0;
+  padding: 0.692308rem 0;
+  color: var(--sc-text, #dce7ec);
+  background: transparent;
+  border: 0;
+  outline: 0;
+  font: inherit;
+  font-size: 1rem;
+}
+.app-launcher-search input::placeholder {
+  color: var(--sc-muted, #9cb2bd);
+}
+.app-launcher-grid {
+  width: min(64.615385rem, 100%);
+  max-height: 100%;
+  overflow-y: auto;
+  display: grid;
+  /* Fixed tracks with auto-fit collapse empty columns, centering short rows. */
+  grid-template-columns: repeat(auto-fit, 7.692308rem);
+  justify-content: center;
+  align-content: start;
+  row-gap: 1.230769rem;
+  column-gap: 0.615385rem;
+  padding: 0.461538rem;
+  animation: app-launcher-rise 0.2s ease-out;
+}
+.app-launcher-item {
+  position: relative;
+  display: grid;
+  justify-items: center;
+  align-content: start;
+  row-gap: 0.615385rem;
+  min-width: 0;
+  padding: 0.769231rem 0.307692rem 0.923077rem;
+  color: inherit;
+  background: transparent;
+  border: 0;
+  border-radius: 0.923077rem;
+  cursor: pointer;
+  font: inherit;
+  transition:
+    background 0.15s,
+    transform 0.15s;
+}
+.app-launcher-item:hover {
+  background: rgba(var(--sc-hover-rgb, 57, 57, 63), 0.72);
+}
+.app-launcher-item:active {
+  transform: scale(0.96);
+}
+.app-launcher-item:focus-visible {
+  outline: 0.153846rem solid var(--sc-accent, #7ab8ff);
+  outline-offset: 0.076923rem;
+}
+.app-launcher-item[aria-disabled="true"] {
+  cursor: default;
+}
+.app-launcher-item[aria-disabled="true"] .app-icon,
+.app-launcher-item[aria-disabled="true"] .app-launcher-name {
+  opacity: 0.45;
+}
+.app-launcher-item[aria-disabled="true"]:active {
+  transform: none;
+}
+.app-launcher-name {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.923077rem;
+  font-weight: 500;
+}
+.app-launcher-note {
+  position: absolute;
+  bottom: 0.153846rem;
+  color: var(--sc-muted, #9cb2bd);
+  font-size: 0.692308rem;
+}
+.app-launcher-running {
+  position: absolute;
+  bottom: 0.384615rem;
+  width: 0.307692rem;
+  height: 0.307692rem;
+  border-radius: 50%;
+  background: var(--sc-accent, #7ab8ff);
+}
+.app-launcher-empty {
+  align-self: start;
+  margin: 0;
+  color: var(--sc-muted, #9cb2bd);
+  font-size: 0.923077rem;
+}
+.app-launcher-footer button {
+  display: inline-grid;
+  grid-auto-flow: column;
+  align-items: center;
+  column-gap: 0.538462rem;
+  padding: 0.615385rem 1.076923rem;
+  color: var(--sc-text, #dce7ec);
+  background: rgba(var(--sc-raised-rgb, 48, 48, 52), 0.86);
+  border: 1px solid var(--sc-border, #48484f);
+  border-radius: 999px;
+  font: inherit;
+  font-size: 0.846154rem;
+  cursor: pointer;
+}
+.app-launcher-footer button:hover {
+  background: var(--sc-hover, #39393f);
+}
+.app-launcher-footer button:focus-visible {
+  outline: 0.153846rem solid var(--sc-accent, #7ab8ff);
+  outline-offset: 0.153846rem;
+}
+@keyframes app-launcher-fade {
+  from {
+    opacity: 0;
+  }
+}
+@keyframes app-launcher-rise {
+  from {
+    opacity: 0;
+    transform: scale(1.03);
+  }
+}
+/* Narrow desktops scroll the page, like other full-desktop overlays. */
+@media (max-width: 899px) {
+  .app-launcher {
+    position: fixed;
+  }
+}
+@media (max-width: 600px) {
+  .app-launcher {
+    padding-left: 0.923077rem;
+    padding-right: 0.923077rem;
+    row-gap: 1.230769rem;
+  }
+  .app-launcher-grid {
+    grid-template-columns: repeat(auto-fit, 6.153846rem);
+  }
+  :root .app-launcher .dock-app-icon.app-icon[data-size="launcher"] {
+    width: 3.846154rem;
+    height: 3.846154rem;
+    border-radius: 1rem;
+  }
+}

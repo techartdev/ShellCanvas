@@ -38,7 +38,7 @@ the [Mac validation record and remaining limits](docs/macos-validation.md).
 ## Included
 
 - A custom desktop shell with mountain wallpapers, a dock, launcher, local clock, and floating app windows.
-- Runtime app installation and updates through **Apps**, with reviewed permissions, isolated app frames on Windows, pinned running versions and protected drafts. See [runtime apps](docs/runtime-apps.md).
+- An app launcher for everything you can open, and runtime app installation and updates through **App Manager**, with reviewed permissions, isolated app frames on Windows, pinned running versions and protected drafts. See [runtime apps](docs/runtime-apps.md).
 - Direct [GitHub app installation](docs/repository-apps.md) from a verified prebuilt package and root descriptor, with reviewed updates and no registry/build scripts at install time.
 - [Canvas Assistant](https://github.com/techartdev/ShellCanvas-Assistant), a separately built app with OpenAI Responses/compatible Chat Completions, streaming chat, local history, text/image attachments and reviewed remote file/console tools. See [verification and scope](docs/assistant-goal.md). Model keys stay in the desktop's [connection service](docs/app-network.md).
 - Shared system dialogs, app-owned persistent [data/settings](docs/app-storage.md), [environment events/service discovery](docs/app-events.md), and permission-checked [text clipboard access](docs/app-clipboard.md) through the developing app API. The full extension objective is tracked in [the kernel roadmap](docs/kernel-roadmap.md).

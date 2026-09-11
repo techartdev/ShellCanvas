@@ -4,14 +4,21 @@ The Windows desktop now installs and runs self-contained app packages without re
 
 ## Install an app in the desktop
 
-**Install from GitHub** accepts a public repository/ref and verifies its root
+The desktop separates managing apps from opening them:
+
+- **App Manager** (dock or launcher) lists installed apps as tiles with their icon, title and short description. **Installed** has search, and each tile's **Open** creates a new window. Selecting a tile shows its details: status, version, source, client support, identifier and approved access, plus **Check for update** (GitHub installs), **Disable/Enable** and **Remove** (confirmed). **Add apps** offers the two manual sources. **Connection adapters** manages native adapters.
+- The **app launcher** (the dock's grid button or the ShellCanvas menu) shows every app that can open now as a large icon: bundled apps, App Manager and enabled installed apps. Type to search, use the arrow keys and Enter to open, and Escape or a click outside to close. Running apps have a dot. Apps that need an unavailable host service are dimmed and explain why. A disabled app stays listed only while its windows are still open.
+
+**Add apps → From GitHub** accepts a public repository/ref and verifies its root
 descriptor and prebuilt package before the same installation review. See
 [repository installation](repository-apps.md). Runtime app host services are
 optional: the window can open without a connected device, while unavailable
 remote methods remain disabled. Bundled apps with required host services retain
 their connection requirement.
 
-Open **Apps** from the dock or launcher, choose **Install package**, and select a `.shellcanvas.json` file. Review its version and requested permissions before choosing **Install app**. Installed apps appear in the launcher; running apps also appear in the dock. **Open app** in the manager creates a new window. A dock click restores an existing window; its context menu can create another.
+**Add apps → From an app package → Choose package…** accepts a `.shellcanvas.json` file. Review its version and requested permissions before choosing **Install app**. The manager then shows the installed app's details. Installed apps appear in the launcher; running apps also appear in the dock. A dock click restores an existing window; its context menu can create another.
+
+Packages may include a one-line `description` and an embedded `icon` (see the [SDK reference](../packages/app-sdk/README.md#package-and-compatibility)). An app without an icon gets the generic app icon. Without a package description, a GitHub install shows its repository description, and a local package shows its source.
 
 Runtime apps use the same desktop stacking, minimize, maximize, window menu, dirty-close confirmation and native quit protection as bundled apps. Their instance holds a fixed package generation and grant snapshot. Updating or disabling a package preserves its existing windows. Removing a package requires its windows to be closed.
 
@@ -36,7 +43,7 @@ The compatibility packer delegates to the [standalone SDK's CLI](app-sdk.md), us
 
 ## Installation, updates and running windows
 
-Open `http://127.0.0.1:1420/tests/fixtures/runtime-catalog.html` for the reusable package manager with persistent storage and normal desktop windows. Choose **Review built sample**, review its version and permissions, then **Install app**. Installation stores code, version and approved grants in IndexedDB; it does not execute the package until **Open app**. The workbench uses its own database, separate from host profiles and the read-only preview device. No SSH connection is made.
+Open `http://127.0.0.1:1420/tests/fixtures/runtime-catalog.html` for the reusable package manager with persistent storage and normal desktop windows. Choose **Add apps → Review built sample**, review its version and permissions, then **Install app**. Installation stores code, version and approved grants in IndexedDB; it does not execute the package until **Open**. The workbench uses its own database, separate from host profiles and the read-only preview device. No SSH connection is made.
 
 To exercise an update while keeping an unsaved note open:
 
@@ -44,7 +51,7 @@ To exercise an update while keeping an unsaved note open:
 node scripts/pack-app.mjs examples/dialog-app --version 0.2.0
 ```
 
-Return to **Apps**, review the rebuilt package, and install the update. Existing windows retain their old package and grant snapshot; new launches use the new generation. New permissions are unselected during update review. A SHA-256 fingerprint identifies the reviewed content but is not publisher authentication. Reviews become invalid if the app changes before installation; stale writes from another catalog instance are rejected by an IndexedDB compare-and-set transaction.
+Return to **App Manager**, review the rebuilt package, and install the update. Existing windows retain their old package and grant snapshot; new launches use the new generation. New permissions are unselected during update review. A SHA-256 fingerprint identifies the reviewed content but is not publisher authentication. Reviews become invalid if the app changes before installation; stale writes from another catalog instance are rejected by an IndexedDB compare-and-set transaction.
 
 **Disable** stops new launches and preserves existing work. It is not immediate revocation of already-running instances. **Remove** requires all of this catalog's windows for that app, including old generations, to be closed. Closing retires that instance's channel and document. Normal close confirmation uses app-reported dirty/busy state; a dishonest app can misreport its own work. Installed state persists across reloads; unsaved document recovery across crashes/restarts is not implemented.
 

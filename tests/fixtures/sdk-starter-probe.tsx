@@ -169,9 +169,9 @@ async function run() {
     await until(
       () =>
         document.querySelector<HTMLButtonElement>(
-          'button[aria-label="Open Apps"]',
+          'button[aria-label="Open App Manager"]',
         ),
-      "Apps",
+      "App Manager",
     )
   ).click();
   const input = await until(
@@ -191,7 +191,13 @@ async function run() {
   input.dispatchEvent(new Event("change", { bubbles: true }));
   await until(() => document.querySelector(".extension-review"), "review");
   await click("Install app", document.querySelector(".extension-review")!);
-  await click("Open app");
+  await click(
+    "Open",
+    await until(
+      () => document.querySelector(".app-details"),
+      "installed app details",
+    ),
+  );
   const frame = await until(
     () =>
       document.querySelector<HTMLIFrameElement>(
@@ -253,10 +259,11 @@ async function run() {
     (state) =>
       state.ready && state.status === "Remembered locally for this app.",
   );
+  // App storage is keyed by the installation principal, not the package id.
   checks.localStorage =
     (
       await storage.get(
-        "org.example.sdk-starter",
+        catalog.snapshot()[0].principal,
         "data",
         "note",
         new AbortController().signal,

@@ -14,6 +14,8 @@ import {
 
 export interface InstalledApp {
   readonly source?: RepositorySource;
+  /** Repository listing text, shown only when the package has no description. */
+  readonly listing?: string;
   readonly package: AppPackage;
   /** Unpredictable installation lineage used to isolate retained local state. */
   readonly principal: string;
@@ -37,11 +39,18 @@ export interface CatalogStorage {
 }
 export interface InstallReview {
   readonly source?: RepositorySource;
+  readonly listing?: string;
   readonly package: AppPackage;
   readonly digest: string;
   readonly replaces: InstalledApp | null;
 }
 const identity = /^[a-zA-Z0-9-]{1,100}$/;
+/** Repository descriptions are free text; listings show them on one line. */
+export function listingText(value: unknown): string | undefined {
+  if (typeof value !== "string" || value.length > 1000) return undefined;
+  const text = value.replace(/[\s\u0000-\u001f\u007f]+/g, " ").trim();
+  return text || undefined;
+}
 function grantsFor(app: AppPackage, grants: readonly string[]) {
   if (
     new Set(grants).size !== grants.length ||
@@ -84,7 +93,8 @@ export function parseCatalog(value: unknown): CatalogSnapshot | null {
       generations.has(entry.generation) ||
       typeof entry.enabled !== "boolean" ||
       !Array.isArray(entry.grants) ||
-      entry.grants.some((grant) => typeof grant !== "string")
+      entry.grants.some((grant) => typeof grant !== "string") ||
+      (entry.listing !== undefined && listingText(entry.listing) !== entry.listing)
     )
       throw new RpcError(
         "invalid",
@@ -106,6 +116,7 @@ export function parseCatalog(value: unknown): CatalogSnapshot | null {
       ...(entry.source === undefined
         ? {}
         : { source: parseRepositorySource(entry.source) }),
+      ...(typeof entry.listing === "string" ? { listing: entry.listing } : {}),
     });
   });
   return Object.freeze({
@@ -256,8 +267,13 @@ export class AppCatalog {
         "Load the installed app catalog first.",
       );
   }
-  async review(raw: string, source?: RepositorySource): Promise<InstallReview> {
+  async review(
+    raw: string,
+    source?: RepositorySource,
+    listing?: string,
+  ): Promise<InstallReview> {
     this.check();
+    listing = source ? listingText(listing) : undefined;
     const app = parseAppPackage(raw);
     const replaces =
       this.snapshot().find((entry) => entry.package.id === app.id) ?? null;
@@ -286,6 +302,7 @@ export class AppCatalog {
       digest,
       replaces,
       ...(source ? { source } : {}),
+      ...(listing ? { listing } : {}),
     });
     this.reviews.add(result);
     return result;
@@ -319,6 +336,7 @@ export class AppCatalog {
         grants,
         enabled: true,
         ...(review.source ? { source: review.source } : {}),
+        ...(review.listing ? { listing: review.listing } : {}),
       });
       await this.commit([
         ...this.snapshot().filter(

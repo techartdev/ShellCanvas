@@ -1,0 +1,39 @@
+/* SPDX-License-Identifier: MPL-2.0 */
+/* Shared app icon tiles. Colors come from the dock icon rules (and their theme
+   overrides); these rules only size the tile and seat packaged artwork. The
+   `:root` prefix outranks the theme's size rule for the dock. */
+:root .dock-app-icon.app-icon[data-size="launcher"] {
+  width: 4.923077rem;
+  height: 4.923077rem;
+  border-radius: 1.230769rem;
+}
+:root .dock-app-icon.app-icon[data-size="tile"] {
+  width: 4.307692rem;
+  height: 4.307692rem;
+  border-radius: 1.076923rem;
+}
+:root .dock-app-icon.app-icon[data-size="hero"] {
+  width: 6.153846rem;
+  height: 6.153846rem;
+  border-radius: 1.538462rem;
+}
+:root .dock-app-icon.app-icon[data-size] svg {
+  width: 56%;
+  height: 56%;
+}
+:root .dock-app-icon.app-icon.has-image {
+  overflow: hidden;
+  background: var(--sc-raised, #2a404c);
+  border-color: transparent;
+}
+.dock-app-icon.app-icon.has-image img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.app-icon-glyph {
+  flex-shrink: 0;
+  object-fit: cover;
+  border-radius: 22%;
+}

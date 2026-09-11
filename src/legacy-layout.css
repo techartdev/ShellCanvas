@@ -84,7 +84,6 @@
 .legacy-flex-gap .primary-button > svg:last-child {
   margin-left: 1.692308rem;
 }
-.legacy-flex-gap .launcher-app > * + *,
 .legacy-flex-gap .form-row > * + * {
   margin-left: 1rem;
 }

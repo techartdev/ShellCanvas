@@ -1,6 +1,6 @@
 # Runtime connection adapters
 
-The Windows desktop can install a separately compiled native adapter while running. Open **Apps → Connection adapters → Install adapter**, choose the prepared package's `adapter.json`, review its identity and size, and explicitly accept its native-code trust requirement. Installation copies the reviewed bytes into local application data; it does not execute them.
+The Windows desktop can install a separately compiled native adapter while running. Open **App Manager → Connection adapters → Install adapter**, choose the prepared package's `adapter.json`, review its identity and size, and explicitly accept its native-code trust requirement. Installation copies the reviewed bytes into local application data; it does not execute them.
 
 Adapters run with the user's OS permissions. They are different from isolated desktop UI apps and their broker grants. SHA-256 checks detect changed package contents; self-declared hashes do not authenticate a publisher. Install only native programs whose source you trust.
 

@@ -4,6 +4,8 @@
   "id": "org.shellcanvas.dialog-example",
   "version": "0.1.0",
   "title": "Field Notes",
+  "description": "Draft notes and save them to your remote host.",
+  "icon": "icon.svg",
   "permissions": [
     "system.dialogs",
     "files.read",

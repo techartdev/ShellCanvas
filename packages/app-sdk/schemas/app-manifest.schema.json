@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "ShellCanvas app manifest v1",
-  "description": "Provisional v1. The desktop parser additionally enforces its 16 Mi UTF-16 package resource budget and UTF-16 title length.",
+  "description": "Provisional v1. The desktop parser additionally enforces its 16 Mi UTF-16 package resource budget and UTF-16 title and description lengths. The packer checks the icon file's type and 256 KiB size.",
   "type": "object",
   "additionalProperties": false,
   "required": ["format", "kind", "id", "version", "title", "permissions"],
@@ -33,6 +33,18 @@
       "type": "string",
       "maxLength": 100,
       "pattern": "\\S"
+    },
+    "description": {
+      "description": "One-line summary shown with the title in app listings.",
+      "type": "string",
+      "maxLength": 160,
+      "pattern": "^[^\\u0000-\\u001f\\u007f]*[^\\s\\u0000-\\u001f\\u007f][^\\u0000-\\u001f\\u007f]*$"
+    },
+    "icon": {
+      "description": "PNG, JPEG, WebP or SVG file relative to this manifest. Packaging embeds it; square artwork of at least 128 pixels is recommended.",
+      "type": "string",
+      "maxLength": 240,
+      "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._-]*(/[a-zA-Z0-9][a-zA-Z0-9._-]*)*\\.(png|jpg|jpeg|webp|svg)$"
     },
     "permissions": {
       "type": "array",
