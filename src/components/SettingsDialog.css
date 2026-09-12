@@ -87,13 +87,9 @@
   color: var(--sc-muted, #a2b8c2);
 }
 .preferences-brand-mark {
-  font:
-    1.153846rem Georgia,
-    serif;
-  border: 1px solid var(--sc-border, #8fb7b542);
-  border-radius: 0.461538rem;
-  padding: 0.307692rem 0.538462rem;
-  color: var(--sc-accent, #bdd5d5);
+  display: grid;
+  place-items: center;
+  color: var(--sc-text, #f4f5f7);
 }
 .preferences-brand small {
   width: 100%;

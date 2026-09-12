@@ -12,7 +12,6 @@ import {
   Check,
   ChevronDown,
   Circle,
-  Command,
   Grid2X2,
   Plus,
   Power,
@@ -35,6 +34,7 @@ import {
   updateWorkspaces,
 } from "./workspaces";
 import { WorkspaceWindows } from "./components/WorkspaceWindows";
+import { ShellCanvasMark } from "./components/ShellCanvasMark";
 import { ContextMenu, type MenuAction } from "./components/ContextMenu";
 import { ConfirmDialog } from "./components/ConfirmDialog";
 import { ConnectDialog } from "./components/ConnectDialog";
@@ -846,7 +846,7 @@ export default function App({
           aria-label="Open app launcher"
         >
           <span className="brand-mark">
-            <Command size={15} />
+            <ShellCanvasMark size={23} />
           </span>
           ShellCanvas<span className="alpha-tag">PREVIEW</span>
         </button>
