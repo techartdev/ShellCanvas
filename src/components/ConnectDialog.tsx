@@ -195,8 +195,10 @@ export function ConnectDialog({
   return (
     <div
       className="modal-backdrop"
-      onClick={(e) => {
-        if (e.target === e.currentTarget && !locked) close();
+      onPointerDown={(e) => {
+        // A click can target the backdrop after a text-selection drag ends
+        // outside the dialog. Only a press that starts here should dismiss it.
+        if (e.button === 0 && e.target === e.currentTarget && !locked) close();
       }}
     >
       <dialog
