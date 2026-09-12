@@ -215,7 +215,7 @@ async fn prepare_ssh(
     let connection = Arc::new(connection);
     let mut info = inspect_host(&connection).await;
     if options.allow_legacy_mac {
-        info.notices.push("Legacy SSH compatibility enabled: HMAC-SHA1 is allowed when needed. Modern algorithms remain preferred; MD5 is disabled.".into());
+        info.notices.push("Legacy SSH compatibility enabled: HMAC-SHA1, RSA/SHA1 authentication and 2048-bit exchange groups are allowed when needed. Modern algorithms remain preferred; MD5 is disabled.".into());
     }
     let settings = settings_for_host(&info.provider, Some(connection.clone()));
     if settings.is_some() {

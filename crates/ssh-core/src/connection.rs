@@ -137,6 +137,7 @@ impl Connection {
         };
         let config = client::Config {
             preferred: ssh_preferences(options.allow_legacy_mac),
+            gex: ssh_gex(options.allow_legacy_mac)?,
             keepalive_interval: Some(Duration::from_secs(20)),
             keepalive_max: 3,
             ..Default::default()
@@ -155,13 +156,42 @@ impl Connection {
                     options.passphrase.as_deref().filter(|s| !s.is_empty()),
                 )
                 .context("Cannot load private key (check path and passphrase)")?;
-                let hash = handle.best_supported_rsa_hash().await?.flatten();
-                handle
+                let (hash, legacy_fallback) =
+                    if matches!(key.algorithm(), keys::Algorithm::Rsa { .. }) {
+                        rsa_auth_policy(
+                            handle.best_supported_rsa_hash().await?,
+                            options.allow_legacy_mac,
+                        )?
+                    } else {
+                        (None, false)
+                    };
+                let key = Arc::new(key);
+                let auth = handle
                     .authenticate_publickey(
                         &options.username,
-                        PrivateKeyWithHashAlg::new(Arc::new(key), hash),
+                        PrivateKeyWithHashAlg::new(key.clone(), hash),
                     )
-                    .await?
+                    .await?;
+                // Retry only a normal rejection, never a transport error or partial
+                // authentication (which may require a second authentication factor).
+                if legacy_fallback
+                    && matches!(
+                        &auth,
+                        client::AuthResult::Failure {
+                            partial_success: false,
+                            ..
+                        }
+                    )
+                {
+                    handle
+                        .authenticate_publickey(
+                            &options.username,
+                            PrivateKeyWithHashAlg::new(key, None),
+                        )
+                        .await?
+                } else {
+                    auth
+                }
             } else {
                 handle
                     .authenticate_password(
@@ -289,6 +319,35 @@ fn ssh_preferences(allow_legacy_mac: bool) -> russh::Preferred {
     preferred
 }
 
+// The persisted allowLegacyMac name is retained for profile compatibility.
+// This opt-in also accommodates older servers returning a 2048-bit GEX group.
+fn ssh_gex(allow_legacy: bool) -> Result<client::GexParams> {
+    let defaults = client::GexParams::default();
+    if allow_legacy {
+        Ok(client::GexParams::new(
+            2048,
+            defaults.preferred_group_size(),
+            defaults.max_group_size(),
+        )?)
+    } else {
+        Ok(defaults)
+    }
+}
+
+/// Missing server-sig-algs must not silently select RSA/SHA1. Prefer SHA256
+/// in that case, with one SHA1 fallback only for an explicitly opted-in host.
+fn rsa_auth_policy(
+    advertised: Option<Option<keys::HashAlg>>,
+    allow_legacy: bool,
+) -> Result<(Option<keys::HashAlg>, bool)> {
+    match advertised {
+        Some(Some(hash)) => Ok((Some(hash), false)),
+        Some(None) if allow_legacy => Ok((None, false)),
+        Some(None) => bail!("This host requires legacy RSA/SHA1 authentication. Enable legacy SSH compatibility for this host or use a modern key."),
+        None => Ok((Some(keys::HashAlg::Sha256), allow_legacy)),
+    }
+}
+
 async fn wait_for_acceptance(channel: &mut Channel<client::Msg>, request: &str) -> Result<()> {
     while let Some(message) = channel.wait().await {
         match message {
@@ -303,6 +362,33 @@ async fn wait_for_acceptance(channel: &mut Channel<client::Msg>, request: &str) 
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn legacy_group_size_and_rsa_signatures_require_opt_in() {
+        let default = client::GexParams::default();
+        let disabled = ssh_gex(false).unwrap();
+        let enabled = ssh_gex(true).unwrap();
+        assert_eq!(disabled.min_group_size(), default.min_group_size());
+        assert_eq!(enabled.min_group_size(), 2048);
+        assert_eq!(
+            enabled.preferred_group_size(),
+            default.preferred_group_size()
+        );
+        assert_eq!(enabled.max_group_size(), default.max_group_size());
+        for enabled in [false, true] {
+            for hash in [keys::HashAlg::Sha256, keys::HashAlg::Sha512] {
+                assert_eq!(
+                    rsa_auth_policy(Some(Some(hash)), enabled).unwrap(),
+                    (Some(hash), false)
+                );
+            }
+            assert_eq!(
+                rsa_auth_policy(None, enabled).unwrap(),
+                (Some(keys::HashAlg::Sha256), enabled)
+            );
+        }
+        assert!(rsa_auth_policy(Some(None), false).is_err());
+        assert_eq!(rsa_auth_policy(Some(None), true).unwrap(), (None, false));
+    }
     #[test]
     fn legacy_mac_is_opt_in_and_does_not_change_other_algorithms() {
         let modern = russh::Preferred::default();

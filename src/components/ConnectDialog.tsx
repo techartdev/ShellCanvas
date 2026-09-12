@@ -425,13 +425,14 @@ export function ConnectDialog({
                       }))
                     }
                   />
-                  Allow legacy SSH MAC (HMAC-SHA1)
+                  Allow legacy SSH compatibility
                 </label>
                 {options.allowLegacyMac && (
                   <p role="status">
                     Legacy compatibility enabled for this host. Modern
-                    algorithms stay preferred; HMAC-SHA1 is allowed if needed.
-                    MD5 remains disabled.
+                    algorithms stay preferred; HMAC-SHA1, RSA/SHA1
+                    authentication and 2048-bit exchange groups are allowed when
+                    needed. MD5 remains disabled.
                   </p>
                 )}
                 {!options.allowLegacyMac &&

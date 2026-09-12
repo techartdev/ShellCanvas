@@ -10,11 +10,15 @@ The existing versioned native JSON store and atomic/cross-process save behavior 
 
 ## Older SSH hosts
 
-**Allow legacy SSH MAC (HMAC-SHA1)** is an explicit per-host option, disabled by default. It is saved with the profile and retained for reconnects. Existing profiles and SSH-config imports keep modern defaults. Turning the option off and saving removes the exception.
+**Allow legacy SSH compatibility** is an explicit per-host option, disabled by default. It is saved with the profile and retained for reconnects. Existing profiles and SSH-config imports keep modern defaults. Turning the option off and saving removes the exception. The persisted field remains `allowLegacyMac` for compatibility with existing profiles; previously enabled profiles now receive the compatibility behavior described below.
 
-This option appends HMAC-SHA1 after the modern MAC algorithms. It does not enable MD5, change cipher/key-exchange/host-key algorithms, or bypass host-key verification. The connection dialog shows a compatibility warning, and connected Host details records that legacy MAC support is enabled (not a claim that SHA1 was negotiated).
+This option appends HMAC-SHA1 after modern MAC algorithms and permits 2048-bit Diffie–Hellman group exchange while keeping the larger preferred group size. Exchange algorithm, cipher and host-key preferences remain unchanged: it does not enable SHA1 key exchange, group1, CBC ciphers or MD5, or bypass host-key verification.
 
-Use it for older devices that report **No common Mac algorithm** and offer `hmac-sha1`. It addresses that negotiation mismatch only; a device may have other unsupported authentication, algorithm, or service requirements. Built-in SSH sources in mixed workspaces expose the same option.
+For RSA user keys, advertised SHA2 signatures stay preferred. Without a signature-algorithm advertisement, SHA256 is attempted first; an ordinary rejection allows one RSA/SHA1 retry only with this option enabled. A host advertising only RSA/SHA1 requires the option. Transport failures and partial authentication never trigger this retry. Non-RSA keys are unaffected.
+
+The connection dialog and Host details show the enabled exceptions, not a claim that those algorithms were negotiated. Built-in SSH sources in mixed workspaces expose the same option. This accommodates older MikroTik SSH servers offering HMAC-SHA1, a 2048-bit SHA256 exchange group, and legacy RSA user authentication. It does not add RouterOS-specific desktop capabilities: services such as SFTP must still be supported by the device.
+
+For a bounded read-only authentication and interactive-terminal check against a trusted appliance, use `cargo run -p shellcanvas-core --example terminal_probe -- HOST USER KEY_PATH --legacy`. It opens and closes a PTY without sending commands or printing remote output. Omit `--legacy` to check modern defaults.
 
 ## Verification
 
