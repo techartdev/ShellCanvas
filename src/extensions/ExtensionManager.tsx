@@ -122,6 +122,7 @@ export function ExtensionManager({
   const [review, setReview] = useState<InstallReview | null>(null);
   const [grants, setGrants] = useState<readonly string[]>([]);
   const sequence = useRef(0);
+  const inspection = useRef<number | null>(null);
   const file = useRef<HTMLInputElement>(null);
   const download = useRef<AbortController | null>(null);
   const [repository, setRepository] = useState("");
@@ -129,6 +130,14 @@ export function ExtensionManager({
   const [fetching, setFetching] = useState(false);
   const show = (next: ManagerPage) => (navigate ?? setOwnPage)(next);
   const leave = () => {
+    sequence.current++;
+    download.current?.abort();
+    download.current = null;
+    setFetching(false);
+    if (inspection.current !== null) {
+      inspection.current = null;
+      setBusy(false);
+    }
     setSelected(null);
     setRemoving(null);
     setReview(null);
@@ -153,15 +162,20 @@ export function ExtensionManager({
     };
   }, [catalog]);
   useEffect(leave, [visit]);
-  const run = async (action: () => Promise<unknown>) => {
+  const run = async (action: () => Promise<unknown>, expected?: number) => {
+    const current = () =>
+      expected === undefined || sequence.current === expected;
     setBusy(true);
     try {
       await action();
-      setError("");
+      if (current()) setError("");
     } catch (failure) {
-      setError(failure instanceof Error ? failure.message : String(failure));
+      if (current())
+        setError(failure instanceof Error ? failure.message : String(failure));
     } finally {
-      setBusy(false);
+      if (current()) setBusy(false);
+      if (expected !== undefined && inspection.current === expected)
+        inspection.current = null;
     }
   };
   const reviewing = (next: InstallReview) => {
@@ -176,11 +190,14 @@ export function ExtensionManager({
   };
   const inspect = async (read: () => Promise<string>) => {
     const expected = ++sequence.current;
+    inspection.current = expected;
     await run(async () => {
-      const next = await catalog.review(await read());
+      const raw = await read();
+      if (sequence.current !== expected) return;
+      const next = await catalog.review(raw);
       if (sequence.current !== expected) return;
       reviewing(next);
-    });
+    }, expected);
   };
   const fromRepository = async (
     input = repository,
@@ -188,6 +205,7 @@ export function ExtensionManager({
     expectedId?: string,
   ) => {
     const expected = ++sequence.current;
+    inspection.current = expected;
     download.current?.abort();
     const controller = new AbortController();
     download.current = controller;
@@ -195,6 +213,7 @@ export function ExtensionManager({
     setReview(null);
     await run(async () => {
       const result = await inspectRepository(input, ref, controller.signal);
+      if (controller.signal.aborted || sequence.current !== expected) return;
       if (expectedId && result.manifest.id !== expectedId)
         throw new Error(
           "This repository now points to a different app. Its update was not installed.",
@@ -206,7 +225,7 @@ export function ExtensionManager({
       );
       if (controller.signal.aborted || sequence.current !== expected) return;
       reviewing(next);
-    });
+    }, expected);
     if (sequence.current === expected) setFetching(false);
     if (download.current === controller) download.current = null;
   };
