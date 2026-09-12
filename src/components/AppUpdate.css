@@ -1,0 +1,116 @@
+.app-update-indicator {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 1px solid transparent;
+  background: transparent;
+  color: inherit;
+  border-radius: 7px;
+  cursor: pointer;
+}
+.app-update-indicator:hover,
+.app-update-indicator:focus-visible {
+  background: var(--sc-raised, #303136);
+}
+.app-update-indicator.available {
+  color: var(--sc-accent, #78b7ff);
+}
+.update-dot {
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: currentColor;
+}
+.app-update-dialog {
+  width: min(520px, calc(100vw - 32px));
+  max-height: calc(100vh - 48px);
+  overflow: auto;
+  box-sizing: border-box;
+  padding: 26px;
+  border: 1px solid var(--sc-border, #45464d);
+  border-radius: 16px;
+  background: var(--sc-surface, #242426);
+  color: var(--sc-text, #eeeef0);
+  box-shadow: 0 24px 80px #0006;
+}
+.app-update-dialog::backdrop {
+  background: #0007;
+}
+.app-update-dialog h2 {
+  margin: 12px 0 18px;
+  font-size: 24px;
+}
+.app-update-dialog p {
+  font-size: 13px;
+  line-height: 1.6;
+}
+.app-update-heading,
+.app-update-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.app-update-dialog button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 9px 13px;
+  border: 1px solid var(--sc-border, #45464d);
+  border-radius: 8px;
+  background: var(--sc-raised, #303136);
+  color: inherit;
+  cursor: pointer;
+}
+.app-update-dialog button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.app-update-dialog .primary {
+  background: var(--sc-accent, #78b7ff);
+  color: var(--sc-onAccent, #10243a);
+  border-color: transparent;
+}
+.app-update-actions {
+  justify-content: flex-end;
+  margin-top: 24px;
+  flex-wrap: wrap;
+}
+.app-update-notes pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 160px;
+  overflow: auto;
+  font: inherit;
+  font-size: 12px;
+  line-height: 1.5;
+}
+.app-update-error {
+  border-left: 3px solid var(--sc-accent, #78b7ff);
+  padding-left: 12px;
+}
+.app-update-dialog progress {
+  width: 100%;
+  accent-color: var(--sc-accent, #78b7ff);
+}
+.update-spin {
+  animation: update-spin 1.2s linear infinite;
+}
+@keyframes update-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .update-spin {
+    animation: none;
+  }
+}

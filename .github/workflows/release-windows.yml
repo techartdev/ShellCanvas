@@ -16,6 +16,11 @@ env:
 permissions:
   contents: write
 
+# Platform additions update the same manifest; serialize publication per tag.
+concurrency:
+  group: release-${{ inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
 jobs:
   installers:
     runs-on: windows-latest
@@ -30,7 +35,16 @@ jobs:
       - run: npm ci
       - run: npm run release:check -- "${{ env.RELEASE_TAG }}"
       - run: npm run public:check
-      - run: npm run release:windows
+      - name: Build signed Windows installers
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: npm run release:windows
+      - name: Generate updater manifest
+        shell: pwsh
+        run: |
+          $version = "${{ env.RELEASE_TAG }}".TrimStart('v')
+          node scripts/updater-manifest.mjs $version windows x86_64 target/release/bundle target/release/bundle/latest.json
       - name: Generate SHA-256 checksums
         shell: pwsh
         run: |
@@ -45,6 +59,9 @@ jobs:
           gh release create "${{ env.RELEASE_TAG }}" `
             target/release/bundle/nsis/*-setup.exe `
             target/release/bundle/msi/*.msi `
+            target/release/bundle/nsis/*.sig `
+            target/release/bundle/msi/*.sig `
+            target/release/bundle/latest.json `
             target/release/bundle/SHA256SUMS.txt `
             --repo "${{ github.repository }}" `
             --title "ShellCanvas ${{ env.RELEASE_TAG }}" `

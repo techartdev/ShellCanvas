@@ -10,6 +10,8 @@ use tokio::sync::{mpsc, Mutex};
 mod adapter_diagnostics;
 mod adapters;
 mod app_network;
+#[cfg(desktop)]
+mod app_update;
 mod builtin_ssh;
 #[cfg(any(windows, test))]
 mod clipboard_move;
@@ -39,6 +41,7 @@ mod request_source_tests;
 mod session_registry;
 mod terminals;
 mod transfers;
+mod update_gate;
 #[cfg(windows)]
 mod windows_clipboard;
 #[cfg(windows)]
@@ -94,6 +97,7 @@ async fn profiles(app: tauri::AppHandle) -> Result<Vec<HostProfile>, String> {
 }
 #[tauri::command]
 async fn save_profile(app: tauri::AppHandle, profile: HostProfile) -> Result<HostProfile, String> {
+    let _update_operation = crate::update_gate::operation()?;
     let dir = profile_store::storage_dir(&app)?;
     tauri::async_runtime::spawn_blocking(move || profile_store::save(&dir, profile))
         .await
@@ -101,6 +105,7 @@ async fn save_profile(app: tauri::AppHandle, profile: HostProfile) -> Result<Hos
 }
 #[tauri::command]
 async fn remove_profile(app: tauri::AppHandle, id: String) -> Result<(), String> {
+    let _update_operation = crate::update_gate::operation()?;
     let dir = profile_store::storage_dir(&app)?;
     tauri::async_runtime::spawn_blocking(move || profile_store::remove(&dir, &id))
         .await
@@ -389,6 +394,7 @@ async fn apply_host_setting(
     revision: String,
     state: State<'_, DesktopState>,
 ) -> Result<HostSetting, String> {
+    let _update_operation = crate::update_gate::operation()?;
     host_settings(&state, session_id, binding.as_ref())
         .await?
         .apply(&id, &value, &revision)
@@ -430,6 +436,7 @@ async fn set_volume_mounted(
     mounted: bool,
     state: State<'_, DesktopState>,
 ) -> Result<(), String> {
+    let _update_operation = crate::update_gate::operation()?;
     let _transition = state.mount_transition.lock().await;
     if !mounted {
         state.mappings.ensure_releasable(session_id, binding.as_ref()).map_err(|_| {
@@ -499,6 +506,7 @@ async fn save_text(
     allow_non_atomic: Option<bool>,
     state: State<'_, DesktopState>,
 ) -> Result<TextDocument, String> {
+    let _update_operation = crate::update_gate::operation()?;
     let service = session_service(
         &state,
         session_id,
@@ -522,6 +530,7 @@ async fn create_text(
     text: String,
     state: State<'_, DesktopState>,
 ) -> Result<TextDocument, String> {
+    let _update_operation = crate::update_gate::operation()?;
     let service = session_service(
         &state,
         session_id,
@@ -553,6 +562,7 @@ async fn make_directory(
     name: String,
     state: State<'_, DesktopState>,
 ) -> Result<String, String> {
+    let _update_operation = crate::update_gate::operation()?;
     file_mutations(&state, session_id, binding.as_ref())
         .await?
         .make_directory(&parent, &name)
@@ -569,6 +579,7 @@ async fn rename_entry(
     tracked: Vec<String>,
     state: State<'_, DesktopState>,
 ) -> Result<FileRelocation, String> {
+    let _update_operation = crate::update_gate::operation()?;
     file_mutations(&state, session_id, binding.as_ref())
         .await?
         .rename_tracked(&path, &name, &revision, &tracked)
@@ -585,6 +596,7 @@ async fn move_entry(
     tracked: Vec<String>,
     state: State<'_, DesktopState>,
 ) -> Result<FileRelocation, String> {
+    let _update_operation = crate::update_gate::operation()?;
     let service = session_service(
         &state,
         session_id,
@@ -606,6 +618,7 @@ async fn remove_entry(
     revision: String,
     state: State<'_, DesktopState>,
 ) -> Result<(), String> {
+    let _update_operation = crate::update_gate::operation()?;
     file_mutations(&state, session_id, binding.as_ref())
         .await?
         .remove_entry(&path, &revision)
@@ -792,6 +805,12 @@ pub fn run() {
         .plugin(extension_frames::plugin())
         .manage(extension_frames::FrameDocuments::default())
         .setup(|app| {
+            #[cfg(desktop)]
+            {
+                app.handle()
+                    .plugin(tauri_plugin_updater::Builder::new().build())?;
+                app.manage(app_update::Updates::default());
+            }
             #[cfg(debug_assertions)]
             extension_probe::setup(app)?;
             #[cfg(not(debug_assertions))]
@@ -804,6 +823,28 @@ pub fn run() {
         .manage(adapter_diagnostics::AdapterDiagnostics::default())
         .manage(custom_services::CustomRequests::default())
         .invoke_handler(|invoke| {
+            if update_gate::installing() {
+                invoke
+                    .resolver
+                    .reject("ShellCanvas is installing an update.");
+                return true;
+            }
+            #[cfg(desktop)]
+            if matches!(
+                invoke.message.command(),
+                "check_app_update"
+                    | "download_app_update"
+                    | "cancel_app_update"
+                    | "install_app_update"
+            ) {
+                let handler: fn(tauri::ipc::Invoke<tauri::Wry>) -> bool = tauri::generate_handler![
+                    app_update::check_app_update,
+                    app_update::download_app_update,
+                    app_update::cancel_app_update,
+                    app_update::install_app_update
+                ];
+                return handler(invoke);
+            }
             #[cfg(debug_assertions)]
             if invoke.message.command() == "review_fixture_adapter" {
                 let handler: fn(tauri::ipc::Invoke<tauri::Wry>) -> bool =

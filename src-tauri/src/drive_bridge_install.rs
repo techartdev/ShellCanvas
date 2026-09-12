@@ -331,6 +331,7 @@ pub async fn install_drive_bridge(
     window: tauri::WebviewWindow,
     state: tauri::State<'_, Reviews>,
 ) -> Result<Installation, String> {
+    let _update_operation = crate::update_gate::operation()?;
     require_supported_client()?;
     use tauri::Manager;
     let storage = crate::profile_store::storage_dir(window.app_handle())?;

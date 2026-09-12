@@ -85,6 +85,8 @@ pub async fn call_custom_service(
     state: State<'_, crate::DesktopState>,
     calls: State<'_, CustomRequests>,
 ) -> Result<serde_json::Value, ServiceCallError> {
+    let _update_operation = crate::update_gate::operation()
+        .map_err(|message| ServiceCallError::new("busy", &message, false))?;
     let mut canceled = calls.claim(&request_id)?;
     let operation = async {
         let service = state

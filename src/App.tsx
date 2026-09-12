@@ -65,6 +65,7 @@ import { unavailableReason } from "./sdk";
 import { SystemDialogHost } from "./components/SystemDialogHost";
 import { AppLauncher } from "./components/AppLauncher";
 import { AppIcon } from "./components/AppIcon";
+import { AppUpdate } from "./components/AppUpdate";
 const defaultServices = native ? nativeServices : previewServices;
 export default function App({
   services = defaultServices,
@@ -960,6 +961,17 @@ export default function App({
                   : "Local workspace"}
           </span>
           <Wifi size={15} />
+          {isNative && (
+            <AppUpdate
+              dirty={hasUnsaved}
+              busy={hasBusy || disconnecting.length > 0}
+              extraBlocker={() =>
+                runtime.catalog.isBusy
+                  ? "Wait for App Manager to finish saving its changes before updating."
+                  : undefined
+              }
+            />
+          )}
           <span className="bar-divider" />
           <time title={clock.title} aria-label={clock.title}>
             {clock.local && <small>Local</small>}

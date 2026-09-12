@@ -1,0 +1,58 @@
+name: Add macOS or Linux release packages
+
+# Opt-in while these distributions are undergoing testing. No extra tag CI.
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing release tag containing updater support
+        required: true
+        type: string
+      platform:
+        description: Platform to build and add to that release
+        required: true
+        type: choice
+        options: [linux-x86_64, darwin-x86_64, darwin-aarch64]
+
+permissions:
+  contents: write
+concurrency:
+  group: release-${{ inputs.tag }}
+  cancel-in-progress: false
+
+jobs:
+  package:
+    runs-on: ${{ inputs.platform == 'linux-x86_64' && 'ubuntu-22.04' || inputs.platform == 'darwin-x86_64' && 'macos-15-intel' || 'macos-15' }}
+    env:
+      RELEASE_TAG: ${{ inputs.tag }}
+      PLATFORM: ${{ inputs.platform }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ inputs.tag }}
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: 24
+          cache: npm
+      - name: Linux dependencies
+        if: inputs.platform == 'linux-x86_64'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libssl-dev libsecret-1-dev rpm
+      - run: npm ci
+      - run: npm run release:check -- "$RELEASE_TAG"
+      - run: npm run public:check
+      - name: Build signed update packages
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          if [ "$PLATFORM" = linux-x86_64 ]; then
+            npm run tauri -- build --bundles appimage,deb,rpm
+          else
+            npm run tauri -- build --bundles app,dmg
+          fi
+      - name: Add artifacts, then publish the expanded updater manifest
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/publish-platform-update.mjs "$RELEASE_TAG" "$PLATFORM"

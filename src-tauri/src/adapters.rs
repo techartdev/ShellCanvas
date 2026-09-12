@@ -541,6 +541,7 @@ pub async fn install_adapter(
     window: WebviewWindow,
     state: State<'_, AdapterJobs>,
 ) -> Result<AdapterInfo, String> {
+    let _update_operation = crate::update_gate::operation()?;
     let jobs = state.inner().clone();
     let owner = window.label().to_string();
     let catalog = catalog(window.app_handle())?;
@@ -561,6 +562,7 @@ pub async fn set_adapter_enabled(
     enabled: bool,
     app: tauri::AppHandle,
 ) -> Result<AdapterInfo, String> {
+    let _update_operation = crate::update_gate::operation()?;
     let catalog = catalog(&app)?;
     tauri::async_runtime::spawn_blocking(move || {
         catalog
@@ -576,6 +578,7 @@ pub async fn remove_adapter(
     revision: String,
     app: tauri::AppHandle,
 ) -> Result<(), String> {
+    let _update_operation = crate::update_gate::operation()?;
     let catalog = catalog(&app)?;
     tauri::async_runtime::spawn_blocking(move || {
         catalog

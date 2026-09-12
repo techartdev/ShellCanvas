@@ -87,6 +87,7 @@ struct VirtualFiles {
     marker: u16,
     asynchronous: AtomicBool,
     operation: AtomicBool,
+    update_operation: Mutex<Option<crate::update_gate::Operation>>,
 }
 impl VirtualFiles {
     fn new(sources: impl Into<Sources>) -> Self {
@@ -100,6 +101,7 @@ impl VirtualFiles {
                 marker: RegisterClipboardFormatW(w!("ShellCanvas.RemoteSelection")) as u16,
                 asynchronous: AtomicBool::new(true),
                 operation: AtomicBool::new(false),
+                update_operation: Mutex::new(None),
             }
         }
     }
@@ -196,6 +198,7 @@ impl IDataObject_Impl for VirtualFiles_Impl {
             stream.read(&mut [0u8; 1]).map_err(failure)?;
         }
         let stream: IStream = FileStream {
+            _update_operation: crate::update_gate::operation().map_err(failure)?,
             inner: Mutex::new(stream),
         }
         .into();
@@ -263,6 +266,10 @@ impl IDataObjectAsyncCapability_Impl for VirtualFiles_Impl {
         Ok(self.asynchronous.load(Ordering::Relaxed).into())
     }
     fn StartOperation(&self, _: Ref<'_, IBindCtx>) -> Result<()> {
+        let mut permit = self.update_operation.lock().map_err(failure)?;
+        if permit.is_none() {
+            *permit = Some(crate::update_gate::operation().map_err(failure)?);
+        }
         self.operation.store(true, Ordering::Relaxed);
         Ok(())
     }
@@ -270,6 +277,7 @@ impl IDataObjectAsyncCapability_Impl for VirtualFiles_Impl {
         Ok(self.operation.load(Ordering::Relaxed).into())
     }
     fn EndOperation(&self, _: HRESULT, _: Ref<'_, IBindCtx>, _: u32) -> Result<()> {
+        self.update_operation.lock().map_err(failure)?.take();
         self.operation.store(false, Ordering::Relaxed);
         Ok(())
     }
@@ -277,6 +285,7 @@ impl IDataObjectAsyncCapability_Impl for VirtualFiles_Impl {
 
 #[implement(IStream)]
 struct FileStream {
+    _update_operation: crate::update_gate::Operation,
     inner: Mutex<RemoteStream>,
 }
 impl ISequentialStream_Impl for FileStream_Impl {
@@ -424,6 +433,7 @@ impl IStream_Impl for FileStream_Impl {
         let mut stream = RemoteStream::new(old.source.clone());
         stream.position = old.position;
         Ok(FileStream {
+            _update_operation: crate::update_gate::operation().map_err(failure)?,
             inner: Mutex::new(stream),
         }
         .into())

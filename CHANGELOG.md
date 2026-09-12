@@ -2,6 +2,13 @@
 
 Notable changes to ShellCanvas, newest first. Published SDK packages follow [semantic versioning](https://semver.org/), and desktop releases use the same version where practical. The project is pre-1.0, so a minor release may include breaking changes; those come with migration notes.
 
+## [0.1.5] - 2026-09-13
+
+### Added
+
+- [Desktop updates](docs/desktop-updates.md): a top-bar indicator checks for signed releases and offers a confirmed download and installation, preserving application data. Unsaved work, active operations and attached drives block installation.
+- Package-specific update targets for Windows NSIS/MSI, macOS Intel/Apple silicon app bundles, and Linux AppImage/DEB/RPM. Additional macOS/Linux release builds are manual while those platforms await live upgrade validation.
+
 ## [0.1.4] - 2026-09-12
 
 ### Added
