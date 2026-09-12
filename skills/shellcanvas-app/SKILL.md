@@ -137,6 +137,7 @@ and never sees the key.
 
 ```ts
 const conn = await desktop.network.configure({ slot: "model", suggestedEndpoint: "https://api.example.com/v1" });
+if (!conn) return; // User canceled the trusted desktop form.
 const res = await desktop.network.postJSON({ slot: "model", revision: conn.revision, body }, signal);
 try { /* read it */ } finally { await res.close(); }
 ```
