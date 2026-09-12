@@ -201,6 +201,7 @@ mod tests {
                 username: "fixture".into(),
                 key_path: String::new(),
                 password: None,
+                allow_legacy_mac: false,
                 passphrase: None,
             })
             .await

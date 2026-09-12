@@ -324,6 +324,25 @@ button:active:not(:disabled) {
   background: var(--sc-accent, #a1dcb8);
   box-shadow: 0 0 0.692308rem rgba(var(--sc-shadow-rgb), 0.200);
 }
+.ssh-compatibility {
+  margin: 0.923077rem 0;
+  font-size: 0.846154rem;
+}
+.ssh-compatibility label {
+  display: flex;
+  align-items: center;
+  gap: 0.615385rem;
+  cursor: pointer;
+}
+.ssh-compatibility input {
+  width: auto;
+  accent-color: var(--sc-accent);
+}
+.ssh-compatibility p {
+  margin: 0.615385rem 0 0;
+  color: var(--sc-warning, #d6b77a);
+  line-height: 1.5;
+}
 .system-indicators {
   display: flex;
   align-items: center;

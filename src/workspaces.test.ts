@@ -8,6 +8,21 @@ import {
   updateWorkspaces,
 } from "./workspaces";
 describe("independent workspaces", () => {
+  it("retains explicit legacy compatibility for reconnect without retaining secrets", () => {
+    const profile = connectionProfile(
+      {
+        host: "router.example",
+        port: 22,
+        username: "fixture",
+        keyPath: "",
+        allowLegacyMac: true,
+        password: "secret",
+      },
+      "Router",
+    );
+    expect(profile.allowLegacyMac).toBe(true);
+    expect(profile).not.toHaveProperty("password");
+  });
   it("reconnects the same endpoint without replacing desktop state or retaining secrets", () => {
     const profile = connectionProfile(
       {

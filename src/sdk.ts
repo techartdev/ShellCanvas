@@ -86,6 +86,7 @@ export interface HostProfile {
   port: number;
   username: string;
   keyPath: string;
+  allowLegacyMac?: boolean;
 }
 export interface ConnectOptions extends Omit<HostProfile, "name" | "id"> {
   password?: string;

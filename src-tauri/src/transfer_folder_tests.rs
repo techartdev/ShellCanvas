@@ -381,6 +381,7 @@ async fn live_folder_roundtrip() -> Result<()> {
         key_path: std::env::var("SHELLCANVAS_TEST_KEY")?,
         port: 22,
         password: None,
+        allow_legacy_mac: false,
         passphrase: None,
     })
     .await?;

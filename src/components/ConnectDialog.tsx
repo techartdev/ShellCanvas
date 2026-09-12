@@ -74,6 +74,7 @@ export function ConnectDialog({
       port: profile.port,
       username: profile.username,
       keyPath: profile.keyPath,
+      allowLegacyMac: profile.allowLegacyMac ?? false,
       password: "",
       passphrase: "",
     });
@@ -123,6 +124,7 @@ export function ConnectDialog({
         port: options.port,
         username: options.username,
         keyPath: method === "key" ? options.keyPath : "",
+        ...(options.allowLegacyMac ? { allowLegacyMac: true } : {}),
       });
       setSavedId(saved.id);
       setSelected(saved.id!);
@@ -411,6 +413,36 @@ export function ConnectDialog({
                   />
                 </label>
               )}
+              <div className="ssh-compatibility">
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={options.allowLegacyMac ?? false}
+                    onChange={(event) =>
+                      setOptions((current) => ({
+                        ...current,
+                        allowLegacyMac: event.target.checked,
+                      }))
+                    }
+                  />
+                  Allow legacy SSH MAC (HMAC-SHA1)
+                </label>
+                {options.allowLegacyMac && (
+                  <p role="status">
+                    Legacy compatibility enabled for this host. Modern
+                    algorithms stay preferred; HMAC-SHA1 is allowed if needed.
+                    MD5 remains disabled.
+                  </p>
+                )}
+                {!options.allowLegacyMac &&
+                  error.includes("No common Mac algorithm") && (
+                    <p>
+                      This host offers no matching SSH MAC. Enable compatibility
+                      only if this older host requires it, or configure stronger
+                      SSH algorithms on the host.
+                    </p>
+                  )}
+              </div>
               <div className="profile-actions">
                 <button
                   type="button"

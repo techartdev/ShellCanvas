@@ -320,6 +320,7 @@ mod tests {
                     username: "fixture".into(),
                     key_path: String::new(),
                     password: Some("local-test-only".into()),
+                    allow_legacy_mac: false,
                     passphrase: None,
                 },
                 trust,

@@ -32,6 +32,12 @@ enum ConnectionSettings {
         username: String,
         #[serde(rename = "keyPath")]
         key_path: String,
+        #[serde(
+            rename = "allowLegacyMac",
+            default,
+            skip_serializing_if = "std::ops::Not::not"
+        )]
+        allow_legacy_mac: bool,
     },
 }
 impl SavedProfile {
@@ -41,6 +47,7 @@ impl SavedProfile {
             port,
             username,
             key_path,
+            allow_legacy_mac,
         } = &self.connection;
         HostProfile {
             id: Some(self.id.clone()),
@@ -49,6 +56,7 @@ impl SavedProfile {
             port: *port,
             username: username.clone(),
             key_path: key_path.clone(),
+            allow_legacy_mac: *allow_legacy_mac,
         }
     }
 }
@@ -184,6 +192,7 @@ pub fn save(dir: &Path, mut profile: HostProfile) -> Result<HostProfile, String>
                 port: profile.port,
                 username: profile.username.clone(),
                 key_path: profile.key_path.clone(),
+                allow_legacy_mac: profile.allow_legacy_mac,
             },
         };
         if let Some(index) = index {
@@ -227,6 +236,23 @@ mod tests {
             port: 22,
             ..Default::default()
         }
+    }
+    #[test]
+    fn legacy_mac_defaults_off_and_survives_save_and_disable() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut saved = save(dir.path(), profile()).unwrap();
+        assert!(!saved.allow_legacy_mac);
+        let path = dir.path().join("hosts.json");
+        assert!(!fs::read_to_string(&path)
+            .unwrap()
+            .contains("allowLegacyMac"));
+        assert!(!list(dir.path()).unwrap()[0].allow_legacy_mac);
+        saved.allow_legacy_mac = true;
+        save(dir.path(), saved.clone()).unwrap();
+        assert!(list(dir.path()).unwrap()[0].allow_legacy_mac);
+        saved.allow_legacy_mac = false;
+        save(dir.path(), saved).unwrap();
+        assert!(!list(dir.path()).unwrap()[0].allow_legacy_mac);
     }
     #[test]
     fn persists_edits_and_removal_across_reads_with_connector_tag() {

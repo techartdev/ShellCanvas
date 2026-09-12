@@ -28,6 +28,7 @@ async fn main() -> Result<()> {
         key_path: args[2].clone(),
         port: 22,
         password: None,
+        allow_legacy_mac: false,
         passphrase: None,
     })
     .await?;

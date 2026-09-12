@@ -8,6 +8,14 @@ Editing a saved profile and choosing **Update saved host** updates that entry. S
 
 The existing versioned native JSON store and atomic/cross-process save behavior are unchanged. Profile storage excludes passwords and passphrases. Reconnect keeps the selected endpoint fixed and does not offer the host picker.
 
+## Older SSH hosts
+
+**Allow legacy SSH MAC (HMAC-SHA1)** is an explicit per-host option, disabled by default. It is saved with the profile and retained for reconnects. Existing profiles and SSH-config imports keep modern defaults. Turning the option off and saving removes the exception.
+
+This option appends HMAC-SHA1 after the modern MAC algorithms. It does not enable MD5, change cipher/key-exchange/host-key algorithms, or bypass host-key verification. The connection dialog shows a compatibility warning, and connected Host details records that legacy MAC support is enabled (not a claim that SHA1 was negotiated).
+
+Use it for older devices that report **No common Mac algorithm** and offer `hmac-sha1`. It addresses that negotiation mismatch only; a device may have other unsupported authentication, algorithm, or service requirements. Built-in SSH sources in mixed workspaces expose the same option.
+
 ## Verification
 
 The development fixture `/tests/fixtures/hosts.html?many=1` starts with 40 saved and 40 imported profiles. Browser checks passed multiword/case-insensitive username/port/host search, both source groups, keyboard scrolling to late entries, Enter selection, no-match Enter, Escape without closing the connection dialog, and Tab dismissal. Saving an imported copy and removing only that copy preserved the source and returned the count to 80. Connection submission count stayed zero. Desktop and 390-pixel narrow layouts were visually checked. These use fixture profiles; native storage persistence remains covered by the existing Rust tests and earlier native checks.
