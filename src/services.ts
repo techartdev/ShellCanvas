@@ -19,6 +19,7 @@ type SourcePins = {
   custom: Readonly<Record<string, ConnectionIdentity>>;
 };
 const commandRoles: Record<string, "files" | "console" | "settings"> = {
+  read_host_clock: "console",
   drive_mapping_available: "files",
   attach_drive: "files",
   file_volumes: "files",
@@ -69,6 +70,8 @@ function createNativeServices(pins?: SourcePins): HostServices {
     return nativeInvoke<T>(...parameters);
   };
   return {
+    readClock: (sessionId, binding) =>
+      invoke("read_host_clock", { sessionId, binding }),
     driveMappingAvailable: (sessionId) =>
       invoke("drive_mapping_available", { sessionId }),
     attachDrive: (sessionId, path, writable, drive, hostLabel) =>

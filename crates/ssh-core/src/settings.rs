@@ -42,7 +42,7 @@ impl LinuxSettings {
         let (label, description, editor, command) = if id == HOSTNAME {
             ("Static hostname", "The persistent name used by this Linux system. DNS records, /etc/hosts and saved connection addresses are managed separately.", SettingEditor::Text, READ_HOSTNAME)
         } else {
-            ("Timezone", "The host's timezone affects local timestamps and scheduled jobs. The desktop clock continues to use this device's timezone.", SettingEditor::Select, READ_TIMEZONE)
+            ("Timezone", "The host's timezone affects local timestamps and scheduled jobs. The desktop clock picks up this timezone at its next remote refresh.", SettingEditor::Select, READ_TIMEZONE)
         };
         let mut field = HostSetting {
             id: id.into(),

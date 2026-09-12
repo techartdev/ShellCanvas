@@ -7,7 +7,7 @@ Providers supply field IDs, labels, descriptions, text/select editors, current v
 ## Current Linux fields
 
 - **Static hostname:** read and set through `hostnamectl --static`. Accepted values are lowercase DNS labels separated by dots, up to 64 characters. Whitespace, shell syntax, options and empty labels are refused. Pretty/transient names, DNS records, `/etc/hosts`, saved connection addresses and SSH trust entries are not edited. Connection titles and Overview retain their connection-time snapshot until reconnect.
-- **Timezone:** current value and supported choices come from `timedatectl`. Selection must match a freshly read host choice. Changing it affects remote local timestamps and scheduled jobs; the desktop clock remains local to the client device. Clock time, NTP policy and hardware-clock mode are not changed.
+- **Timezone:** current value and supported choices come from `timedatectl`. Selection must match a freshly read host choice. Changing it affects remote local timestamps and scheduled jobs; the desktop clock picks up the new offset at its next refresh (normally within a minute). Clock time, NTP policy and hardware-clock mode are not changed.
 
 Writes are currently offered only when the remote account reports UID 0. Other accounts can read supported values. The provider does not invoke sudo or request an interactive privilege prompt. Even root can be refused by service/container policy; failures are reported. Linux detection alone does not promise working controls: systemd utilities and their host services are required. No packages or remote agent are installed.
 

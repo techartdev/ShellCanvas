@@ -32,6 +32,7 @@ mod local_mounts;
 mod native_ipc;
 mod prepared_source;
 mod profile_store;
+mod remote_clock;
 mod repository_install;
 #[cfg(test)]
 mod request_source_tests;
@@ -251,13 +252,16 @@ async fn prepare_ssh(
             None
         }
     };
-    let resource = ConnectionResource::new(
+    let clock =
+        shellcanvas_core::clock::SshHostClock::for_provider(connection.clone(), &info.provider);
+    let resource = ConnectionResource::with_clock(
         ConnectionIdentity {
             instance: state.next_id.fetch_add(1, Ordering::Relaxed) + 1,
             generation: 1,
             adapter: "ssh".into(),
         },
         connection.clone(),
+        clock,
     );
     let mut source = prepared_source::PreparedSource::new(resource, info)?;
     source.terminal = Some(connection);
@@ -820,6 +824,7 @@ pub fn run() {
             }
             let handler: fn(tauri::ipc::Invoke<tauri::Wry>) -> bool = tauri::generate_handler![
                 client_platform,
+                remote_clock::read_host_clock,
                 request_app_close,
                 drive_mappings::cancel_drive_startup,
                 drive_bridge_install::drive_bridge_installation,

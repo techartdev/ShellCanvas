@@ -27,3 +27,16 @@ pub struct ProbeContext<'a> {
     pub commands: Option<&'a dyn CommandProbe>,
     pub fallback: HostInfo,
 }
+
+/// A host clock reading, with the offset in effect at the sampled instant.
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HostClockSample {
+    pub unix_ms: i64,
+    pub offset_minutes: i32,
+}
+
+#[async_trait]
+pub trait HostClock: Send + Sync {
+    async fn read(&self) -> Result<HostClockSample>;
+}

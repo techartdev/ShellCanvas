@@ -235,6 +235,10 @@ export interface DriveMappingAvailability {
   availableDrives?: string[];
 }
 export interface HostServices {
+  readClock?(
+    sessionId: number,
+    binding?: ConnectionIdentity,
+  ): Promise<{ unixMs: number; offsetMinutes: number }>;
   driveMappingAvailable?(sessionId: number): Promise<DriveMappingAvailability>;
   attachDrive?(
     sessionId: number,

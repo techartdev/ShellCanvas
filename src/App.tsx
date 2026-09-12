@@ -49,6 +49,7 @@ import { isAdapterProfile, type WorkspaceConnection } from "./workspaces";
 import { SettingsDialog } from "./components/SettingsDialog";
 import { usePreferences } from "./preferences";
 import { useDesktopTheme } from "./themes/runtime";
+import { useRemoteClock } from "./use-remote-clock";
 import { native, nativeServices } from "./services";
 import { previewServices, previewSession } from "./preview";
 import type {
@@ -321,13 +322,9 @@ export default function App({
         (instance) => instance.appId === app.id,
       ),
   );
-  const [clock, setClock] = useState(new Date());
+  const clock = useRemoteClock(services, session, connected, label);
   const { values: preferences } = usePreferences();
   useDesktopTheme();
-  useEffect(() => {
-    const timer = setInterval(() => setClock(new Date()), 1000);
-    return () => clearInterval(timer);
-  }, [services]);
   useEffect(() => {
     void reloadProfiles();
   }, [connectOpen, reloadProfiles]);
@@ -964,15 +961,18 @@ export default function App({
           </span>
           <Wifi size={15} />
           <span className="bar-divider" />
-          <time title="Local device time">
+          <time title={clock.title} aria-label={clock.title}>
+            {clock.local && <small>Local</small>}
             <span className="clock-date">
-              {clock.toLocaleDateString(undefined, {
+              {clock.date.toLocaleDateString(undefined, {
+                timeZone: clock.timeZone,
                 month: "short",
                 day: "numeric",
               })}
             </span>
             <b>
-              {clock.toLocaleTimeString(undefined, {
+              {clock.date.toLocaleTimeString(undefined, {
+                timeZone: clock.timeZone,
                 hour: "2-digit",
                 minute: "2-digit",
                 second: preferences.clockSeconds ? "2-digit" : undefined,
