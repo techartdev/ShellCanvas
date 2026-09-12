@@ -32,6 +32,7 @@ mod local_mounts;
 mod native_ipc;
 mod prepared_source;
 mod profile_store;
+mod remote_clock;
 mod repository_install;
 #[cfg(test)]
 mod request_source_tests;
@@ -213,6 +214,9 @@ async fn prepare_ssh(
     };
     let connection = Arc::new(connection);
     let mut info = inspect_host(&connection).await;
+    if options.allow_legacy_mac {
+        info.notices.push("Legacy SSH compatibility enabled: HMAC-SHA1, RSA/SHA1 authentication and 2048-bit exchange groups are allowed when needed. Modern algorithms remain preferred; MD5 is disabled.".into());
+    }
     let settings = settings_for_host(&info.provider, Some(connection.clone()));
     if settings.is_some() {
         info.capabilities.push("host.settings".into());
@@ -223,8 +227,9 @@ async fn prepare_ssh(
     let mut transfers: Option<Arc<dyn FileTransferService>> = None;
     let text: Option<Arc<dyn TextFileService>> = match connection.text_files().await {
         Ok(service) => {
-            if service.can_save() {
-                info.capabilities.push("files.edit".into());
+            info.capabilities.push("files.edit".into());
+            if !service.can_save() {
+                info.notices.push("Saving over existing files requires confirmation: this server cannot replace files atomically. An interrupted save can leave partial contents.".into());
             }
             let service = Arc::new(service);
             let browser = Arc::new(SftpBrowser(service.clone()));
@@ -251,13 +256,16 @@ async fn prepare_ssh(
             None
         }
     };
-    let resource = ConnectionResource::new(
+    let clock =
+        shellcanvas_core::clock::SshHostClock::for_provider(connection.clone(), &info.provider);
+    let resource = ConnectionResource::with_clock(
         ConnectionIdentity {
             instance: state.next_id.fetch_add(1, Ordering::Relaxed) + 1,
             generation: 1,
             adapter: "ssh".into(),
         },
         connection.clone(),
+        clock,
     );
     let mut source = prepared_source::PreparedSource::new(resource, info)?;
     source.terminal = Some(connection);
@@ -478,6 +486,7 @@ async fn read_text(
         revision: text_revision(text.as_bytes()),
         text,
         writable: false,
+        save_requires_confirmation: false,
     })
 }
 #[tauri::command]
@@ -487,6 +496,7 @@ async fn save_text(
     path: String,
     text: String,
     revision: String,
+    allow_non_atomic: Option<bool>,
     state: State<'_, DesktopState>,
 ) -> Result<TextDocument, String> {
     let service = session_service(
@@ -498,7 +508,7 @@ async fn save_text(
     )
     .await?;
     service
-        .save_text(&path, &text, &revision)
+        .save_text_confirmed(&path, &text, &revision, allow_non_atomic.unwrap_or(false))
         .await
         .map_err(|e| format!("{e:#}"))
 }
@@ -820,6 +830,7 @@ pub fn run() {
             }
             let handler: fn(tauri::ipc::Invoke<tauri::Wry>) -> bool = tauri::generate_handler![
                 client_platform,
+                remote_clock::read_host_clock,
                 request_app_close,
                 drive_mappings::cancel_drive_startup,
                 drive_bridge_install::drive_bridge_installation,

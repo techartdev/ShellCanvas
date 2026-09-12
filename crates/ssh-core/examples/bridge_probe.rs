@@ -23,6 +23,7 @@ async fn main() -> Result<()> {
                 port: 22,
                 key_path: args[3].clone(),
                 password: std::env::var("SHELLCANVAS_PROBE_PASSWORD").ok(),
+                allow_legacy_mac: false,
                 passphrase: None,
             },
             PathBuf::from(&args[4]),

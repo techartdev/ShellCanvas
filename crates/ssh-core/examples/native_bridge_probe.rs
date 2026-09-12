@@ -141,6 +141,7 @@ async fn main() -> Result<()> {
                 port: 22,
                 key_path: args[3].clone(),
                 password: None,
+                allow_legacy_mac: false,
                 passphrase: None,
             },
             PathBuf::from(&args[4]),

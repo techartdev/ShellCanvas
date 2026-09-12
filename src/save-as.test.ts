@@ -47,6 +47,22 @@ function fixture() {
   } as unknown as SessionServices;
   return { target, directory, services, list, readText, createText, saveText };
 }
+it("keeps non-atomic replacement metadata and refuses an unconfirmed commit", async () => {
+  const f = fixture();
+  f.target.saveRequiresConfirmation = true;
+  const target = await prepareSaveAs(f.services, "root", "notes.txt", true);
+  await expect(commitSaveAs(f.services, target, "draft")).rejects.toThrow(
+    "explicit confirmation",
+  );
+  expect(f.saveText).not.toHaveBeenCalled();
+  await commitSaveAs(f.services, target, "draft", true);
+  expect(f.saveText).toHaveBeenCalledWith(
+    "object@canonical",
+    "draft",
+    "r1",
+    true,
+  );
+});
 it("prepares an opaque destination without writing and commits only its reviewed revision", async () => {
   const f = fixture();
   const review = await prepareSaveAs(

@@ -158,6 +158,9 @@ pub struct TextDocument {
     pub text: String,
     pub revision: String,
     pub writable: bool,
+    /// Saving over this file requires explicit acceptance of non-atomic writes.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub save_requires_confirmation: bool,
 }
 
 #[async_trait]
@@ -208,6 +211,17 @@ pub trait TextFileService: Send + Sync {
         text: &str,
         expected_revision: &str,
     ) -> Result<TextDocument>;
+    /// Existing providers retain their save semantics. Non-atomic providers must
+    /// reject ordinary save_text and require an explicit per-operation opt-in.
+    async fn save_text_confirmed(
+        &self,
+        path: &str,
+        text: &str,
+        expected_revision: &str,
+        _allow_non_atomic: bool,
+    ) -> Result<TextDocument> {
+        self.save_text(path, text, expected_revision).await
+    }
 }
 #[async_trait]
 pub trait FileMutationService: Send + Sync {

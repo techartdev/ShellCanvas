@@ -12,6 +12,7 @@ async fn main() -> anyhow::Result<()> {
         username: args[2].clone(),
         key_path: args[3].clone(),
         password: std::env::var("SHELLCANVAS_PROBE_PASSWORD").ok(),
+        allow_legacy_mac: false,
         passphrase: None,
     };
     let connection =

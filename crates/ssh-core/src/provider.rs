@@ -134,7 +134,66 @@ impl SystemProvider for WindowsProvider {
     }
 }
 
-static SYSTEM_PROVIDERS: &[&dyn SystemProvider] = &[&LinuxProvider, &MacProvider, &WindowsProvider];
+pub struct RouterOsProvider;
+pub const ROUTEROS_VERSION_PROBE: &str =
+    ":put (\"ShellCanvas-RouterOS:\" . [/system resource get version])";
+pub const ROUTEROS_IDENTITY_PROBE: &str = ":put [/system identity get name]";
+
+fn routeros_version(output: &str) -> Option<&str> {
+    let version = output.trim().strip_prefix("ShellCanvas-RouterOS:")?;
+    let number = version.split_whitespace().next()?;
+    let mut parts = number.split('.');
+    if !parts.next()?.chars().all(|c| c.is_ascii_digit())
+        || !parts.next()?.starts_with(|c: char| c.is_ascii_digit())
+        || version.contains(['\r', '\n'])
+        || version.len() > 128
+    {
+        return None;
+    }
+    Some(version)
+}
+
+#[async_trait]
+impl SystemProvider for RouterOsProvider {
+    fn id(&self) -> &'static str {
+        "routeros"
+    }
+    async fn detect(&self, context: &ProbeContext<'_>) -> bool {
+        match context.commands {
+            Some(commands) => commands
+                .probe(ROUTEROS_VERSION_PROBE)
+                .await
+                .is_ok_and(|output| routeros_version(&output).is_some()),
+            None => false,
+        }
+    }
+    async fn inspect(&self, context: &ProbeContext<'_>) -> Result<HostInfo> {
+        let commands = context
+            .commands
+            .context("RouterOS inspection needs command probes")?;
+        let output = commands.probe(ROUTEROS_VERSION_PROBE).await?;
+        let version = routeros_version(&output).context("Invalid RouterOS version")?;
+        let mut info = context.fallback.clone();
+        info.provider = self.id().into();
+        info.system = format!("MikroTik RouterOS {version}");
+        info.hostname = commands
+            .probe(ROUTEROS_IDENTITY_PROBE)
+            .await
+            .ok()
+            .filter(|name| {
+                !name.trim().is_empty() && name.len() <= 256 && !name.chars().any(char::is_control)
+            })
+            .unwrap_or_else(|| "MikroTik".into());
+        Ok(info)
+    }
+}
+
+static SYSTEM_PROVIDERS: &[&dyn SystemProvider] = &[
+    &LinuxProvider,
+    &MacProvider,
+    &RouterOsProvider,
+    &WindowsProvider,
+];
 
 pub fn settings_for_host(
     provider: &str,
@@ -339,6 +398,44 @@ mod detection_tests {
     }
 
     struct LinuxCommands;
+    struct RouterCommands;
+    #[async_trait]
+    impl CommandProbe for RouterCommands {
+        async fn probe(&self, command: &str) -> Result<String> {
+            Ok(match command {
+                ROUTEROS_VERSION_PROBE => "ShellCanvas-RouterOS:6.49.19 (long-term)",
+                ROUTEROS_IDENTITY_PROBE => "Fixture router",
+                _ => bail!("Not a RouterOS command"),
+            }
+            .into())
+        }
+    }
+    #[tokio::test]
+    async fn routeros_is_identified_without_inventing_services_or_linux_settings() {
+        let context = ProbeContext {
+            commands: Some(&RouterCommands),
+            fallback: fallback(&["terminal", "files.read"]),
+        };
+        let info = inspect_with_providers(&context, SYSTEM_PROVIDERS, OP_TIMEOUT).await;
+        assert_eq!(info.provider, "routeros");
+        assert_eq!(info.system, "MikroTik RouterOS 6.49.19 (long-term)");
+        assert_eq!(info.hostname, "Fixture router");
+        assert_eq!(info.capabilities, vec!["terminal", "files.read"]);
+        assert!(settings_for_host("routeros", None).is_none());
+        for output in [
+            "UnknownOS",
+            "syntax error",
+            "ShellCanvas-RouterOS:error",
+            "echo ShellCanvas-RouterOS:7.1",
+            "ShellCanvas-RouterOS:7.1\nextra",
+        ] {
+            assert!(routeros_version(output).is_none(), "{output}");
+        }
+        assert_eq!(
+            routeros_version("ShellCanvas-RouterOS:7.20beta2 (development)"),
+            Some("7.20beta2 (development)")
+        );
+    }
     #[async_trait]
     impl CommandProbe for LinuxCommands {
         async fn probe(&self, command: &str) -> Result<String> {

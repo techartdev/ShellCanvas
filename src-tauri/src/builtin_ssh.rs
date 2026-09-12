@@ -10,6 +10,7 @@ pub fn info() -> AdapterInfo {
             {"id":"port","label":"Port","kind":"number","default":22,"required":true},
             {"id":"username","label":"Username","kind":"text","required":true},
             {"id":"keyPath","label":"Private key path","kind":"text","default":""},
+            {"id":"allowLegacyMac","label":"Allow legacy SSH: HMAC-SHA1, RSA/SHA1, 2048-bit groups","kind":"boolean","default":false},
             {"id":"password","label":"Password","kind":"password"},
             {"id":"passphrase","label":"Key passphrase","kind":"password"}
         ],"generation":"builtin","revision":REVISION,"enabled":true,"fileCount":0,"bytes":0

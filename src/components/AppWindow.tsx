@@ -25,6 +25,7 @@ import { ContextMenu } from "./ContextMenu";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { RpcError } from "../extensions/rpc";
 import type { WindowControls } from "../extensions/window-api";
+import { WindowResizeHandles } from "./WindowResizeHandles";
 export function AppWindow({
   app,
   context,
@@ -588,6 +589,16 @@ export function AppWindow({
           </AppBoundary>
         )}
       </div>
+      {desktopLayout && !arranged && visible && workspaceActive && (
+        <WindowResizeHandles
+          element={element}
+          resize={({ left, top, width, height }) => {
+            setAdjustment(null);
+            setPosition({ left, top });
+            setSize({ width, height });
+          }}
+        />
+      )}
       {menu && (
         <ContextMenu
           {...menu}

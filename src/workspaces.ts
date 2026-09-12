@@ -26,6 +26,7 @@ export function connectionProfile(
     port: options.port,
     username: options.username,
     keyPath: options.keyPath,
+    ...(options.allowLegacyMac ? { allowLegacyMac: true } : {}),
   };
 }
 export function sameEndpoint(a: WorkspaceConnection, b: WorkspaceConnection) {

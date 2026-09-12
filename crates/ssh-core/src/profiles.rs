@@ -12,6 +12,8 @@ pub struct HostProfile {
     pub port: u16,
     pub username: String,
     pub key_path: String,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub allow_legacy_mac: bool,
 }
 
 pub fn expand_home(path: &str) -> PathBuf {

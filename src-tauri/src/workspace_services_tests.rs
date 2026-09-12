@@ -24,6 +24,7 @@ async fn browsing_and_text_read_support_are_reported_independently_of_write_perm
                 text: "read only".into(),
                 revision: "r1".into(),
                 writable: false,
+                save_requires_confirmation: false,
             })
         }
         async fn create_text(&self, _: &str, _: &str, _: &str) -> Result<TextDocument> {
@@ -741,10 +742,11 @@ async fn dispatched_write_after_workspace_close_reports_uncertainty_and_never_re
                 text: text.into(),
                 revision: "new".into(),
                 writable: true,
+                save_requires_confirmation: false,
             })
         }
     }
-    for replace in [false, true] {
+    for (replace, confirmed) in [(false, false), (true, false), (false, true), (true, true)] {
         let (resource, _) = source(8, "fixture.files");
         let mut workspace = WorkspaceServices::new(vec![resource.clone()]).unwrap();
         let survivor = WorkspaceServices::new(vec![resource.clone()]).unwrap();
@@ -755,8 +757,15 @@ async fn dispatched_write_after_workspace_close_reports_uncertainty_and_never_re
         });
         workspace.bind_text(&resource, text.clone()).unwrap();
         let handle = workspace.text.clone().unwrap();
-        let task =
-            tokio::spawn(async move { handle.save_text("opaque@text", "draft", "old").await });
+        let task = tokio::spawn(async move {
+            if confirmed {
+                handle
+                    .save_text_confirmed("opaque@text", "draft", "old", true)
+                    .await
+            } else {
+                handle.save_text("opaque@text", "draft", "old").await
+            }
+        });
         text.entered.notified().await;
         if replace {
             let (fresh, _) = source(140, "fixture.replacement");

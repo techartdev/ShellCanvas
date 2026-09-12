@@ -17,10 +17,19 @@ pub struct ConnectionResource {
     outcome: watch::Sender<Option<Result<(), String>>>,
     leases: Mutex<usize>,
     runtime: tokio::runtime::Handle,
+    pub clock: Option<Arc<dyn shellcanvas_services::HostClock>>,
 }
 
 impl ConnectionResource {
     pub fn new(identity: ConnectionIdentity, lifecycle: Arc<dyn ConnectionLifecycle>) -> Arc<Self> {
+        Self::with_clock(identity, lifecycle, None)
+    }
+
+    pub fn with_clock(
+        identity: ConnectionIdentity,
+        lifecycle: Arc<dyn ConnectionLifecycle>,
+        clock: Option<Arc<dyn shellcanvas_services::HostClock>>,
+    ) -> Arc<Self> {
         let (outcome, _) = watch::channel(None);
         Arc::new(Self {
             identity,
@@ -29,6 +38,7 @@ impl ConnectionResource {
             outcome,
             leases: Mutex::new(0),
             runtime: tokio::runtime::Handle::current(),
+            clock,
         })
     }
 

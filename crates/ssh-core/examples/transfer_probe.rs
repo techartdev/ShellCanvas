@@ -14,6 +14,7 @@ async fn main() -> Result<()> {
         username: args[2].clone(),
         key_path: args[3].clone(),
         password: None,
+        allow_legacy_mac: false,
         passphrase: None,
     })
     .await?;

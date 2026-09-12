@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 import type { Capability, FileEntry, SessionServices } from "./sdk";
 import { commitSaveAs, prepareSaveAs } from "./save-as";
+import { nonAtomicSaveWarning } from "./text-save";
 import {
   SystemError,
   type DialogControl,
@@ -249,7 +250,7 @@ export class SystemScope {
               {
                 title: "Replace existing file?",
                 kind: "warning",
-                message: `Replace “${target.name}” with your draft? The current file contents will be replaced.`,
+                message: `Replace “${target.name}” with your draft? ${target.saveRequiresConfirmation ? nonAtomicSaveWarning : "The current file contents will be replaced."}`,
                 buttons: [
                   { id: "cancel", label: "Keep editing" },
                   { id: "replace", label: "Replace file", destructive: true },
@@ -266,7 +267,13 @@ export class SystemScope {
           this.require(
             target.kind === "replace" ? "files.edit" : "files.create",
           );
-          const saved = await commitSaveAs(services, target, contents);
+          const saved = await commitSaveAs(
+            services,
+            target,
+            contents,
+            target.kind === "replace" &&
+              target.saveRequiresConfirmation === true,
+          );
           this.check(control);
           return saved;
         },

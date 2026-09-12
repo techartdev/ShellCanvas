@@ -5,6 +5,7 @@ import { createPortal } from "react-dom";
 import { FilePenLine, LoaderCircle } from "lucide-react";
 import type { SessionServices, TextDocument } from "../sdk";
 import { commitSaveAs, prepareSaveAs, type SaveDestination } from "../save-as";
+import { nonAtomicSaveWarning } from "../text-save";
 import "./FileActionDialog.css";
 
 export function SaveAsDialog({
@@ -82,7 +83,14 @@ export function SaveAsDialog({
         setReview(destination);
         return;
       }
-      const result = await commitSaveAs(services, destination, text);
+      const result = await commitSaveAs(
+        services,
+        destination,
+        text,
+        !!review &&
+          review.kind === "replace" &&
+          review.saveRequiresConfirmation === true,
+      );
       if (!currentBinding()) return;
       saved(result);
       close();
@@ -113,7 +121,9 @@ export function SaveAsDialog({
       <h2>{review ? "Replace existing file?" : "Save as"}</h2>
       <p className="file-action-description">
         {review
-          ? "This file already exists. Replacing it saves your draft over its current contents. Other open drafts will be kept."
+          ? review.kind === "replace" && review.saveRequiresConfirmation
+            ? nonAtomicSaveWarning
+            : "This file already exists. Replacing it saves your draft over its current contents. Other open drafts will be kept."
           : "Choose an existing remote folder and a file name. If a file already exists, you can review it before replacing it."}
       </p>
       <form

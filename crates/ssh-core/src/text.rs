@@ -143,7 +143,8 @@ impl SftpTextFiles {
                 path: location.path,
                 revision: document_revision(&text, &metadata),
                 text,
-                writable: self.can_save(),
+                writable: true,
+                save_requires_confirmation: !self.can_save(),
             },
             metadata,
         ))
@@ -163,6 +164,66 @@ impl SftpTextFiles {
 }
 #[async_trait]
 impl TextFileService for SftpTextFiles {
+    async fn save_text_confirmed(
+        &self,
+        path: &str,
+        text: &str,
+        revision: &str,
+        allow_non_atomic: bool,
+    ) -> Result<TextDocument> {
+        if self.can_save() || !allow_non_atomic {
+            return self.save_text(path, text, revision).await;
+        }
+        validate_path(path)?;
+        validate_text(text)?;
+        let _lock = self.save_lock.lock().await;
+        let original = self.snapshot(path).await?.0;
+        check_revision(&original.revision, revision)?;
+        if original.path != path {
+            bail!("The file path changed. Reopen its resolved path before saving.");
+        }
+        // Never create or truncate on open. A denied open leaves the original intact.
+        // In-place writes preserve owner/permissions but are deliberately non-atomic.
+        let handle = self
+            .raw
+            .open(path, OpenFlags::WRITE, FileAttributes::empty())
+            .await?
+            .handle;
+        let write: Result<()> = async {
+            let current = self.snapshot(path).await?.0;
+            if current.path != path {
+                bail!("CONFLICT: The remote file path changed.");
+            }
+            check_revision(&current.revision, revision)?;
+            for (index, chunk) in text.as_bytes().chunks(32768).enumerate() {
+                self.raw
+                    .write(&handle, (index * 32768) as u64, chunk.to_vec())
+                    .await?;
+            }
+            self.raw
+                .fsetstat(
+                    &handle,
+                    FileAttributes {
+                        size: Some(text.len() as u64),
+                        ..FileAttributes::empty()
+                    },
+                )
+                .await?;
+            if self.fsync {
+                self.extension("fsync@openssh.com", &[&handle]).await?;
+            }
+            Ok(())
+        }
+        .await;
+        let closed = self.raw.close(handle).await;
+        write.and(closed.map(|_| ()).map_err(Into::into))
+            .context("Non-atomic save did not complete. The remote file may contain partial changes. Your draft is intact; reload or inspect the remote file before retrying")?;
+        let saved = self.snapshot(path).await.context("Save finished but readback failed. Keep your draft and inspect the remote file before retrying")?.0;
+        if saved.text != text {
+            bail!("CONFLICT: The file changed after saving. Your draft is intact.");
+        }
+        Ok(saved)
+    }
     async fn create_text(&self, parent: &str, name: &str, text: &str) -> Result<TextDocument> {
         validate_text(text)?;
         let _lock = self.save_lock.lock().await;
@@ -246,7 +307,7 @@ impl TextFileService for SftpTextFiles {
         validate_text(text)?;
         if !self.can_save() {
             bail!(
-                "This SFTP server does not support atomic file replacement. Saving is unavailable."
+                "This SFTP server does not support atomic file replacement. Confirm a non-atomic save in the editor or use Save As with a new name."
             );
         }
         let _lock = self.save_lock.lock().await;
