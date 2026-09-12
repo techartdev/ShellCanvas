@@ -10,6 +10,7 @@ The public user documentation lives at [shellcanvas.com/docs](https://shellcanva
 
 ## User-facing implementation references
 
+- Device setup: [Home Assistant via Terminal & SSH](home-assistant.md)
 - Connections and trust: [host profiles](host-profiles.md), [SSH host identity](ssh-host-trust.md), [recovery](connection-recovery.md) and [workspace profiles](workspace-profiles.md)
 - Desktop work: [Files](file-actions.md), [transfers](transfers.md), [Editor](text-editor.md), [Terminal](terminal-services.md), [settings](settings.md) and [themes](themes.md)
 - Extensions: [runtime apps](runtime-apps.md), [repository installation](repository-apps.md), [app SDK](app-sdk.md), [adapter SDK](adapter-sdk.md) and [custom services](custom-services.md)
