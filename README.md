@@ -49,6 +49,17 @@ SSH gives you a shell. ShellCanvas gives you the rest of a computer: a file mana
   <img src="docs/assets/readme/how-it-works-light.webp" alt="How it works: ShellCanvas runs on your computer and connects to your servers over an encrypted SSH connection. The host key is checked first; SFTP carries files and a PTY carries terminals. Nothing is installed on the servers.">
 </picture>
 
+## Quick links
+
+[Download](https://github.com/techartdev/ShellCanvas/releases/latest) · [Website](https://shellcanvas.com) · [Documentation](https://shellcanvas.com/docs/) · [Get started](#get-started) · [Build apps and adapters](#build-for-shellcanvas) · [AI development skills](docs/ai-development-skills.md) · [Contribute](CONTRIBUTING.md)
+
+Related public repositories:
+
+| Project | What it adds |
+| --- | --- |
+| [Canvas Assistant](https://github.com/techartdev/ShellCanvas-Assistant) | An optional AI assistant with conversations, attachments and remote workspace tools that require your approval. |
+| [Drive Bridge](https://github.com/techartdev/ShellCanvas-DriveBridge) | An optional free app for attaching remote folders as local drives, with WinFsp and FUSE backends. Development preview. |
+
 ## A quick tour
 
 ### Files that feel local
