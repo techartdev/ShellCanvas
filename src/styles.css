@@ -225,9 +225,6 @@ button:active:not(:disabled) {
   place-items: center;
   width: 1.769231rem;
   height: 1.769231rem;
-  background: var(--sc-selection, #91b5af1f);
-  border: 1px solid var(--sc-border, #c2e4df1a);
-  border-radius: 0.538462rem;
 }
 .alpha-tag {
   font-size: 0.615385rem;

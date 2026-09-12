@@ -2,6 +2,17 @@
 
 Notable changes to ShellCanvas, newest first. Published SDK packages follow [semantic versioning](https://semver.org/), and desktop releases use the same version where practical. The project is pre-1.0, so a minor release may include breaking changes; those come with migration notes.
 
+## [0.1.3] - 2026-09-12
+
+### Changed
+
+- The desktop app, Windows installers, toolbar and Settings now use the terminal mark from the ShellCanvas website. Native icon assets have been regenerated for all existing platform targets.
+- Added README quick links and related public projects, and updated the AI development skills for portable app and adapter workflows.
+
+### Fixed
+
+- Leaving an App Manager section now cancels pending repository downloads and ignores late package reviews or errors. An old inspection can no longer reopen a review or clear a newer operation's busy state.
+
 ## [0.1.2] - 2026-09-12
 
 ### Added
@@ -44,6 +55,7 @@ The initial public preview.
 
 See the repository documentation and release notes for current platform validation and known limitations.
 
+[0.1.3]: https://github.com/techartdev/ShellCanvas/compare/v0.1.2...v0.1.3
 [0.1.2]: https://github.com/techartdev/ShellCanvas/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/techartdev/ShellCanvas/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/techartdev/ShellCanvas/releases/tag/v0.1.0

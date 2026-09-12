@@ -16,6 +16,7 @@ import {
 import { usePreferences, type Preferences } from "../preferences";
 import { Appearance } from "../themes/Appearance";
 import { DriveBridgeSettings } from "./DriveBridgeSettings";
+import { ShellCanvasMark } from "./ShellCanvasMark";
 import type { HostProfile, Session } from "../sdk";
 import "./SettingsDialog.css";
 
@@ -196,7 +197,9 @@ export function SettingsDialog({
             </button>
           ))}
           <div className="preferences-brand">
-            <span className="preferences-brand-mark">S</span>
+            <span className="preferences-brand-mark">
+              <ShellCanvasMark size={28} />
+            </span>
             <strong>ShellCanvas</strong>
             <small>Your desktop. Your host.</small>
           </div>
