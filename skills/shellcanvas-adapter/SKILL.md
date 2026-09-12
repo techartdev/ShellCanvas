@@ -1,84 +1,188 @@
 ---
 name: shellcanvas-adapter
-description: Implement a ShellCanvas connection or device adapter, including SSH alternatives, serial, file protocols and custom APIs, through versioned service contracts. Use for device access implementations rather than desktop app UI.
+description: Implement a ShellCanvas connection adapter in Rust or any language, exposing a device or protocol through versioned service contracts so workspaces gain files, a console, settings or custom methods. Use for device access, not for desktop app UI.
 ---
 
-Locate the ShellCanvas checkout through `crates/adapter-sdk`. Read
-[the adapter SDK guide](../../docs/adapter-sdk.md) and
-[the process/service contract](../../docs/adapter-process.md). Use the user's
-chosen device/protocol. A synthetic echo demonstrates the runtime contract; it
-does not count as implementing a real protocol.
+An adapter is a native process the desktop launches and talks to over stdin and
+stdout. It decides what a connection can do by advertising services; the desktop
+enables exactly those roles and shows the rest as unavailable.
 
-## Choose the services
-
-Expose only supported service families. Files, console, remote settings and
-namespaced custom services can come from different connections in a workspace.
-Files methods must share one coherent location/revision namespace. Do not assume
-that a file path maps to a console path, or inject detection commands into an
-interactive serial/Telnet session. Optional capabilities should stay unavailable
-with their reason while supported tools remain usable.
-
-For a normal desktop feature, implement its documented standard service. For a
-vendor-specific operation, declare a namespaced custom service and version; a
-new kernel method is not required. A device provider can interpret responses
-within the adapter; apps should not need OS/protocol branches. Read
-[composition](../../docs/connections.md) when combining sources.
-
-## Start an independent adapter
-
-Build `shellcanvas-adapter` from an exported SDK source directory. Its
-[command reference](../../crates/adapter-sdk/README.md) describes dependencies.
-With the CLI on PATH, resolve these paths and run:
+The SDK and its CLI are published, so nothing here needs a ShellCanvas checkout:
 
 ```sh
-shellcanvas-adapter init DEVICE_DIR --id org.example.device --name "My device" --sdk-source SDK_SOURCE_DIR
-shellcanvas-adapter build DEVICE_DIR NEW_PACKAGE_DIR --debug
-shellcanvas-adapter validate NEW_PACKAGE_DIR/adapter.json
+cargo install shellcanvas-adapter-sdk     # installs the shellcanvas-adapter CLI
 ```
 
-For standard services append `--template files`, `--template console` or
-`--template settings` after `--sdk-source SDK_SOURCE_DIR`. The defaults remain
-custom echo/wait. Files demonstrates read-only paged inventory and opaque
-locations; console demonstrates cancelable byte loopback and independent
-session cleanup; settings demonstrates revision-checked updates and readback.
-Each generated README names the workspace role to assign. Do not claim these
-synthetic examples implement the user's actual protocol.
+```toml
+# Or just depend on it, and write the adapter yourself.
+[dependencies]
+shellcanvas-adapter-sdk = "0.1.0"
+tokio = { version = "1", features = ["macros"] }   # only for tokio::select!
+```
 
-Replace the generated service with the user's device implementation. Configuration
-belongs in the manifest's typed fields; use password fields for secrets and no
-secret defaults. Initialize from the configuration message, not process args.
-Rust adapters can implement `Adapter::initialize` and `Adapter::call`; other
-languages may implement the same wire contract and use the CLI to package their
-executable. No desktop rebuild should be needed to load the new adapter.
+**`shellcanvas-adapter init` requires `--sdk-source` pointing at a local copy of
+the SDK crate, which a developer without a checkout does not have.** Do not send
+the user hunting for one. Either write the small project by hand against the
+crates.io dependency above, or generate with `--sdk-source` and then delete the
+`path = …` key from the generated `Cargo.toml` so it resolves from crates.io.
+`pack`, `validate` and `schema` need no SDK source at all.
 
-## Preserve operational behavior
+Reference: <https://shellcanvas.com/docs/adapter-sdk/quickstart.html>
 
-The SDK handles framing and concurrent request dispatch. Protect shared device
-state without blocking console writes behind a waiting read. Observe each
-request's cancellation context, clean up, and return the authoritative outcome.
-Use RAII cleanup as well because the host can terminate the process. stdout is
-reserved for the protocol; logs/errors must not expose credentials.
+## Advertise only what the device can honour
 
-Use provider-owned revisions for writes and no-clobber publication where the
-standard contract requires it. Transfers use bounded chunks and incremental
-directory readers, not whole-tree arrays or arbitrary total-entry caps. A canceled
-open/abort must not resurrect a retired resource. Cancellation cannot undo an
-already completed write. Never silently retry mutations or substitute endpoints.
+`initialize` returns a service catalog, and that catalog is fixed for the life of
+the connection. A role appears in the desktop only when its exact service,
+version and full method set are present.
 
-Native adapters execute with the user's OS permissions. App UI grants do not
-sandbox adapter network/device access; keep that distinction in documentation.
+| Desktop role | Service | Required methods |
+| --- | --- | --- |
+| Files browsing | `files` v1 | `files.list`, `files.locate`, `files.preview` |
+| Opening text | `files` v1 | `files.readText` |
+| Create/rename/delete | `files` v1 | `files.makeDirectory`, `files.rename`, `files.remove` (all three) |
+| Downloads | `files` v1 | `files.download.open/read/finish` + `files.transfer.abort` |
+| Terminal | `console` v1 | `console.open`, `console.read`, `console.write`, `console.close` |
+| Remote settings | `host` v1 | `host.settings.read`; add `host.settings.apply` to allow changes |
 
-## Verify
+Partial support is normal and better than failing late: omit `files.saveText`
+and documents open read-only; omit `host.settings.apply` and settings render
+read-only. Anything else you expose is a custom service, named like a domain you
+own (`com.example.thermostat`), reachable by apps holding `services.<id>`.
 
-Inspect [connection diagnostics](../../docs/adapter-diagnostics.md) for startup,
-request and cleanup observations. Reports omit payloads and raw adapter messages;
-do not infer a mutation's authoritative outcome from cancellation or a deadline.
-Retained history must not keep a process or package generation alive.
+A synthetic echo proves the runtime contract and nothing about a real protocol.
+Do not describe it as device support.
+<https://shellcanvas.com/docs/adapter-sdk/services.html>
 
-Test the implemented protocol with representative fixtures, including unsupported
-services, errors, cancellation and cleanup. `npm run verify:adapter-sdk` proves
-independent export, generation, packaging and production-host interoperability
-for all four synthetic starters. The [adapter package guide](../../docs/adapter-packages.md)
-documents the Windows install/connect/replacement fixture. Follow it for runtime
-integration; use a real device only within the user's authorized scope. Report
-which device/version, platform and failure paths were actually exercised.
+## Implement initialize and call
+
+Two methods carry the whole adapter. Configuration arrives in the initialize
+message — never as process arguments — and every call gets a cancellation
+context.
+
+```rust
+// Everything comes from the SDK, including async_trait and serde_json.
+use shellcanvas_adapter_sdk::{
+    async_trait, json, run, Adapter, CallError, RequestContext, ServiceDescriptor, Value,
+};
+
+struct Device;
+
+#[async_trait]
+impl Adapter for Device {
+    async fn initialize(
+        &self,
+        configuration: Value,
+        _context: RequestContext,
+    ) -> Result<Vec<ServiceDescriptor>, CallError> {
+        configuration
+            .get("endpoint")
+            .and_then(Value::as_str)
+            .ok_or_else(|| CallError::new("invalid", "Configure the device address"))?;
+        Ok(vec![ServiceDescriptor {
+            id: "com.example.thermostat".into(),
+            version: 1,
+            methods: vec!["com.example.thermostat.read".into()],
+        }])
+    }
+
+    async fn call(
+        &self,
+        method: &str,
+        _params: Value,
+        context: RequestContext,
+    ) -> Result<Value, CallError> {
+        match method {
+            "com.example.thermostat.read" => tokio::select! {
+                _ = context.canceled() => Err(CallError::new("aborted", "Canceled")),
+                reading = self.read() => reading,
+            },
+            _ => Err(CallError::new("unavailable", "Unknown method")),
+        }
+    }
+}
+
+impl Device {
+    async fn read(&self) -> Result<Value, CallError> {
+        Ok(json!({ "celsius": 21.5 }))
+    }
+}
+
+fn main() -> std::io::Result<()> {
+    run(Device)   // owns the runtime, and speaks the protocol on stdin/stdout
+}
+```
+
+Error codes are fixed: `invalid`, `closed`, `aborted`, `denied`, `unavailable`,
+`busy`, `failed`, `deadline`. Use `unavailable` when the operation does not exist
+here and `denied` when it exists but is refused.
+
+## Respect the protocol's hard edges
+
+The SDK owns framing and dispatch, but a few limits will end a connection if you
+ignore them, and one of them is easy to hit by accident.
+
+**stdout is the protocol.** Anything printed there corrupts a frame and drops
+the connection. Standard error is discarded by the host, so an adapter that
+needs logs must write its own file. This is the single most common cause of an
+adapter that starts and immediately dies.
+
+Frames cap at 4 MiB, 32 requests may be in flight, calls deadline at 30 seconds,
+and replies may arrive out of order. Page or chunk large results rather than
+sending a tree in one message. Reply `busy` instead of queueing without bound.
+
+Concurrency is real: a waiting console read must not hold a lock that a write or
+Concurrency is real: a waiting console read must not hold a lock that a write or close needs. Observe `context.canceled()`, release resources, and return the authoritative outcome — a cancelled handler keeps its slot until it returns.
+authoritative outcome — a cancelled handler keeps its slot until it returns.
+<https://shellcanvas.com/docs/adapter-sdk/protocol.html>
+
+## Never let cancellation invent an outcome
+
+Cancellation, a deadline and a dropped pipe all mean "we stopped waiting" — none
+of them means the device did not act.
+
+A completed write stays completed. A cancelled open must not resurrect a retired
+handle. Do not silently retry a mutation, and do not substitute a different
+endpoint when one fails. Where the result is genuinely unknown, say so and let
+the layer above decide; the desktop is built to report uncertainty rather than
+guess.
+
+Use provider-owned revisions and no-clobber publication wherever the standard
+file contract requires it, and implement RAII cleanup as well as graceful
+shutdown — the host can terminate the process without a grace period.
+
+## Package the executable
+
+Packaging hashes every file and needs no SDK source, so it works the same for a
+Rust adapter and for one written in any other language.
+
+```sh
+cargo build --release
+shellcanvas-adapter pack ./adapter.json ./target/release/my-device ./dist/my-device-0.1.0
+shellcanvas-adapter validate ./dist/my-device-0.1.0/adapter.json
+```
+
+`shellcanvas-adapter schema source` prints the manifest schema. Identifiers are
+namespaced and must not start with `system`; configuration fields are typed, and
+a `password` field may not carry a packaged default. Package the whole output
+directory, not just its JSON.
+
+The desktop re-verifies every hash before it launches the process, so a modified
+file after review is refused.
+<https://shellcanvas.com/docs/adapter-sdk/packaging.html>
+
+## Be honest about trust and verification
+
+A native adapter runs with the user's operating-system permissions. App UI grants
+do not sandbox it, package hashes establish what you installed and never who
+wrote it, and there is no signing or review.
+
+Say that plainly in your own documentation rather than implying the desktop
+vets adapters.
+
+Test the protocol you implemented with representative fixtures: unsupported
+methods, errors, cancellation, cleanup, and a connection that drops mid-call.
+When something fails at runtime, **App Manager → Connection adapters →
+Connection diagnostics → Copy report** gives a redacted host-side timeline that
+is safe to attach to an issue. Report which device, firmware and platform you
+actually exercised — synthetic fixtures prove the contract, not the device.
+<https://shellcanvas.com/docs/adapter-sdk/diagnostics.html>

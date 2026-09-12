@@ -2,14 +2,14 @@
 
 Build desktop apps that install while ShellCanvas is running. The SDK supplies typed, window-owned system services over the desktop's isolated app channel. It needs no React, Tauri or Node dependency in the app bundle. The included CLI uses Node and esbuild at development time.
 
-Version **0.1.0 is provisional and not published to npm yet**. Use a packed SDK tarball from the ShellCanvas repository or a project release. Do not assume the npm package name is available until an official release says so.
+Version **0.1.0 is published on npm and remains provisional**. Install it with `npm install --save-dev @techartdev/shellcanvas-app-sdk`; no ShellCanvas checkout is required. The 0.x API is still subject to change, so pin the version and test against the desktop you target.
 
 ## Create and build an app
 
 With this package installed as a development dependency:
 
 ```sh
-shellcanvas-app init ./my-app --id org.example.notes --title "Notes" --sdk /absolute/path/shellcanvas-app-sdk-0.1.0.tgz
+npx shellcanvas-app init ./my-app --id org.example.notes --title "Notes"
 cd my-app
 npm install
 npm run build
@@ -17,7 +17,7 @@ npm run build
 
 The output is `dist/app.shellcanvas.json`. Open ShellCanvas's **App Manager → Add apps → Choose package…**, select it, review the permissions and open the app. No desktop rebuild/restart is needed. For an update, change the manifest version and rebuild. Existing windows keep their code and grants until closed; a new window uses the installed version.
 
-The generator requires a new directory and never overwrites an existing project. Until publication, pass `--sdk` to point the generated dependency at the local tarball. `shellcanvas-app build [directory] --version 0.2.0` overrides the artifact's version without editing the manifest. `shellcanvas-app validate <package>` invokes the same package parser used by the desktop.
+The generator requires a new directory and never overwrites an existing project. The generated project depends on the published SDK; pass `--sdk <tarball>` only to consume a locally packed build instead. Call the CLI through a local install (`npx shellcanvas-app`, or an npm script): `npx -p @techartdev/shellcanvas-app-sdk shellcanvas-app …` exits without running. `shellcanvas-app build [directory] --version 0.2.0` overrides the artifact's version without editing the manifest. `shellcanvas-app validate <package>` invokes the same package parser used by the desktop.
 
 ## Public API
 

@@ -2,20 +2,22 @@
 
 Build a native connection adapter by implementing `Adapter::initialize` and
 `Adapter::call`, then pass it to `run`. This crate has no ShellCanvas desktop,
-Tauri, SSH or repository path dependencies. Version 0.1.0 is provisional and is
-not published to crates.io. Use a supplied SDK source archive until publication.
+Tauri, SSH or repository path dependencies. Version 0.1.0 is published on
+crates.io and remains provisional.
 
 ## Generate, build and validate an adapter
 
-Build the included CLI from this SDK directory:
+Add the SDK to a project with `shellcanvas-adapter-sdk = "0.1.0"`, and install
+the CLI from the same crate:
 
 ```sh
-cargo build --bin shellcanvas-adapter --locked
+cargo install shellcanvas-adapter-sdk
 ```
 
-Use `target/debug/shellcanvas-adapter` (add `.exe` on Windows), or put that
-executable on PATH. It requires Rust/Cargo to build Rust adapters; it does not
-require Node, the desktop source tree or a device connection.
+That provides `shellcanvas-adapter` on PATH. It requires Rust/Cargo to build Rust
+adapters; it does not require Node, the desktop source tree or a device
+connection. Building from a checkout also works: `cargo build --bin
+shellcanvas-adapter --locked`, then use `target/debug/shellcanvas-adapter`.
 
 ```sh
 shellcanvas-adapter init ./my-device --id org.example.device --name "My device" --sdk-source /absolute/path/to/sdk-source
@@ -25,9 +27,10 @@ shellcanvas-adapter validate ./my-device-package/adapter.json
 
 Omit `--debug` for a release build. Parent directories must already exist; the
 project and package output must be new directories. Builds reuse `Cargo.lock`
-once created. The generated project's SDK dependency points to the supplied
-source directory until an official registry release is available. Edit its
-`Cargo.toml` when moving that SDK. By default the starter exposes a custom echo
+once created. `init` still requires `--sdk-source`, and writes a `path`
+dependency on that directory; delete the `path` key from the generated
+`Cargo.toml` to consume the published crate instead. `pack`, `validate` and
+`schema` need no SDK source at all. By default the starter exposes a custom echo
 service under your chosen ID. Append `--template files`, `--template console` or
 `--template settings` after `--sdk-source SDK_DIR` for a standard service:
 
