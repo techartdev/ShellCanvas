@@ -69,6 +69,7 @@ back unchanged when saving:
 
 ```ts
 const { binding } = await desktop.environment.get();
+if (!binding) throw new Error("Connect to a workspace first.");
 const doc = await desktop.files.readText({ binding, path });
 // …user edits…
 await desktop.files.saveText(doc, newText);   // the snapshot carries binding + revision
