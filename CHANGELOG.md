@@ -2,6 +2,22 @@
 
 Notable changes to ShellCanvas, newest first. Published SDK packages follow [semantic versioning](https://semver.org/), and desktop releases use the same version where practical. The project is pre-1.0, so a minor release may include breaking changes; those come with migration notes.
 
+## [0.1.4] - 2026-09-12
+
+### Added
+
+- Resize desktop windows from every edge and corner, with pointer capture keeping fast drags active.
+- Show the active remote host's clock, with an explicit local-time fallback when remote time is unavailable.
+- Recognize MikroTik RouterOS, read its clock and allow text saves after confirming when the device cannot replace a file atomically.
+- Per-host opt-in compatibility for legacy SSH negotiation and authentication, with visible warnings. Modern algorithms remain preferred.
+- Installed apps can follow the desktop's light, dark and custom theme colors through live environment updates.
+- Documented Home Assistant Terminal & SSH add-on setup and observed compatibility.
+
+### Fixed
+
+- Selecting text by dragging in a connection dialog no longer dismisses the dialog accidentally.
+- Repository update checks request fresh descriptors and packages, avoiding stale versions immediately after an app is published.
+
 ## [0.1.3] - 2026-09-12
 
 ### Changed
@@ -55,6 +71,7 @@ The initial public preview.
 
 See the repository documentation and release notes for current platform validation and known limitations.
 
+[0.1.4]: https://github.com/techartdev/ShellCanvas/compare/v0.1.3...v0.1.4
 [0.1.3]: https://github.com/techartdev/ShellCanvas/compare/v0.1.2...v0.1.3
 [0.1.2]: https://github.com/techartdev/ShellCanvas/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/techartdev/ShellCanvas/compare/v0.1.0...v0.1.1

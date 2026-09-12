@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 // Authorized read-only integration: only temporary shell variables and stty queries.
 #[path = "../src/connection_resource.rs"]
+#[allow(dead_code)] // This terminal-only probe does not consume the host clock.
 mod connection_resource;
 #[allow(dead_code)]
 #[path = "../src/custom_binding.rs"]
