@@ -6,6 +6,11 @@ HTTPS URL. Choose a branch, tag or commit (default `main`). The desktop reads
 named prebuilt package. No app server, registry, GitHub REST/GraphQL API, local
 Git checkout, dependency install or build-script execution is involved.
 
+Repository reads use a fresh cache key and request cache revalidation for both
+the descriptor and package, so a manual update check does not reuse a previously
+cached branch response. Package hashes are still checked before showing review;
+if a branch changes between downloads, retry the integrity-failed check.
+
 The initial flow supports publicly readable repositories. Private repository
 authentication is not included. Package-file installation remains available for
 private builds. The assistant's public repository is

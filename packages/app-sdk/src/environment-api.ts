@@ -5,6 +5,11 @@ export interface AppEnvironment {
   readonly apiVersion: 1;
   /** Client target independent of the remote host. Absent on older ShellCanvas versions. */
   readonly client?: ClientEnvironment;
+  /** Resolved desktop appearance; absent on older hosts. Colors are CSS hex values. */
+  readonly appearance?: {
+    readonly mode: "light" | "dark";
+    readonly colors: Readonly<Record<string, string>>;
+  };
   readonly connection:
     "local" | "connected" | "disconnected" | "review-required";
   /** Opaque identity of the explicitly accepted binding, never a native session handle. */

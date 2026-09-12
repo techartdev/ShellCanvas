@@ -118,9 +118,12 @@ async fn download_file(
         .user_agent("ShellCanvas/0.1 repository-installer")
         .build()
         .map_err(|_| "Unable to initialize repository download.")?;
-    let mut response = client.get(url).send().await.map_err(|_| {
-        "Unable to reach the GitHub repository. Check your connection and try again."
-    })?;
+    let mut response = fresh_repository_request(&client, &url)
+        .send()
+        .await
+        .map_err(|_| {
+            "Unable to reach the GitHub repository. Check your connection and try again."
+        })?;
     if response.status() != reqwest::StatusCode::OK {
         return Err(format!("Repository file unavailable (HTTP {}). Check the repository, reference and package manifest.", response.status().as_u16()));
     }
@@ -144,9 +147,38 @@ async fn download_file(
     String::from_utf8(bytes).map_err(|_| "Repository file must be UTF-8 JSON.".into())
 }
 
+fn fresh_repository_request(client: &reqwest::Client, url: &str) -> reqwest::RequestBuilder {
+    // Branch URLs are mutable and GitHub's raw CDN caches them for several minutes.
+    // A user-requested update check must not reuse that cached manifest or package.
+    // The caller still verifies the downloaded package against the manifest hash.
+    client
+        .get(format!("{url}?shellcanvas_check={}", uuid::Uuid::new_v4()))
+        .header(reqwest::header::CACHE_CONTROL, "no-cache")
+        .header(reqwest::header::PRAGMA, "no-cache")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn update_checks_use_distinct_cache_keys_without_changing_the_repository_target() {
+        let client = reqwest::Client::new();
+        for path in ["shellcanvas.repo.json", "dist/app.shellcanvas.json"] {
+            let url = repository_url("owner", "app", "main", path).unwrap();
+            let first = fresh_repository_request(&client, &url).build().unwrap();
+            let second = fresh_repository_request(&client, &url).build().unwrap();
+            assert_ne!(first.url(), second.url());
+            let mut target = first.url().clone();
+            target.set_query(None);
+            assert_eq!(target.as_str(), url);
+            let query: Vec<_> = first.url().query_pairs().collect();
+            assert_eq!(query.len(), 1);
+            assert_eq!(query[0].0, "shellcanvas_check");
+            assert!(uuid::Uuid::parse_str(&query[0].1).is_ok());
+            assert_eq!(first.headers()[reqwest::header::CACHE_CONTROL], "no-cache");
+            assert_eq!(first.headers()[reqwest::header::PRAGMA], "no-cache");
+        }
+    }
     #[test]
     fn download_target_is_confined_to_github_raw() {
         assert_eq!(

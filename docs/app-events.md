@@ -44,6 +44,19 @@ A reconnect preserves the document and its current binding identity but retires 
 
 The Field Notes sample renders connection-state events without overwriting its editor or operation result. It continues to report dirty/busy state through `window.setDocumentState`; environment events do not grant permission to discard unsaved work.
 
+## Desktop appearance
+
+`environment.appearance`, when present, contains the resolved `mode` (`light` or
+`dark`) and a `colors` map of desktop theme tokens. Colors are six-digit CSS hex
+values. Tokens include `base`, `surface`, `raised`, `inset`, `text`, `muted`,
+`accent`, `onAccent`, `border`, `hover`, `selection`, `danger`, `dangerSoft`,
+`warning`, `warningSoft`, `success`, `shadow`, and `scrim`.
+
+Apply these to the app's own semantic CSS variables. Theme changes publish a
+`system.environment` snapshot without reopening the app or changing its remote
+binding. Wallpaper URLs and unrelated desktop styles are not exported. Older
+hosts omit appearance; keep a local fallback palette for that case.
+
 ## Discovery and invocation
 
 `services.list(signal?)` returns registered broker methods and selected custom service methods, their contract version (1 for built-in methods), required `permissions`, `granted` state, and `available` state. It never exposes the native command dispatcher. Permission denial and temporary unavailability are distinct. Custom entries carry an opaque `source` binding identity and the adapter's advertised service version.

@@ -42,6 +42,7 @@ import {
 } from "./network-bridge";
 import { ConnectionDialog } from "./ConnectionDialog";
 import type { AppConnection } from "../../packages/app-sdk/src/network-client";
+import { readAppAppearance, watchAppAppearance } from "./appearance";
 
 /** Isolated app document shared by the desktop and development workbenches.
  * One effect owns one document, port and system handle. A prop change retires that instance.
@@ -141,6 +142,11 @@ export function ExtensionFrame({
       "system.services",
     ]);
     let stopEnvironment: (() => void) | undefined;
+    let stopAppearance: (() => void) | undefined;
+    const environmentSnapshot = () => ({
+      ...environment.snapshot(),
+      appearance: readAppAppearance(),
+    });
     const clipboardOwner = clipboard ? new AppClipboard(clipboard) : undefined;
     const principal = lease?.installed.principal ?? app.id;
     const network = new AppNetwork(principal, app.title, (request) =>
@@ -289,7 +295,7 @@ export function ExtensionFrame({
         grants: [],
         invoke: (params) => {
           emptyOptions(params);
-          return environment.snapshot() as unknown as Json;
+          return environmentSnapshot() as unknown as Json;
         },
       });
       methods.set("system.services.list", {
@@ -327,12 +333,18 @@ export function ExtensionFrame({
         );
         events.publish(
           "system.environment",
-          environment.snapshot() as unknown as Json,
+          environmentSnapshot() as unknown as Json,
         );
         events.publish("system.services", null);
       };
       publishEnvironment();
       stopEnvironment = environment.subscribe(publishEnvironment);
+      stopAppearance = watchAppAppearance(() =>
+        events.publish(
+          "system.environment",
+          environmentSnapshot() as unknown as Json,
+        ),
+      );
       peer = new RpcPeer(
         messagePortTransport(channel.port1),
         methods,
@@ -348,6 +360,7 @@ export function ExtensionFrame({
         directories?.close();
         clipboardOwner?.close();
         stopEnvironment?.();
+        stopAppearance?.();
         events.close();
       });
       frame.contentWindow!.postMessage(
@@ -372,6 +385,7 @@ export function ExtensionFrame({
       window.removeEventListener("message", receive);
       peer?.close();
       stopEnvironment?.();
+      stopAppearance?.();
       events.close();
       clipboardOwner?.close();
       unmount();
