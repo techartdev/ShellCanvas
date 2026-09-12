@@ -51,7 +51,7 @@ SSH gives you a shell. ShellCanvas gives you the rest of a computer: a file mana
 
 ## Quick links
 
-[Download](https://github.com/techartdev/ShellCanvas/releases/latest) · [Website](https://shellcanvas.com) · [Documentation](https://shellcanvas.com/docs/) · [Get started](#get-started) · [Build apps and adapters](#build-for-shellcanvas) · [AI development skills](docs/ai-development-skills.md) · [Contribute](CONTRIBUTING.md)
+[Download](https://github.com/techartdev/ShellCanvas/releases/latest) · [Website](https://shellcanvas.com) · [Documentation](https://shellcanvas.com/docs/) · [Get started](#get-started) · [Build apps and adapters](#build-for-shellcanvas) · [AI development skills](docs/ai-development-skills.md) · [Contribute](CONTRIBUTING.md) · [Discord Server](https://discord.gg/3brUndnRnQ)
 
 Related public repositories:
 
