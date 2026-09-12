@@ -168,6 +168,7 @@ pub async fn app_network_forget(app: String, slot: String) -> Result<(), String>
 }
 
 struct Request {
+    _update_operation: crate::update_gate::Operation,
     owner: String,
     started: AtomicBool,
     canceled: watch::Sender<bool>,
@@ -200,6 +201,7 @@ pub fn app_network_prepare(owner: String) -> Result<String, String> {
     requests.insert(
         id.clone(),
         Arc::new(Request {
+            _update_operation: crate::update_gate::operation()?,
             owner: owner.clone(),
             started: AtomicBool::new(false),
             canceled: watch::channel(false).0,

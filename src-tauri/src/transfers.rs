@@ -121,6 +121,7 @@ pub async fn paste_copied_files(
     sequence: u32,
     state: State<'_, DesktopState>,
 ) -> Result<Vec<Ticket>, String> {
+    let _update_operation = crate::update_gate::operation()?;
     #[cfg(windows)]
     {
         if parent.is_empty() {
@@ -167,6 +168,7 @@ pub async fn paste_moved_files(
     sequence: u32,
     state: State<'_, DesktopState>,
 ) -> Result<Vec<Ticket>, String> {
+    let _update_operation = crate::update_gate::operation()?;
     #[cfg(windows)]
     {
         let service = crate::session_service(
@@ -318,6 +320,9 @@ impl Default for TransferRegistry {
     }
 }
 impl TransferRegistry {
+    pub fn has_pending(&self) -> bool {
+        !self.jobs.is_empty() || !self.preparations.is_empty()
+    }
     fn add(
         &mut self,
         owner: u64,
@@ -443,6 +448,7 @@ pub async fn choose_upload_files(
     folder: Option<bool>,
     state: State<'_, DesktopState>,
 ) -> Result<Vec<Ticket>, String> {
+    let _update_operation = crate::update_gate::operation()?;
     let service = provider(&state, session_id, binding.as_ref()).await?;
     let jobs = tauri::async_runtime::spawn_blocking(move || -> Result<Vec<_>, String> {
         if folder.unwrap_or(false) {
@@ -487,6 +493,7 @@ pub async fn choose_download_file(
     revision: String,
     state: State<'_, DesktopState>,
 ) -> Result<Option<Ticket>, String> {
+    let _update_operation = crate::update_gate::operation()?;
     let service = provider(&state, session_id, binding.as_ref()).await?;
     let location = crate::filesystem(&state, session_id, binding.as_ref())
         .await?
@@ -585,6 +592,7 @@ pub async fn choose_download_files(
     files: Vec<DownloadSource>,
     state: State<'_, DesktopState>,
 ) -> Result<Vec<Ticket>, String> {
+    let _update_operation = crate::update_gate::operation()?;
     if files.is_empty()
         || files
             .iter()
@@ -672,6 +680,7 @@ pub async fn prepare_file_copy_selection(
     parent: String,
     state: State<'_, DesktopState>,
 ) -> Result<Ticket, String> {
+    let _update_operation = crate::update_gate::operation()?;
     if files.is_empty() || parent.is_empty() {
         return Err("Select files and a destination folder.".into());
     }
@@ -824,6 +833,7 @@ pub async fn copy_system_files(
     on_event: Channel<Progress>,
     state: State<'_, DesktopState>,
 ) -> Result<u32, String> {
+    let _update_operation = crate::update_gate::operation()?;
     if files.is_empty() {
         return Err("Select files or folders to copy.".into());
     }
@@ -920,6 +930,7 @@ pub async fn paste_system_files(
     sequence: Option<u32>,
     state: State<'_, DesktopState>,
 ) -> Result<Option<Vec<Ticket>>, String> {
+    let _update_operation = crate::update_gate::operation()?;
     #[cfg(not(windows))]
     {
         let _ = (session_id, binding, parent, sequence, state);
@@ -976,6 +987,7 @@ pub async fn cut_system_file(
     on_event: Channel<Progress>,
     state: State<'_, DesktopState>,
 ) -> Result<u32, String> {
+    let _update_operation = crate::update_gate::operation()?;
     let DownloadSource { path, revision } = entry;
     #[cfg(not(windows))]
     {
@@ -1077,6 +1089,7 @@ pub async fn prepare_file_copy(
     parent: String,
     state: State<'_, DesktopState>,
 ) -> Result<Ticket, String> {
+    let _update_operation = crate::update_gate::operation()?;
     if revision.is_empty() || parent.is_empty() {
         return Err("Refresh the file and choose a destination folder".into());
     }
@@ -1328,6 +1341,7 @@ pub async fn run_transfer(
     tracked: Option<Vec<String>>,
     state: State<'_, DesktopState>,
 ) -> Result<Outcome, String> {
+    let _update_operation = crate::update_gate::operation()?;
     #[cfg(not(any(windows, test)))]
     let _ = tracked;
     let ClaimedTransfer {

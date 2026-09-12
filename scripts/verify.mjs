@@ -113,6 +113,11 @@ if (args.includes("--help")) {
         args: ["fmt", "--all", "--", "--check"],
       },
       {
+        name: "Updater manifest tests",
+        file: process.execPath,
+        args: ["--test", "scripts/updater-manifest.check.mjs"],
+      },
+      {
         name: "Public app SDK build and package checks",
         file: process.execPath,
         args: [npmCli, "run", "test:sdk"],

@@ -1,6 +1,6 @@
 [package]
 name = "shellcanvas"
-version = "0.1.4"
+version = "0.1.5"
 edition = "2021"
 license = "MPL-2.0"
 
@@ -41,3 +41,6 @@ windows = { version = "0.61.3", features = ["Win32_NetworkManagement_WNet", "Win
 
 [target.'cfg(target_os = "macos")'.dependencies]
 libc = "0.2"
+
+[target.'cfg(any(target_os = "macos", windows, target_os = "linux"))'.dependencies]
+tauri-plugin-updater = "2"

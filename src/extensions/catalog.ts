@@ -89,12 +89,14 @@ export function parseCatalog(value: unknown): CatalogSnapshot | null {
       typeof entry.generation !== "string" ||
       !identity.test(entry.generation) ||
       (entry.principal !== undefined &&
-        (typeof entry.principal !== "string" || !identity.test(entry.principal))) ||
+        (typeof entry.principal !== "string" ||
+          !identity.test(entry.principal))) ||
       generations.has(entry.generation) ||
       typeof entry.enabled !== "boolean" ||
       !Array.isArray(entry.grants) ||
       entry.grants.some((grant) => typeof grant !== "string") ||
-      (entry.listing !== undefined && listingText(entry.listing) !== entry.listing)
+      (entry.listing !== undefined &&
+        listingText(entry.listing) !== entry.listing)
     )
       throw new RpcError(
         "invalid",
@@ -169,6 +171,10 @@ export class AppCatalog {
   private state: CatalogSnapshot | null = null;
   private loaded = false;
   private queue: Promise<unknown> = Promise.resolve();
+  private pendingOperations = 0;
+  get isBusy() {
+    return this.pendingOperations > 0;
+  }
   private reviews = new WeakSet<InstallReview>();
   private leases = new Map<string, AppLease>();
   private listeners = new Set<() => void>();
@@ -207,7 +213,10 @@ export class AppCatalog {
     }
   }
   private serial<T>(work: () => Promise<T>): Promise<T> {
-    const result = this.queue.then(work);
+    this.pendingOperations++;
+    const result = this.queue.then(work).finally(() => {
+      this.pendingOperations--;
+    });
     this.queue = result.catch(() => {});
     return result;
   }
