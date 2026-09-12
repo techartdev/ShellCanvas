@@ -6,6 +6,8 @@ export interface TextDocument {
   text: string;
   revision: string;
   writable: boolean;
+  /** Existing-file saves need explicit acceptance of interrupted-write risk. */
+  saveRequiresConfirmation?: boolean;
 }
 export interface FileEntry {
   revision?: string;

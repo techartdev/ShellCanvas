@@ -3,7 +3,13 @@ import type { SessionServices, TextDocument } from "./sdk";
 
 export type SaveDestination = Readonly<
   | { kind: "create"; parent: string; name: string }
-  | { kind: "replace"; path: string; name: string; revision: string }
+  | {
+      kind: "replace";
+      path: string;
+      name: string;
+      revision: string;
+      saveRequiresConfirmation?: boolean;
+    }
 >;
 
 /** Discover locations through the provider, never by joining path strings. */
@@ -40,6 +46,9 @@ export async function prepareSaveAs(
     path: target.path,
     name: target.name,
     revision: target.revision,
+    ...(target.saveRequiresConfirmation
+      ? { saveRequiresConfirmation: true }
+      : {}),
   });
 }
 
@@ -48,8 +57,15 @@ export function commitSaveAs(
   services: SessionServices,
   target: SaveDestination,
   text: string,
+  allowNonAtomic = false,
 ): Promise<TextDocument> {
   return target.kind === "create"
     ? services.createText(target.parent, target.name, text)
-    : services.saveText(target.path, text, target.revision);
+    : target.saveRequiresConfirmation
+      ? allowNonAtomic
+        ? services.saveText(target.path, text, target.revision, true)
+        : Promise.reject(
+            new Error("Non-atomic replacement requires explicit confirmation."),
+          )
+      : services.saveText(target.path, text, target.revision);
 }

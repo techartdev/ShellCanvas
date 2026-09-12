@@ -632,6 +632,21 @@ impl DirectoryReader for BoundBrowserDirectory {
 }
 #[async_trait]
 impl TextFileService for Bound<dyn TextFileService> {
+    async fn save_text_confirmed(
+        &self,
+        path: &str,
+        text: &str,
+        revision: &str,
+        allow_non_atomic: bool,
+    ) -> Result<TextDocument> {
+        self.binding
+            .run(
+                true,
+                self.service
+                    .save_text_confirmed(path, text, revision, allow_non_atomic),
+            )
+            .await
+    }
     async fn read_text(&self, path: &str) -> Result<TextDocument> {
         self.binding.run(false, self.service.read_text(path)).await
     }

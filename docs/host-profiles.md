@@ -20,7 +20,15 @@ The connection dialog and Host details show the enabled exceptions, not a claim 
 
 For a bounded read-only authentication and interactive-terminal check against a trusted appliance, use `cargo run -p shellcanvas-core --example terminal_probe -- HOST USER KEY_PATH --legacy`. It opens and closes a PTY without sending commands or printing remote output. Omit `--legacy` to check modern defaults.
 
-## Verification
+## MikroTik RouterOS
+
+The built-in `routeros` system provider recognizes the RouterOS version and system identity through fixed read-only commands. Host details shows **MikroTik RouterOS** with its reported version rather than Generic SSH. Identification does not invent Linux settings, disk-management actions or file-service capabilities. Terminal and SFTP availability still come from the connected device. Read-only account permissions must permit the probes; otherwise generic SSH access remains available.
+
+The commands use RouterOS [`get` and `:put`](https://help.mikrotik.com/docs/spaces/ROS/pages/8978498/Console). See [desktop clock](desktop-clock.md) and [confirmed text saves](text-editor.md#servers-without-atomic-replacement) for the appliance-specific behavior. Recognition, remote time and confirmed saving were verified against RouterOS 6.49.19; this does not claim comprehensive RouterOS administration support.
+
+For a read-only check use `cargo run -p shellcanvas-core --example routeros_probe -- HOST USER KEY_PATH`. This probe enables legacy compatibility for its connection. The optional `--save-test` flag requires permission to create, overwrite and remove one uniquely named disposable file in the SFTP root.
+
+## Host-picker verification
 
 The development fixture `/tests/fixtures/hosts.html?many=1` starts with 40 saved and 40 imported profiles. Browser checks passed multiword/case-insensitive username/port/host search, both source groups, keyboard scrolling to late entries, Enter selection, no-match Enter, Escape without closing the connection dialog, and Tab dismissal. Saving an imported copy and removing only that copy preserved the source and returned the count to 80. Connection submission count stayed zero. Desktop and 390-pixel narrow layouts were visually checked. These use fixture profiles; native storage persistence remains covered by the existing Rust tests and earlier native checks.
 

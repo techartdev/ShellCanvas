@@ -561,13 +561,14 @@ export function bindSession(
       checkText(expected);
       return result;
     },
-    saveText: async (path, text, revision) => {
+    saveText: async (path, text, revision, allowNonAtomic) => {
       const expected = generation;
       const result = await backend.saveText(
         check("files.edit"),
         path,
         text,
         revision,
+        ...(allowNonAtomic === undefined ? [] : [allowNonAtomic]),
       );
       mutationCompleted("files.edit", expected);
       return result;

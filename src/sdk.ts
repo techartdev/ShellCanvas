@@ -382,6 +382,7 @@ export interface HostServices {
     path: string,
     text: string,
     revision: string,
+    allowNonAtomic?: boolean,
   ): Promise<TextDocument>;
   terminal(
     sessionId: number,
@@ -466,7 +467,12 @@ export interface SessionServices {
   openDirectory?(path?: string, signal?: AbortSignal): Promise<DirectoryReader>;
   preview(path: string): Promise<string>;
   readText(path: string): Promise<TextDocument>;
-  saveText(path: string, text: string, revision: string): Promise<TextDocument>;
+  saveText(
+    path: string,
+    text: string,
+    revision: string,
+    allowNonAtomic?: boolean,
+  ): Promise<TextDocument>;
   terminal(
     cols: number,
     rows: number,

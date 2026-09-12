@@ -250,8 +250,8 @@ function createNativeServices(pins?: SourcePins): HostServices {
       nativeDirectory(invoke, sessionId, path, signal),
     preview: (sessionId, path) => invoke("preview_file", { sessionId, path }),
     readText: (sessionId, path) => invoke("read_text", { sessionId, path }),
-    saveText: (sessionId, path, text, revision) =>
-      invoke("save_text", { sessionId, path, text, revision }),
+    saveText: (sessionId, path, text, revision, allowNonAtomic) =>
+      invoke("save_text", { sessionId, path, text, revision, allowNonAtomic }),
     terminal: async (sessionId, cols, rows, onEvent) => {
       const channel = new Channel<
         TerminalEvent & { sequence?: number | null }

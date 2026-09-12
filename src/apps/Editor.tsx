@@ -40,6 +40,7 @@ import { usePreferences } from "../preferences";
 import { SaveAsDialog } from "../components/SaveAsDialog";
 import { watchFileLocations } from "../file-events";
 import { fileSourceKey } from "../workspace-bindings";
+import { nonAtomicSaveWarning, saveTextWithConfirmation } from "../text-save";
 
 export function Editor({
   session,
@@ -249,7 +250,9 @@ export function Editor({
       edit({ type: "load", text: result.text });
       setStatus(
         result.writable
-          ? "All changes saved"
+          ? result.saveRequiresConfirmation
+            ? "Saving requires confirmation · interrupted saves may damage this file"
+            : "All changes saved"
           : "Remote saving unavailable · copy your draft to keep changes",
       );
     } catch (error) {
@@ -335,12 +338,35 @@ export function Editor({
     setBusy(true);
     setError("");
     try {
-      const result = await services.saveText(
-        document.path,
+      const draftRevision = clipboardRevision.current;
+      const result = await saveTextWithConfirmation(
+        services,
+        document,
         text,
-        document.revision,
+        async () => {
+          if (!system)
+            throw new Error(
+              "This save requires a confirmation dialog. Use Save As with a new name instead.",
+            );
+          return (
+            (await system.dialogs.messageBox({
+              title: "Save without atomic replacement?",
+              kind: "warning",
+              message: nonAtomicSaveWarning,
+              buttons: [
+                { id: "cancel", label: "Keep editing" },
+                { id: "save", label: "Save anyway", destructive: true },
+              ],
+              defaultId: "cancel",
+              cancelId: "cancel",
+            })) === "save"
+          );
+        },
+        () =>
+          current === request.current &&
+          draftRevision === clipboardRevision.current,
       );
-      if (current !== request.current) return;
+      if (!result || current !== request.current) return;
       setDocument(result);
       setDocumentSource(sourceKey);
       setStatus("Saved to remote host");

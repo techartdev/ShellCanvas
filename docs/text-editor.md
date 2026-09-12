@@ -14,9 +14,19 @@ Five tests cover preparation without writes, canonical opaque locations, reviewe
 
 The follow-up [Windows native walkthrough](native-file-workflows.md) passed Save As replacement on the authorized Linux host in an owned temporary directory: readback proved no write during review and exact Unicode contents after confirmation. The editor adopted the destination and closed cleanly; exact remote cleanup passed. Native replacement failure/conflict injection and editor relocation remain separate gates.
 
-`TextFileService` is a separate optional service contract. The SSH implementation uses a dedicated SFTP channel, with no shell commands or remote agent. Servers without atomic replacement support keep read/preview and new-file creation access; replacing an existing file with Save is unavailable. Per-file permission errors are reported when the operation is attempted.
+`TextFileService` is a separate optional service contract. The SSH implementation uses a dedicated SFTP channel, with no shell commands or remote agent. Servers without atomic replacement support can save over existing files after explicit confirmation for each save. Per-file permission errors are reported when the operation is attempted.
 
-## Save behavior
+## Servers without atomic replacement
+
+Some appliances, including the tested MikroTik RouterOS 6.49.19 host, do not advertise `posix-rename@openssh.com`. Editor **Save** then warns that a connection or device failure can leave the file incomplete or corrupted. **Keep editing** is the default; **Save anyway** authorizes only this operation. Save As replacement shows the same warning, while a new filename keeps the original untouched.
+
+The fallback rechecks the reviewed revision and canonical path, opens the existing file without create/truncate flags, writes bounded chunks, then sets the final length. It preserves the existing file's ownership and permissions and verifies the resulting contents. It cannot provide atomic publication or protection against all concurrent external changes. Failure keeps the local draft and reports that the remote file may contain partial changes; no automatic retry or rollback is attempted.
+
+The returned document has `saveRequiresConfirmation: true`. The additive native `save_text_confirmed` service method requires an explicit `allow_non_atomic` opt-in; ordinary `save_text` still refuses this fallback. Existing providers retain their prior save behavior through the default method. Installed apps can use the host-owned `system.files.saveTextAs` replacement review; their ordinary direct save calls do not silently opt in. Local-drive atomic-replace guarantees are unchanged.
+
+Validation: in-memory SFTP tests cover unconfirmed refusal, stale revisions, growing/shrinking/empty UTF-8 saves, and injected partial-write failure with handle cleanup. Frontend tests cover declined and stale confirmations, per-save approval, and Save As review. An explicitly approved live RouterOS test verified refusal without confirmation, successful shorter/empty saves, readback, and removal of its unique disposable file. No existing router files or settings were changed.
+
+## Atomic save behavior
 
 1. Resolve and read the file, rejecting non-regular, binary and oversized content. Display its canonical path.
 2. Compare the supplied revision against the current content, owner, group and permissions. A mismatch reports a conflict without replacing the file.

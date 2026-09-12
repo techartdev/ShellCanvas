@@ -227,8 +227,9 @@ async fn prepare_ssh(
     let mut transfers: Option<Arc<dyn FileTransferService>> = None;
     let text: Option<Arc<dyn TextFileService>> = match connection.text_files().await {
         Ok(service) => {
-            if service.can_save() {
-                info.capabilities.push("files.edit".into());
+            info.capabilities.push("files.edit".into());
+            if !service.can_save() {
+                info.notices.push("Saving over existing files requires confirmation: this server cannot replace files atomically. An interrupted save can leave partial contents.".into());
             }
             let service = Arc::new(service);
             let browser = Arc::new(SftpBrowser(service.clone()));
@@ -485,6 +486,7 @@ async fn read_text(
         revision: text_revision(text.as_bytes()),
         text,
         writable: false,
+        save_requires_confirmation: false,
     })
 }
 #[tauri::command]
@@ -494,6 +496,7 @@ async fn save_text(
     path: String,
     text: String,
     revision: String,
+    allow_non_atomic: Option<bool>,
     state: State<'_, DesktopState>,
 ) -> Result<TextDocument, String> {
     let service = session_service(
@@ -505,7 +508,7 @@ async fn save_text(
     )
     .await?;
     service
-        .save_text(&path, &text, &revision)
+        .save_text_confirmed(&path, &text, &revision, allow_non_atomic.unwrap_or(false))
         .await
         .map_err(|e| format!("{e:#}"))
 }
