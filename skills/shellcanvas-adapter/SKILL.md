@@ -131,7 +131,7 @@ and replies may arrive out of order. Page or chunk large results rather than
 sending a tree in one message. Reply `busy` instead of queueing without bound.
 
 Concurrency is real: a waiting console read must not hold a lock that a write or
-close needs. Observe `cx.canceled()`, release resources, and return the
+Concurrency is real: a waiting console read must not hold a lock that a write or close needs. Observe `context.canceled()`, release resources, and return the authoritative outcome — a cancelled handler keeps its slot until it returns.
 authoritative outcome — a cancelled handler keeps its slot until it returns.
 <https://shellcanvas.com/docs/adapter-sdk/protocol.html>
 
