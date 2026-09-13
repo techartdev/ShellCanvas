@@ -1,5 +1,9 @@
 // SPDX-License-Identifier: MPL-2.0
 import { useEffect, useRef, useState } from "react";
+import { invoke, isTauri } from "@tauri-apps/api/core";
+import { capabilityStatus, type Session } from "../sdk";
+import type { DriveMapping } from "./DriveMappings";
+import { attachmentsForLocation } from "../drive-attachment-state";
 import {
   HardDrive,
   FolderOpen,
@@ -23,6 +27,7 @@ export function FileVolumes({
   back,
   setBusy,
   attach,
+  session,
 }: {
   services: SessionServices;
   connected: boolean;
@@ -31,12 +36,73 @@ export function FileVolumes({
   back(): void;
   setBusy(busy: boolean): void;
   attach?(path: string): void;
+  session: Session | null;
 }) {
   const [inventory, setInventory] = useState<Inventory | null>(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [working, setWorking] = useState(false);
   const [showSystem, setShowSystem] = useState(false);
+  const [mappings, setMappings] = useState<DriveMapping[]>([]);
+  const [mappingsReady, setMappingsReady] = useState(!isTauri());
+  const source = session
+    ? capabilityStatus(session, "files.read").source
+    : null;
+  const attached = (path: string) =>
+    attachmentsForLocation(
+      mappings,
+      session?.id,
+      source,
+      path,
+      session?.info.provider === "windows",
+    );
+  useEffect(() => {
+    if (!isTauri()) return;
+    let alive = true;
+    let timer: ReturnType<typeof setTimeout>;
+    const poll = async () => {
+      try {
+        const values = await invoke<DriveMapping[]>("drive_mappings");
+        if (alive) {
+          setMappings(values);
+          setMappingsReady(true);
+        }
+      } catch (e) {
+        if (alive) {
+          setMappingsReady(false);
+          setError(String(e));
+        }
+      }
+      if (alive) timer = setTimeout(() => void poll(), 1000);
+    };
+    void poll();
+    return () => {
+      alive = false;
+      clearTimeout(timer);
+    };
+  }, []);
+  async function detach(mapping: DriveMapping) {
+    if (working) return;
+    setWorking(true);
+    setBusy(true);
+    setError("");
+    try {
+      await invoke(
+        mapping.canCancelStartup
+          ? "cancel_drive_startup"
+          : mapping.canRetryCleanup
+            ? "retry_drive_cleanup"
+            : "detach_drive",
+        { id: mapping.id },
+      );
+      setMappings(await invoke<DriveMapping[]>("drive_mappings"));
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setWorking(false);
+      setBusy(false);
+    }
+  }
   const [review, setReview] = useState<{
     volume: FileVolume;
     revision: string;
@@ -137,7 +203,10 @@ export function FileVolumes({
         )}
         <div className="file-volumes-grid">
           {volumes.map((volume) => (
-            <article className="file-volume-card" key={volume.id}>
+            <article
+              className={`file-volume-card${volume.locations.some((location) => attached(location.path).length) ? " file-volume-attached" : ""}`}
+              key={volume.id}
+            >
               <div className="file-volume-heading">
                 <HardDrive size={25} />
                 <div>
@@ -157,9 +226,44 @@ export function FileVolumes({
                         <FolderOpen size={15} />
                         <span>{location.name}</span>
                       </button>
-                      {attach && (
+                      {attached(location.path).map((mapping) => (
+                        <div
+                          className="file-volume-local-attachment"
+                          key={mapping.id}
+                        >
+                          <span className="file-volume-attached-label">
+                            {mapping.canRetryCleanup
+                              ? "Cleanup needed at"
+                              : mapping.status.phase === "Failed"
+                                ? "Attachment failed at"
+                                : mapping.status.phase === "Starting"
+                                  ? "Attaching as"
+                                  : mapping.status.phase === "Detaching"
+                                    ? "Detaching"
+                                    : "Attached as"}{" "}
+                            {mapping.localPath}
+                          </span>
+                          <button
+                            disabled={
+                              working ||
+                              (!mapping.canRetryCleanup &&
+                                !mapping.canCancelStartup &&
+                                mapping.status.phase !== "Attached")
+                            }
+                            title={`Detach ${mapping.localPath} from this computer`}
+                            onClick={() => void detach(mapping)}
+                          >
+                            {mapping.canCancelStartup
+                              ? "Cancel attachment"
+                              : mapping.canRetryCleanup
+                                ? "Retry cleanup"
+                                : "Detach"}
+                          </button>
+                        </div>
+                      ))}
+                      {attach && !attached(location.path).length && (
                         <button
-                          disabled={!connected || working}
+                          disabled={!connected || working || !mappingsReady}
                           title={`Attach ${location.path} to this computer`}
                           onClick={() => attach(location.path)}
                         >

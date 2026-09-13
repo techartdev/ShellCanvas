@@ -574,6 +574,14 @@ impl Drop for WorkspaceServices {
 
 #[async_trait]
 impl FileSystemProvider for Bound<dyn FileSystemProvider> {
+    async fn volumes(&self) -> Result<FileVolumes> {
+        self.binding.run(false, self.service.volumes()).await
+    }
+    async fn set_volume_mounted(&self, id: &str, revision: &str, mounted: bool) -> Result<()> {
+        self.binding
+            .run(true, self.service.set_volume_mounted(id, revision, mounted))
+            .await
+    }
     fn supports_local_mount(&self) -> bool {
         self.binding.check().is_ok() && self.service.supports_local_mount()
     }

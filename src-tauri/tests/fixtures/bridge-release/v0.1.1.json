@@ -1,0 +1,23 @@
+{
+  "schema": 1,
+  "protocol": 2,
+  "version": "0.1.1",
+  "platforms": {
+    "windows-x86_64": {
+      "sha256": "0156f8d13059789277b73dfd7d02111e9299f35debece649b6fe96fbf4b34d71",
+      "size": 452608
+    },
+    "linux-x86_64": {
+      "sha256": "fdb0a77dd7adb51e088a7d86d3381e86e6362d054ecfea61642dd9c72239e37c",
+      "size": 1284104
+    },
+    "macos-x86_64": {
+      "sha256": "9e2b6fad356adbfff7ca001f73b6decc51bfa6341ad2229048f55336b293a0f5",
+      "size": 1053576
+    },
+    "macos-aarch64": {
+      "sha256": "bb504604011ec5741fe9233f1c6d0e32504f2914dbfad87e15d1c41e873f2632",
+      "size": 1071616
+    }
+  }
+}

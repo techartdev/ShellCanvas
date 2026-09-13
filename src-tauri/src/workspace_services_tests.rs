@@ -419,6 +419,26 @@ struct Files {
 }
 #[async_trait]
 impl FileSystemProvider for Files {
+    async fn volumes(&self) -> Result<FileVolumes> {
+        self.calls.fetch_add(1, Ordering::SeqCst);
+        Ok(FileVolumes {
+            revision: "fixture-volume-revision".into(),
+            volumes: vec![],
+            notices: vec!["fixture inventory".into()],
+        })
+    }
+    async fn set_volume_mounted(&self, id: &str, revision: &str, mounted: bool) -> Result<()> {
+        self.calls.fetch_add(1, Ordering::SeqCst);
+        assert_eq!(
+            (id, revision, mounted),
+            ("opaque-volume", "fixture-volume-revision", true)
+        );
+        self.entered.notify_one();
+        if self.delay.load(Ordering::SeqCst) {
+            self.release.notified().await;
+        }
+        Ok(())
+    }
     async fn open_directory(
         self: Arc<Self>,
         path: Option<&str>,
@@ -455,6 +475,51 @@ impl FileSystemProvider for Files {
         }
         Ok("Late file contents".into())
     }
+}
+#[tokio::test]
+async fn volume_discovery_and_changes_reach_bound_provider_and_reject_retired_bindings() {
+    let (resource, _) = source(198, "fixture.volumes");
+    let files = Arc::new(Files::default());
+    let mut workspace = WorkspaceServices::new(vec![resource.clone()]).unwrap();
+    workspace.bind_files(&resource, files.clone()).unwrap();
+    let bound = workspace.files.clone().unwrap();
+    assert_eq!(
+        bound.volumes().await.unwrap().revision,
+        "fixture-volume-revision"
+    );
+    bound
+        .set_volume_mounted("opaque-volume", "fixture-volume-revision", true)
+        .await
+        .unwrap();
+    assert_eq!(files.calls.load(Ordering::SeqCst), 2);
+    resource.disconnect().await.unwrap();
+    assert!(bound.volumes().await.is_err());
+    assert!(bound
+        .set_volume_mounted("opaque-volume", "fixture-volume-revision", true)
+        .await
+        .is_err());
+    assert_eq!(files.calls.load(Ordering::SeqCst), 2);
+}
+
+#[tokio::test]
+async fn disconnect_during_volume_change_reports_uncertain_outcome_without_retry() {
+    let (resource, _) = source(199, "fixture.volumes");
+    let files = Arc::new(Files::default());
+    files.delay.store(true, Ordering::SeqCst);
+    let mut workspace = WorkspaceServices::new(vec![resource.clone()]).unwrap();
+    workspace.bind_files(&resource, files.clone()).unwrap();
+    let bound = workspace.files.clone().unwrap();
+    let task = tokio::spawn(async move {
+        bound
+            .set_volume_mounted("opaque-volume", "fixture-volume-revision", true)
+            .await
+    });
+    files.entered.notified().await;
+    resource.disconnect().await.unwrap();
+    files.release.notify_one();
+    let error = task.await.unwrap().unwrap_err().to_string();
+    assert!(error.contains("uncertain"), "{error}");
+    assert_eq!(files.calls.load(Ordering::SeqCst), 1);
 }
 struct TestBrowserReader {
     files: Arc<Files>,

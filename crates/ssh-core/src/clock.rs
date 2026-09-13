@@ -8,6 +8,7 @@ pub struct SshHostClock {
     commands: Arc<dyn CommandProbe>,
     command: String,
     routeros: bool,
+    timeout: std::time::Duration,
 }
 impl SshHostClock {
     pub fn for_provider(
@@ -26,18 +27,22 @@ impl SshHostClock {
             commands,
             command,
             routeros: provider == "routeros",
+            // Starting Windows PowerShell can exceed five seconds on a busy
+            // host. Keep it bounded by the same budget as other host probes.
+            timeout: if provider == "windows" {
+                crate::OP_TIMEOUT
+            } else {
+                std::time::Duration::from_secs(5)
+            },
         }))
     }
 }
 #[async_trait]
 impl HostClock for SshHostClock {
     async fn read(&self) -> Result<HostClockSample> {
-        let output = tokio::time::timeout(
-            std::time::Duration::from_secs(5),
-            self.commands.probe(&self.command),
-        )
-        .await
-        .context("Host clock timed out")??;
+        let output = tokio::time::timeout(self.timeout, self.commands.probe(&self.command))
+            .await
+            .context("Host clock timed out")??;
         if self.routeros {
             parse_routeros_sample(&output)
         } else {
@@ -101,6 +106,36 @@ fn parse_sample(output: &str) -> Result<HostClockSample> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    struct DelayedProbe(std::time::Duration);
+    #[async_trait]
+    impl CommandProbe for DelayedProbe {
+        async fn probe(&self, _: &str) -> Result<String> {
+            tokio::time::sleep(self.0).await;
+            Ok("1789214400 +03:00".into())
+        }
+    }
+    #[tokio::test(start_paused = true)]
+    async fn windows_clock_allows_slow_startup_but_remains_bounded() {
+        let slow = Arc::new(DelayedProbe(std::time::Duration::from_secs(6)));
+        assert!(SshHostClock::for_provider(slow.clone(), "windows")
+            .unwrap()
+            .read()
+            .await
+            .is_ok());
+        assert!(SshHostClock::for_provider(slow, "linux")
+            .unwrap()
+            .read()
+            .await
+            .is_err());
+        let stalled = Arc::new(DelayedProbe(std::time::Duration::from_secs(60)));
+        let started = tokio::time::Instant::now();
+        assert!(SshHostClock::for_provider(stalled, "windows")
+            .unwrap()
+            .read()
+            .await
+            .is_err());
+        assert!(started.elapsed() <= crate::OP_TIMEOUT);
+    }
     #[test]
     fn routeros_v6_and_v7_clock_formats() {
         for date in ["sep/12/2026", "2026-09-12"] {

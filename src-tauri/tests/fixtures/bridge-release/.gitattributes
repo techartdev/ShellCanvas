@@ -1,0 +1,4 @@
+bridge-release.json -text
+bridge-release.json.sig -text
+v0.1.1.json -text
+v0.1.1.json.sig -text

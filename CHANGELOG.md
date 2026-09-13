@@ -2,6 +2,20 @@
 
 Notable changes to ShellCanvas, newest first. Published SDK packages follow [semantic versioning](https://semver.org/), and desktop releases use the same version where practical. The project is pre-1.0, so a minor release may include breaking changes; those come with migration notes.
 
+## [Unreleased]
+
+### Added
+
+- Install and update the optional Drive Bridge from publisher-signed native releases in Settings → Files, with local-platform package selection and separate driver setup guidance. Local executable selection remains under Advanced.
+- Show the local attachment path and Detach action directly on Files drive cards, keeping their state synchronized with mappings created in other windows.
+
+### Fixed
+
+- Forward drive discovery and reviewed mount actions through workspace bindings instead of returning the default unsupported result. Reuse confirmed host identification and retry inconclusive drive-platform probes on refresh.
+- Save existing Windows SSH files through a single read/write handle after explicit non-atomic-save confirmation, preserving the existing file's security descriptor and checking for conflicting edits.
+- Split SFTP writes into compatible 16 KiB requests for uploads, text saves and mounted files. Accept Windows' differing path/handle mode reports without dropping independent revision checks, and check exact regular-file type bits before opening downloads.
+- Allow bounded Windows PowerShell clock startup and recover from transient refresh failures without immediately discarding a fresh remote clock sample.
+
 ## [0.1.5] - 2026-09-13
 
 ### Added

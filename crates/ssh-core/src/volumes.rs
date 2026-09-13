@@ -11,12 +11,45 @@ use shellcanvas_services::*;
 use std::{collections::HashSet, sync::Arc};
 use tokio::sync::{Mutex, OnceCell};
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Platform {
     Linux,
     Mac,
     Windows,
     Other,
+}
+
+fn known_platform(provider: &str) -> Option<Platform> {
+    match provider {
+        "linux" => Some(Platform::Linux),
+        "macos" => Some(Platform::Mac),
+        "windows" => Some(Platform::Windows),
+        _ => None,
+    }
+}
+
+async fn discover_platform(cache: &OnceCell<Platform>, commands: &dyn CommandProbe) -> Platform {
+    // A failed probe is inconclusive, not a permanent unsupported-platform result.
+    // Cache only positive identification so Refresh can recover after a timeout.
+    cache
+        .get_or_try_init(|| async {
+            match commands.probe("uname -s").await.as_deref() {
+                Ok("Linux") => Ok(Platform::Linux),
+                Ok("Darwin") => Ok(Platform::Mac),
+                _ => {
+                    let command = powershell(
+                        "if ([Environment]::OSVersion.Platform -eq 'Win32NT') { 'Windows' }",
+                    );
+                    match commands.probe(&command).await.as_deref() {
+                        Ok("Windows") => Ok(Platform::Windows),
+                        _ => Err(()),
+                    }
+                }
+            }
+        })
+        .await
+        .copied()
+        .unwrap_or(Platform::Other)
 }
 
 pub struct SshFileBrowser {
@@ -34,25 +67,15 @@ impl SshFileBrowser {
             changes: Mutex::new(()),
         }
     }
+    /// Reuse identification already confirmed on this same SSH connection.
+    pub fn with_identified_provider(mut self, provider: &str) -> Self {
+        if let Some(platform) = known_platform(provider) {
+            self.platform = OnceCell::new_with(Some(platform));
+        }
+        self
+    }
     async fn platform(&self) -> Platform {
-        *self
-            .platform
-            .get_or_init(|| async {
-                match self.connection.exec_readonly("uname -s").await.as_deref() {
-                    Ok("Linux") => Platform::Linux,
-                    Ok("Darwin") => Platform::Mac,
-                    _ => {
-                        let command = powershell(
-                            "if ([Environment]::OSVersion.Platform -eq 'Win32NT') { 'Windows' }",
-                        );
-                        match self.connection.exec_readonly(&command).await.as_deref() {
-                            Ok("Windows") => Platform::Windows,
-                            _ => Platform::Other,
-                        }
-                    }
-                }
-            })
-            .await
+        discover_platform(&self.platform, self.connection.as_ref()).await
     }
     async fn inventory(&self) -> Result<FileVolumes> {
         let mut result = match self.platform().await {
