@@ -34,6 +34,19 @@ import {
   updateWorkspaces,
 } from "./workspaces";
 import { WorkspaceWindows } from "./components/WorkspaceWindows";
+import { DesktopIcons } from "./components/DesktopIcons";
+import {
+  addShortcut,
+  arrange,
+  place,
+  reflow,
+  removeShortcut,
+  useDesktopIcons,
+  type DesktopShortcut,
+  type GridCell,
+  type GridMetrics,
+} from "./desktop-icons";
+import { workspaceIdentity } from "./workspace-identity";
 import { ShellCanvasMark } from "./components/ShellCanvasMark";
 import { ContextMenu, type MenuAction } from "./components/ContextMenu";
 import { ConfirmDialog } from "./components/ConfirmDialog";
@@ -223,6 +236,44 @@ export default function App({
   } | null>(null);
   const closeMenu = useCallback(() => setMenu(null), []);
   useEffect(closeMenu, [workspace.key, closeMenu]);
+  /*
+   * One desktop per host. The identity is derived from the endpoint rather than
+   * the session, so icons return to the same machine after a reconnect, a
+   * rename or a new key, and never follow a different one.
+   */
+  const [desktopId, setDesktopId] = useState<string | null>(null);
+  useEffect(() => {
+    if (!workspace.session) {
+      setDesktopId("local");
+      return;
+    }
+    let current = true;
+    void workspaceIdentity(workspace.connection)
+      .then((id) => {
+        // Preview runs a synthetic host with no endpoint; its own store keeps
+        // that layout away from real desktops.
+        if (current) setDesktopId(id ?? (isNative ? null : "preview"));
+      })
+      .catch(() => {
+        if (current) setDesktopId(null);
+      });
+    return () => {
+      current = false;
+    };
+  }, [workspace.session, workspace.connection]);
+  const desktopIcons = useDesktopIcons(desktopId, isNative);
+  const iconGrid = useRef<GridMetrics>({ columns: 1, rows: 1 });
+  const reportIconGrid = useCallback(
+    (grid: GridMetrics) => {
+      iconGrid.current = grid;
+      if (!desktopId) return;
+      // A desktop that got narrower must not leave icons past its edge.
+      const rescued = reflow(desktopIcons.icons, grid);
+      if (rescued.some((icon, index) => icon !== desktopIcons.icons[index]))
+        desktopIcons.set(desktopId, rescued);
+    },
+    [desktopId, desktopIcons],
+  );
   const switcher = useRef<HTMLDivElement>(null);
   const [profiles, setProfiles] = useState<HostProfile[]>([]);
   const [profilesError, setProfilesError] = useState("");
@@ -718,6 +769,83 @@ export default function App({
     dispatch({ type: "open", id });
     setLauncherOpen(false);
   }
+  /** Why a shortcut cannot open right now. Empty means it can. */
+  function shortcutReason(icon: DesktopShortcut) {
+    if (icon.kind === "folder")
+      return session?.info.capabilities.includes("files.read")
+        ? ""
+        : "Connect a host with file access to open this folder.";
+    const app = apps.find((item) => item.id === icon.target);
+    if (!app) return "This app is not installed on this desktop.";
+    return (
+      unavailableReason(app, session) || runtime.disabledReason(app.id) || ""
+    );
+  }
+  function openShortcut(icon: DesktopShortcut) {
+    if (shortcutReason(icon)) return;
+    if (icon.kind === "folder") {
+      // The stored location is the provider's own token, handed back untouched.
+      dispatch({ type: "new", id: "files", launch: { path: icon.target } });
+      return;
+    }
+    const app = apps.find((item) => item.id === icon.target);
+    if (app)
+      dispatch(
+        app.window?.multiple
+          ? { type: "new", id: app.id }
+          : { type: "open", id: app.id },
+      );
+  }
+  function setIcons(next: readonly DesktopShortcut[]) {
+    if (desktopId) desktopIcons.set(desktopId, next);
+  }
+  function moveShortcut(id: string, cell: GridCell, grid: GridMetrics) {
+    setIcons(place(desktopIcons.icons, id, cell, grid));
+  }
+  function pinShortcut(shortcut: {
+    kind: DesktopShortcut["kind"];
+    target: string;
+    name: string;
+  }) {
+    const before = desktopIcons.icons;
+    if (
+      before.some(
+        (icon) =>
+          icon.kind === shortcut.kind && icon.target === shortcut.target,
+      )
+    ) {
+      setToast(`${shortcut.name} is already on this desktop.`);
+      return;
+    }
+    const next = addShortcut(before, shortcut, iconGrid.current);
+    if (next.length === before.length) {
+      setToast("This desktop has no free space for another icon.");
+      return;
+    }
+    setIcons(next);
+  }
+  function iconMenu(icon: DesktopShortcut, x: number, y: number) {
+    const reason = shortcutReason(icon);
+    setMenu({
+      x,
+      y,
+      label: `${icon.name} shortcut`,
+      actions: [
+        {
+          id: "open",
+          label: icon.kind === "folder" ? "Open folder" : `Open ${icon.name}`,
+          disabled: !!reason,
+          run: () => openShortcut(icon),
+        },
+        {
+          id: "remove",
+          label: "Remove from desktop",
+          separatorBefore: true,
+          run: () => setIcons(removeShortcut(desktopIcons.icons, icon.id)),
+        },
+      ],
+    });
+  }
   function dockMenu(app: DesktopApp, x: number, y: number) {
     const ids = desktop.open.filter(
       (id) => desktop.instances[id].appId === app.id,
@@ -736,6 +864,14 @@ export default function App({
             !!unavailableReason(app, session) ||
             !!runtime.disabledReason(app.id),
           run: () => dispatch({ type: "new", id: app.id }),
+        },
+        {
+          id: "pin",
+          label: "Add to desktop",
+          separatorBefore: true,
+          disabled: !desktopId,
+          run: () =>
+            pinShortcut({ kind: "app", target: app.id, name: app.title }),
         },
         ...ids.map((id) => ({
           id,
@@ -777,6 +913,13 @@ export default function App({
               id: "show-desktop",
               label: "Show / restore desktop",
               run: () => dispatch({ type: "show-desktop" }),
+            },
+            {
+              id: "arrange-icons",
+              label: "Arrange desktop icons",
+              disabled: !desktopId || !desktopIcons.icons.length,
+              run: () =>
+                setIcons(arrange(desktopIcons.icons, iconGrid.current)),
             },
             {
               id: "connect",
@@ -1061,6 +1204,15 @@ export default function App({
           </span>
           <span>{session?.info.system || "Terminal · Files · Your space"}</span>
         </div>
+        <DesktopIcons
+          icons={desktopIcons.icons}
+          apps={apps}
+          unavailable={shortcutReason}
+          open={openShortcut}
+          move={moveShortcut}
+          menu={iconMenu}
+          report={reportIconGrid}
+        />
         <div className="windows-area">
           {workspaces.items.map((w) => (
             <WorkspaceWindows
@@ -1073,6 +1225,17 @@ export default function App({
               dispatch={(action) => dispatchToWorkspace(w.key, action)}
               connect={showConnect}
               reportError={setToast}
+              pinToDesktop={
+                // Only the workspace on screen may write to the desktop shown.
+                w.key === workspace.key
+                  ? (folder) =>
+                      pinShortcut({
+                        kind: "folder",
+                        target: folder.path,
+                        name: folder.name,
+                      })
+                  : undefined
+              }
             />
           ))}
         </div>

@@ -500,6 +500,11 @@ export interface AppContext {
   }): void;
   launch?: { path?: string; directory?: string };
   openApp?(appId: string, launch?: { path?: string; directory?: string }): void;
+  /**
+   * Put a folder shortcut on this workspace's desktop. The path is the
+   * provider's own token and is stored exactly as given.
+   */
+  pinToDesktop?(folder: { path: string; name: string }): void;
   session: Session | null;
   services: SessionServices;
   active?: boolean;

@@ -71,6 +71,7 @@ export function Files({
   active = true,
   launch,
   openApp,
+  pinToDesktop,
   connected = true,
   reportError,
   setDocumentState,
@@ -1134,6 +1135,16 @@ export function Files({
                     label: "Open in new window",
                     disabled: !connected,
                     run: () => openApp("files", { path: entry.path }),
+                  },
+                ]
+              : []),
+            ...(entry.kind === "directory" && pinToDesktop
+              ? [
+                  {
+                    id: "pin-to-desktop",
+                    label: "Add to desktop",
+                    run: () =>
+                      pinToDesktop({ path: entry.path, name: entry.name }),
                   },
                 ]
               : []),

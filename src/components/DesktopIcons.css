@@ -1,0 +1,87 @@
+/* SPDX-License-Identifier: MPL-2.0 */
+
+/*
+ * The icons sit under the window layer, which is pointer-events:none, so empty
+ * desktop space reaches them while an open window still covers them.
+ */
+.desktop-icons {
+  position: absolute;
+  top: var(--window-start);
+  left: var(--window-gutter);
+  right: var(--window-gutter);
+  bottom: calc(var(--dock-reserve) + var(--window-bottom));
+  z-index: 0;
+  pointer-events: auto;
+}
+
+.desktop-icon {
+  position: absolute;
+  display: flex;
+  width: var(--icon-cell-width);
+  height: var(--icon-cell-height);
+  flex-direction: column;
+  align-items: center;
+  gap: 0.461538rem;
+  padding: 0.615385rem 0.307692rem;
+  border: 0;
+  border-radius: 0.923077rem;
+  background: transparent;
+  color: var(--sc-text, #f4f4f5);
+  font: inherit;
+  text-align: center;
+  cursor: pointer;
+  /* The pointer gesture owns the drag; the browser must not scroll instead. */
+  touch-action: none;
+}
+
+.desktop-icon:hover {
+  background: rgba(var(--sc-hover-rgb, 255, 255, 255), 0.12);
+}
+
+.desktop-icon:focus-visible {
+  outline: 2px solid var(--sc-accent, #6ea8fe);
+  outline-offset: 2px;
+}
+
+.desktop-icon.dragging {
+  z-index: 2;
+  background: rgba(var(--sc-raised-rgb, 48, 48, 52), 0.86);
+  box-shadow: 0 0.615385rem 1.538462rem
+    rgba(var(--sc-shadow-rgb, 0, 0, 0), 0.35);
+  cursor: grabbing;
+}
+
+.desktop-icon.unavailable {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.desktop-icon-art {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.desktop-icon-label {
+  display: -webkit-box;
+  max-width: 100%;
+  overflow: hidden;
+  font-size: 0.846154rem;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  /* Readable over a photograph, without painting a panel behind every label. */
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.55);
+}
+
+/*
+ * A folder is not the Files app. Both are folders at heart, so the shape stays
+ * and the surface changes: a neutral tile with an accent glyph, which also
+ * reads as "a place" rather than "a program".
+ */
+.desktop-icon .desktop-folder-icon {
+  border: 1px solid rgba(var(--sc-border-rgb, 255, 255, 255), 0.16);
+  background: rgba(var(--sc-raised-rgb, 48, 48, 52), 0.82);
+  color: var(--sc-accent, #6ea8fe);
+}
