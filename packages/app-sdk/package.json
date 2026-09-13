@@ -1,6 +1,6 @@
 {
   "name": "@techartdev/shellcanvas-app-sdk",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "description": "Typed runtime app API and app packaging tools for ShellCanvas",
   "keywords": ["shellcanvas", "desktop", "remote", "sdk", "extensions"],
   "homepage": "https://shellcanvas.com/docs/app-sdk/quickstart.html",

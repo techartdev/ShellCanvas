@@ -12,6 +12,15 @@ type Installation = {
   name: string;
   sha256: string;
   size: number;
+  releaseVersion?: string;
+  target?: string;
+};
+type ReleaseStatus = {
+  version: string;
+  target: string;
+  available: boolean;
+  updateAvailable: boolean;
+  driver: { name: string; detected: boolean; guidance: string; url: string };
 };
 type Review = { id: string; source: string; installation: Installation };
 export function DriveBridgeSettings() {
@@ -23,10 +32,28 @@ export function DriveBridgeSettings() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [compatible, setCompatible] = useState(false);
+  const [release, setRelease] = useState<ReleaseStatus | null>(null);
+  const [checking, setChecking] = useState(false);
   const alive = useRef(true);
   const pending = useRef<string | null>(null);
   const working = useRef(false);
   const native = isTauri();
+  async function checkRelease() {
+    if (checking) return;
+    setChecking(true);
+    setError("");
+    try {
+      const value = await invoke<ReleaseStatus>("drive_bridge_release_status");
+      if (alive.current) setRelease(value);
+    } catch (e) {
+      if (alive.current) {
+        setRelease(null);
+        setError(String(e));
+      }
+    } finally {
+      if (alive.current) setChecking(false);
+    }
+  }
   useEffect(() => {
     alive.current = true;
     if (native)
@@ -50,6 +77,7 @@ export function DriveBridgeSettings() {
             setInstallationStatus(
               value ? "Bridge installed" : "No bridge installed",
             );
+            void checkRelease();
           }
         })
         .catch((e) => {
@@ -66,13 +94,15 @@ export function DriveBridgeSettings() {
         }).catch(() => {});
     };
   }, [native]);
-  async function choose() {
+  async function choose(official = false) {
     if (working.current) return;
     working.current = true;
     setBusy(true);
     setError("");
     try {
-      const candidate = await invoke<Review | null>("review_drive_bridge");
+      const candidate = await invoke<Review | null>(
+        official ? "download_drive_bridge" : "review_drive_bridge",
+      );
       if (!alive.current) {
         if (candidate)
           await invoke("cancel_drive_bridge_review", { id: candidate.id });
@@ -93,6 +123,7 @@ export function DriveBridgeSettings() {
     setBusy(true);
     setError("");
     const id = review.id;
+    let completed = false;
     try {
       if (approve) {
         const saved = await invoke<Installation>("install_drive_bridge", {
@@ -101,15 +132,17 @@ export function DriveBridgeSettings() {
         if (alive.current) {
           setInstalled(saved);
           setInstallationStatus("Bridge installed");
+          void checkRelease();
         }
       } else await invoke("cancel_drive_bridge_review", { id });
+      completed = true;
     } catch (e) {
       if (alive.current) setError(String(e));
     } finally {
-      pending.current = null;
+      if (completed) pending.current = null;
       working.current = false;
       if (alive.current) {
-        setReview(null);
+        if (completed) setReview(null);
         setBusy(false);
       }
     }
@@ -130,8 +163,9 @@ export function DriveBridgeSettings() {
         <span className="drive-bridge-badge">Optional</span>
       </header>
       <p>
-        Install the separate, free Drive Bridge app to connect ShellCanvas file
-        access to your computer’s filesystem. Driver setup is separate.
+        Install the free bridge for this computer, then attach a folder from
+        Files. ShellCanvas verifies official downloads before installation. The
+        filesystem driver is installed separately.
       </p>
       {error && (
         <p role="alert" className="drive-bridge-error">
@@ -144,8 +178,11 @@ export function DriveBridgeSettings() {
             <ShieldCheck size={17} /> Review native app installation
           </h4>
           <p>
-            This executable will run with your local account’s permissions when
-            you attach a folder. Install only a build you trust.
+            {review.installation.releaseVersion
+              ? `Official Drive Bridge ${review.installation.releaseVersion}. Publisher signature and download integrity verified.`
+              : "This is a local build. Its publisher signature has not been verified."}{" "}
+            The bridge runs with your local account’s permissions when you
+            attach a folder.
           </p>
           <dl>
             <dt>File</dt>
@@ -158,8 +195,9 @@ export function DriveBridgeSettings() {
             </dd>
           </dl>
           <p className="drive-bridge-note">
-            The hash identifies the reviewed bytes. It is not a publisher
-            signature.
+            {review.installation.releaseVersion
+              ? "Installed privately in your ShellCanvas profile. Detach local drives before updating."
+              : "The hash identifies the reviewed bytes. It is not a publisher signature."}
           </p>
           <div className="drive-bridge-actions">
             <button
@@ -175,8 +213,10 @@ export function DriveBridgeSettings() {
               disabled={busy}
               onClick={() => void finish(true)}
             >
-              {busy && <LoaderCircle className="spin" size={15} />}Trust and
-              install
+              {busy && <LoaderCircle className="spin" size={15} />}
+              {review.installation.releaseVersion
+                ? "Install Drive Bridge"
+                : "Trust and install local build"}
             </button>
           </div>
         </div>
@@ -188,23 +228,86 @@ export function DriveBridgeSettings() {
             </strong>
             <p>
               {installed
-                ? installed.name
+                ? installed.releaseVersion
+                  ? `Version ${installed.releaseVersion} · ${installed.target}`
+                  : "Local development build"
                 : native && compatible
-                  ? "Choose a Drive Bridge build for this computer."
+                  ? release
+                    ? `Version ${release.version} · ${release.target}`
+                    : checking
+                      ? "Checking official releases…"
+                      : "Release information unavailable"
                   : "Install and attach drives in the desktop app."}
             </p>
           </div>
           <button
             type="button"
-            disabled={!native || !compatible || busy}
-            onClick={() => void choose()}
+            className="drive-bridge-primary"
+            disabled={
+              !native ||
+              !compatible ||
+              busy ||
+              checking ||
+              !release?.available ||
+              (!!installed && !release.updateAvailable)
+            }
+            onClick={() => void choose(true)}
           >
             {busy ? <LoaderCircle className="spin" size={15} /> : null}
-            {installed ? "Change build…" : "Choose executable…"}
+            {busy
+              ? "Downloading and verifying…"
+              : !release
+                ? checking
+                  ? "Checking…"
+                  : "Release unavailable"
+                : installed
+                  ? release?.updateAvailable
+                    ? "Update Drive Bridge"
+                    : "Up to date"
+                  : "Install Drive Bridge"}
           </button>
         </div>
       )}
+      {native && compatible && !review && (
+        <button disabled={busy || checking} onClick={() => void checkRelease()}>
+          {checking ? "Checking…" : "Check for updates and drivers"}
+        </button>
+      )}
+      {release && (
+        <div className="drive-bridge-driver" role="status">
+          {!release.available && (
+            <p>No release package is published for {release.target} yet.</p>
+          )}
+          <strong>
+            {release.driver.name}:{" "}
+            {release.driver.detected ? "detected" : "setup required"}
+          </strong>
+          <p>
+            {release.driver.detected
+              ? "The runtime was found. Attaching a folder will check whether it is ready to use."
+              : release.driver.guidance}
+          </p>
+          {!release.driver.detected && (
+            <a href={release.driver.url} target="_blank" rel="noreferrer">
+              {release.driver.name} setup instructions ↗
+            </a>
+          )}
+        </div>
+      )}
       <DriveMappings />
+      <details>
+        <summary>Advanced · install a local executable</summary>
+        <p>
+          For offline installation and development builds. Official releases do
+          not require selecting a file.
+        </p>
+        <button
+          disabled={!native || !compatible || busy || !!review}
+          onClick={() => void choose(false)}
+        >
+          Choose local executable…
+        </button>
+      </details>
       <details>
         <summary>Drivers and licensing</summary>
         <div className="drive-bridge-notices">

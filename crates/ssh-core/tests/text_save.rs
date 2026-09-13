@@ -8,6 +8,8 @@ struct State {
     writes: usize,
     fail_after: Option<usize>,
     handles: usize,
+    atomic: bool,
+    windows: bool,
 }
 struct Server(Arc<Mutex<State>>);
 fn ok(id: u32) -> Status {
@@ -22,6 +24,19 @@ impl Handler for Server {
     type Error = StatusCode;
     fn unimplemented(&self) -> StatusCode {
         StatusCode::OpUnsupported
+    }
+    async fn init(
+        &mut self,
+        _: u32,
+        _: std::collections::HashMap<String, String>,
+    ) -> Result<Version, StatusCode> {
+        let mut version = Version::new();
+        if self.0.lock().unwrap().atomic {
+            version
+                .extensions
+                .insert("posix-rename@openssh.com".into(), "1".into());
+        }
+        Ok(version)
     }
     async fn realpath(&mut self, id: u32, path: String) -> Result<Name, StatusCode> {
         Ok(Name {
@@ -40,7 +55,14 @@ impl Handler for Server {
         })
     }
     async fn fstat(&mut self, id: u32, _: String) -> Result<Attrs, StatusCode> {
-        self.stat(id, String::new()).await
+        let mut attrs = self.stat(id, String::new()).await?;
+        if self.0.lock().unwrap().windows {
+            attrs.attrs.permissions = Some(0o100666);
+        }
+        Ok(attrs)
+    }
+    async fn lstat(&mut self, id: u32, path: String) -> Result<Attrs, StatusCode> {
+        self.stat(id, path).await
     }
     async fn open(
         &mut self,
@@ -50,7 +72,11 @@ impl Handler for Server {
         _: FileAttributes,
     ) -> Result<Handle, StatusCode> {
         assert!(!flags.intersects(OpenFlags::TRUNCATE | OpenFlags::CREATE));
-        self.0.lock().unwrap().handles += 1;
+        let mut state = self.0.lock().unwrap();
+        if state.windows && state.handles > 0 {
+            return Err(StatusCode::Failure);
+        }
+        state.handles += 1;
         Ok(Handle {
             id,
             handle: "fixture".into(),
@@ -84,6 +110,10 @@ impl Handler for Server {
         offset: u64,
         data: Vec<u8>,
     ) -> Result<Status, StatusCode> {
+        assert!(
+            data.len() <= 16 * 1024,
+            "SFTP write exceeded compatible payload size"
+        );
         let mut state = self.0.lock().unwrap();
         if state.fail_after == Some(state.writes) {
             return Err(StatusCode::Failure);
@@ -112,18 +142,24 @@ impl Handler for Server {
     }
 }
 async fn fixture() -> (SftpTextFiles, Arc<Mutex<State>>) {
+    fixture_for(false, "generic-ssh").await
+}
+async fn fixture_for(atomic: bool, provider: &str) -> (SftpTextFiles, Arc<Mutex<State>>) {
     let state = Arc::new(Mutex::new(State {
         bytes: b"original contents".to_vec(),
         writes: 0,
         fail_after: None,
         handles: 0,
+        atomic,
+        windows: provider == "windows",
     }));
     let (client, server) = tokio::io::duplex(256 * 1024);
     tokio::spawn(russh_sftp::server::run(server, Server(state.clone())));
     (
         SftpTextFiles::new(RawSftpSession::new(client))
             .await
-            .unwrap(),
+            .unwrap()
+            .with_identified_provider(provider),
         state,
     )
 }
@@ -177,6 +213,30 @@ async fn interrupted_save_reports_partial_contents_and_closes_handles() {
         .await
         .unwrap_err();
     assert!(error.to_string().contains("partial changes"));
-    assert_eq!(state.lock().unwrap().bytes, draft.as_bytes()[..32768]);
+    assert_eq!(state.lock().unwrap().bytes, draft.as_bytes()[..16384]);
     assert_eq!(state.lock().unwrap().handles, 0);
+}
+
+#[tokio::test]
+async fn windows_requires_confirmed_in_place_save_even_when_rename_is_advertised() {
+    let (service, state) = fixture_for(true, "windows").await;
+    assert!(!service.can_save());
+    let original = service.read_text("/note").await.unwrap();
+    assert!(original.save_requires_confirmation);
+    assert!(service
+        .save_text_confirmed("/note", "draft", &original.revision, false)
+        .await
+        .is_err());
+    assert_eq!(state.lock().unwrap().writes, 0);
+    for text in ["x".repeat(70000), "short ✓".into(), String::new()] {
+        let opened = service.read_text("/note").await.unwrap();
+        let saved = service
+            .save_text_confirmed("/note", &text, &opened.revision, true)
+            .await
+            .unwrap();
+        assert_eq!(saved.text, text);
+        assert_eq!(state.lock().unwrap().handles, 0);
+    }
+    let (unix, _) = fixture_for(true, "linux").await;
+    assert!(unix.can_save());
 }

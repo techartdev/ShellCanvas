@@ -11,6 +11,7 @@ The public user documentation lives at [shellcanvas.com/docs](https://shellcanva
 ## User-facing implementation references
 
 - Device setup: [Home Assistant via Terminal & SSH](home-assistant.md)
+- Windows hosts: [live acceptance results and remaining interoperability gaps](windows-host-validation.md)
 - Desktop time: [remote clock and fallback behavior](desktop-clock.md)
 - Desktop updates: [signed packages, installation guards and platform validation](desktop-updates.md)
 - Connections and trust: [host profiles](host-profiles.md), [SSH host identity](ssh-host-trust.md), [recovery](connection-recovery.md) and [workspace profiles](workspace-profiles.md)

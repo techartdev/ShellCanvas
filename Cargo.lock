@@ -4978,16 +4978,19 @@ dependencies = [
 
 [[package]]
 name = "shellcanvas"
-version = "0.1.5"
+version = "0.1.6"
 dependencies = [
  "anyhow",
  "async-trait",
+ "base64 0.22.1",
  "keyring",
  "libc",
+ "minisign-verify",
  "rand 0.10.2",
  "reqwest",
  "rusqlite",
  "russh",
+ "semver",
  "serde",
  "serde_json",
  "sha2 0.10.9",
@@ -5027,7 +5030,7 @@ dependencies = [
 
 [[package]]
 name = "shellcanvas-adapter-sdk"
-version = "0.1.5"
+version = "0.1.6"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -5065,7 +5068,7 @@ dependencies = [
 
 [[package]]
 name = "shellcanvas-filesystem-sdk"
-version = "0.1.5"
+version = "0.1.6"
 dependencies = [
  "async-trait",
  "serde",

@@ -7,6 +7,19 @@ export interface ClockAnchor extends ClockSample {
   receivedAt: number;
 }
 
+export function usableClockAnchor(
+  sample: { key: string; anchor: ClockAnchor } | null,
+  key: string,
+  connected: boolean,
+  now: number,
+): ClockAnchor | null {
+  return sample?.key === key &&
+    connected &&
+    now - sample.anchor.receivedAt < 120_000
+    ? sample.anchor
+    : null;
+}
+
 export function anchorClock(
   sample: ClockSample,
   started: number,

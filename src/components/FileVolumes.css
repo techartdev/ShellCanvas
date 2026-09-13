@@ -1,4 +1,22 @@
 /* SPDX-License-Identifier: MPL-2.0 */
+.file-volume-card.file-volume-attached {
+  border-color: var(--sc-accent);
+}
+.file-volume-local-attachment {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+  width: 100%;
+}
+.file-volume-paths .file-volume-local-attachment > button {
+  width: auto;
+  margin-left: auto;
+}
+.file-volume-attached-label {
+  color: var(--sc-accent);
+  font-size: 0.8rem;
+}
 .file-volume-location {
   display: flex;
   flex-wrap: wrap;

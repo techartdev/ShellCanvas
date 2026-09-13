@@ -1,8 +1,39 @@
 # Attach remote folders to this computer
 
-Status: implementation active, 2026-09-10. See the authoritative
+Status: signed native packages published; integrated installer in the next desktop build, 2026-09-13. See the authoritative
 [implementation checkpoint](filesystem-integration-progress.md). This is separate from
 [remote drives and mounts](drives-and-mounts.md), which manage storage on the host.
+
+## Install and update
+
+Use Drive Bridge **0.1.1 or newer** with the current desktop's protocol 2. Version
+0.1.0 was withdrawn after it was built without the lifecycle PR; its signature
+does not make it protocol-compatible. The desktop now compares signed metadata
+against the actual SDK protocol constant and rejects that obsolete release.
+
+In a desktop build containing the integrated installer, open **Settings → Files →
+Drive Bridge**, select **Install Drive Bridge**, then review and approve the
+download. ShellCanvas selects the package for the **local client** and verifies
+its publisher signature, protocol version, size and SHA-256 before installing
+it privately in the active profile. No executable picker is required. Existing
+0.1.5 desktop releases do not yet contain this installer.
+
+[Native releases](https://github.com/techartdev/ShellCanvas-DriveBridge/releases)
+currently cover Windows x64, Linux x64, and Intel/Apple silicon macOS. Install
+WinFsp, your Linux FUSE runtime, or macFUSE separately; Settings shows runtime
+detection and setup guidance. macOS native mount acceptance remains pending.
+
+**Check for updates and drivers** checks the official release. Detach local
+drives before installing an update; failed verification leaves the current
+installation intact, and official updates cannot downgrade it. Host settings,
+credentials, app data and remote files are not replaced. Offline/development
+executable selection remains under **Advanced** and is explicitly unverified.
+
+Files → Drives highlights attached volumes and shows **Attached as W:** (or
+the local mount path) with **Detach**. State refreshes while the view is open,
+including mappings changed in other windows. It matches the exact file-provider
+connection and remote root, not just the drive name. Busy detach and failed
+cleanup retain their existing safeguards.
 
 ## Product decision
 
@@ -34,11 +65,11 @@ the connection reserved until confirmation and does not force-unmount the path.
 
 ## Local platform backends
 
-| Client OS | Recommended starting point | Setup and scope |
-| --- | --- | --- |
-| Windows | Native WinFsp API with a Rust bridge | Signed driver/runtime installed once; drive letter or local directory. No WSL or Cygwin required for this native approach. |
-| Linux | FUSE/libfuse backend sharing the Rust provider logic | Local directory mount; distribution-specific runtime/helper setup. |
-| macOS | Evaluate macFUSE, including its modern FSKit backend | Current macFUSE requires macOS 12+. The FSKit backend targets macOS 26. Catalina needs a separate legacy-runtime decision and testing. |
+| Client OS | Recommended starting point                           | Setup and scope                                                                                                                        |
+| --------- | ---------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| Windows   | Native WinFsp API with a Rust bridge                 | Signed driver/runtime installed once; drive letter or local directory. No WSL or Cygwin required for this native approach.             |
+| Linux     | FUSE/libfuse backend sharing the Rust provider logic | Local directory mount; distribution-specific runtime/helper setup.                                                                     |
+| macOS     | Evaluate macFUSE, including its modern FSKit backend | Current macFUSE requires macOS 12+. The FSKit backend targets macOS 26. Catalina needs a separate legacy-runtime decision and testing. |
 
 Sources: [WinFsp distribution](https://winfsp.dev/rel/),
 [native callback API](https://winfsp.dev/doc/WinFsp-API-winfsp.h/),

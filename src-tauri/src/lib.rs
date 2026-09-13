@@ -23,6 +23,7 @@ mod custom_binding;
 mod custom_services;
 mod directories;
 mod drive_bridge_install;
+mod drive_bridge_release;
 mod drive_mappings;
 mod drive_recovery;
 mod drive_startup;
@@ -232,14 +233,18 @@ async fn prepare_ssh(
     let mut transfers: Option<Arc<dyn FileTransferService>> = None;
     let text: Option<Arc<dyn TextFileService>> = match connection.text_files().await {
         Ok(service) => {
+            let service = service.with_identified_provider(&info.provider);
             info.capabilities.push("files.edit".into());
             if !service.can_save() {
-                info.notices.push("Saving over existing files requires confirmation: this server cannot replace files atomically. An interrupted save can leave partial contents.".into());
+                info.notices.push("Saving over existing files requires confirmation: atomic saving with permission preservation is unavailable on this server. An interrupted save can leave partial contents.".into());
             }
             let service = Arc::new(service);
             let browser = Arc::new(SftpBrowser(service.clone()));
             info.home = browser.canonicalize(".").await.ok();
-            files = Some(Arc::new(SshFileBrowser::new(browser, connection.clone())));
+            files = Some(Arc::new(
+                SshFileBrowser::new(browser, connection.clone())
+                    .with_identified_provider(&info.provider),
+            ));
             info.capabilities.push("files.read".into());
             mutations = Some(service.clone());
             moves = Some(service.clone());
@@ -878,6 +883,8 @@ pub fn run() {
                 drive_bridge_install::review_drive_bridge,
                 drive_bridge_install::cancel_drive_bridge_review,
                 drive_bridge_install::install_drive_bridge,
+                drive_bridge_release::drive_bridge_release_status,
+                drive_bridge_release::download_drive_bridge,
                 drive_mappings::drive_mappings,
                 drive_mappings::drive_mapping_available,
                 drive_mappings::attach_drive,

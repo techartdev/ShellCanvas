@@ -313,6 +313,7 @@ pub async fn attach_drive(
     state: State<'_, DesktopState>,
 ) -> Result<Option<String>, String> {
     crate::drive_bridge_install::require_supported_client()?;
+    let _bridge_installation = crate::drive_bridge_install::INSTALL_GATE.read().await;
     let app = window.app_handle().clone();
     let storage = crate::profile_store::storage_dir(&app)?;
     let installation = tauri::async_runtime::spawn_blocking(move || {
@@ -660,6 +661,8 @@ mod tests {
             name: "Unused fixture".into(),
             sha256: "0".repeat(64),
             size: 1,
+            release_version: None,
+            target: None,
         };
         let task = tokio::spawn(run(
             (installation, PathBuf::from("nonexistent-canceled-bridge")),

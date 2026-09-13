@@ -1,4 +1,13 @@
 /* SPDX-License-Identifier: MPL-2.0 */
+.drive-bridge-driver {
+  margin: 1rem 0;
+  padding: 1rem;
+  border: 1px solid var(--sc-border);
+  border-radius: 0.75rem;
+}
+.drive-bridge-driver a {
+  color: var(--sc-accent);
+}
 .drive-bridge-settings {
   margin-top: 2rem;
   padding: 1.4rem;
