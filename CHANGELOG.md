@@ -2,7 +2,7 @@
 
 Notable changes to ShellCanvas, newest first. Published SDK packages follow [semantic versioning](https://semver.org/), and desktop releases use the same version where practical. The project is pre-1.0, so a minor release may include breaking changes; those come with migration notes.
 
-## [Unreleased]
+## [0.1.6] - 2026-09-13
 
 ### Added
 

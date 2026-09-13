@@ -4978,7 +4978,7 @@ dependencies = [
 
 [[package]]
 name = "shellcanvas"
-version = "0.1.5"
+version = "0.1.6"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -5030,7 +5030,7 @@ dependencies = [
 
 [[package]]
 name = "shellcanvas-adapter-sdk"
-version = "0.1.5"
+version = "0.1.6"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -5068,7 +5068,7 @@ dependencies = [
 
 [[package]]
 name = "shellcanvas-filesystem-sdk"
-version = "0.1.5"
+version = "0.1.6"
 dependencies = [
  "async-trait",
  "serde",
