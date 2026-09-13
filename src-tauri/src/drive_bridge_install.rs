@@ -13,7 +13,9 @@ use std::{
 };
 use tempfile::TempDir;
 
-const MAX_BINARY: u64 = 128 * 1024 * 1024;
+pub(crate) const MAX_BINARY: u64 = 128 * 1024 * 1024;
+pub(crate) static INSTALL_GATE: std::sync::LazyLock<tokio::sync::RwLock<()>> =
+    std::sync::LazyLock::new(|| tokio::sync::RwLock::new(()));
 const REVIEW_LIFETIME: Duration = Duration::from_secs(15 * 60);
 pub fn supported_client(platform: &str) -> bool {
     matches!(platform, "windows" | "linux" | "macos")
@@ -37,6 +39,10 @@ pub struct Installation {
     pub name: String,
     pub sha256: String,
     pub size: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub release_version: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub target: Option<String>,
 }
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -126,6 +132,23 @@ pub(crate) fn verify(path: &Path, info: &Installation) -> Result<(), String> {
     Ok(())
 }
 impl Reviews {
+    pub(crate) fn review_release(
+        &self,
+        storage: &Path,
+        source: &Path,
+        owner: &str,
+        version: &str,
+        target: &str,
+    ) -> Result<Review, String> {
+        let mut review = self.review(storage, source, owner)?;
+        let mut pending = self.0.lock().map_err(|_| "Bridge reviews unavailable")?;
+        let candidate = pending.get_mut(&review.id).ok_or("Bridge review expired")?;
+        candidate.installation.release_version = Some(version.into());
+        candidate.installation.target = Some(target.into());
+        review.installation = candidate.installation.clone();
+        review.source = "Official ShellCanvas Drive Bridge release".into();
+        Ok(review)
+    }
     pub fn review(&self, storage: &Path, source: &Path, owner: &str) -> Result<Review, String> {
         let source = source.canonicalize().map_err(|e| e.to_string())?;
         if !fs::metadata(&source).map_err(|e| e.to_string())?.is_file() {
@@ -165,6 +188,8 @@ impl Reviews {
             name,
             sha256,
             size,
+            release_version: None,
+            target: None,
         };
         validate(&installation)?;
         let id = uuid::Uuid::new_v4().to_string();
@@ -207,6 +232,15 @@ impl Reviews {
         }
         let staged = candidate.directory.path().join(BINARY);
         verify(&staged, &candidate.installation)?;
+        if let Some(next) = &candidate.installation.release_version {
+            if let Some(current) = installed(storage)?.and_then(|(info, _)| info.release_version) {
+                if semver::Version::parse(next).map_err(|e| e.to_string())?
+                    < semver::Version::parse(&current).map_err(|e| e.to_string())?
+                {
+                    return Err("A newer official Drive Bridge is already installed. Check for updates again.".into());
+                }
+            }
+        }
         let root = anchor(storage)?;
         let versions = child_directory(&root, "versions")?;
         let directory = child_directory(&versions, &candidate.installation.sha256)?;
@@ -330,8 +364,13 @@ pub async fn install_drive_bridge(
     id: String,
     window: tauri::WebviewWindow,
     state: tauri::State<'_, Reviews>,
+    desktop: tauri::State<'_, crate::DesktopState>,
 ) -> Result<Installation, String> {
     let _update_operation = crate::update_gate::operation()?;
+    let _installation = INSTALL_GATE.write().await;
+    if desktop.mappings.has_running() {
+        return Err("Detach local drives before installing or updating Drive Bridge.".into());
+    }
     require_supported_client()?;
     use tauri::Manager;
     let storage = crate::profile_store::storage_dir(window.app_handle())?;
@@ -345,6 +384,39 @@ pub async fn install_drive_bridge(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn old_records_remain_readable_and_official_updates_cannot_downgrade() {
+        let old = serde_json::json!({"version":1,"name":"bridge","sha256":"a".repeat(64),"size":1});
+        let old: Installation = serde_json::from_value(old).unwrap();
+        assert!(old.release_version.is_none());
+        validate(&old).unwrap();
+        let profile = tempfile::tempdir().unwrap();
+        let source = profile.path().join("candidate");
+        fs::write(&source, b"fixture; never executed").unwrap();
+        let reviews = Reviews::default();
+        let current = reviews
+            .review_release(profile.path(), &source, "main", "0.2.0", "windows-x86_64")
+            .unwrap();
+        reviews
+            .install(profile.path(), &current.id, "main")
+            .unwrap();
+        let older = reviews
+            .review_release(profile.path(), &source, "main", "0.1.0", "windows-x86_64")
+            .unwrap();
+        assert!(reviews
+            .install(profile.path(), &older.id, "main")
+            .unwrap_err()
+            .contains("newer official"));
+        assert_eq!(
+            installed(profile.path())
+                .unwrap()
+                .unwrap()
+                .0
+                .release_version
+                .as_deref(),
+            Some("0.2.0")
+        );
+    }
     #[test]
     fn bridge_support_is_a_client_platform_decision() {
         for platform in ["windows", "linux", "macos"] {
@@ -395,6 +467,8 @@ mod tests {
             name: "fixture".into(),
             sha256: "../elsewhere".into(),
             size: 1,
+            release_version: None,
+            target: None,
         };
         fs::write(
             profile.path().join("drive-bridge/installation.json"),

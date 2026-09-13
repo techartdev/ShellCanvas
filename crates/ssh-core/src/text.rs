@@ -11,6 +11,9 @@ use std::sync::{atomic::AtomicBool, Arc};
 use tokio::sync::Mutex;
 
 pub const TEXT_LIMIT: usize = 256 * 1024;
+// Keep SFTP WRITE payloads below the SSH channel packet boundary, including
+// framing. Windows OpenSSH can stall larger requests on the current transport.
+pub(crate) const SFTP_WRITE_CHUNK: usize = 16 * 1024;
 pub fn text_revision(bytes: &[u8]) -> String {
     format!("{:x}", Sha256::digest(bytes))
 }
@@ -48,6 +51,7 @@ fn check_revision(actual: &str, expected: &str) -> Result<()> {
 pub struct SftpTextFiles {
     pub(crate) raw: RawSftpSession,
     atomic_replace: bool,
+    pub(crate) windows: bool,
     pub(crate) fsync: bool,
     pub(crate) save_lock: Mutex<()>,
     pub(crate) channel_closed: Arc<AtomicBool>,
@@ -68,6 +72,7 @@ impl SftpTextFiles {
     pub async fn new(raw: RawSftpSession) -> Result<Self> {
         let version = raw.init().await?;
         Ok(Self {
+            windows: false,
             atomic_replace: version
                 .extensions
                 .get("posix-rename@openssh.com")
@@ -82,7 +87,57 @@ impl SftpTextFiles {
         })
     }
     pub fn can_save(&self) -> bool {
+        self.atomic_replace && !self.windows
+    }
+    /// Configure semantics using identification from this same SSH connection.
+    pub fn with_identified_provider(mut self, provider: &str) -> Self {
+        self.windows = provider == "windows";
+        self
+    }
+    pub(crate) fn can_replace_atomically(&self) -> bool {
         self.atomic_replace
+    }
+    pub(crate) async fn write_chunks(
+        &self,
+        handle: &str,
+        offset: u64,
+        bytes: &[u8],
+    ) -> Result<(), SftpError> {
+        for (index, chunk) in bytes.chunks(SFTP_WRITE_CHUNK).enumerate() {
+            self.raw
+                .write(
+                    handle,
+                    offset + (index * SFTP_WRITE_CHUNK) as u64,
+                    chunk.to_vec(),
+                )
+                .await?;
+        }
+        Ok(())
+    }
+    async fn read_handle(&self, handle: &str) -> Result<(String, FileAttributes)> {
+        let metadata = self.raw.fstat(handle).await?.attrs;
+        if !crate::transfers::regular_file(&metadata) {
+            bail!("Text editing supports regular files only.");
+        }
+        let mut bytes = Vec::new();
+        loop {
+            match self.raw.read(handle, bytes.len() as u64, 32768).await {
+                Ok(data) => {
+                    if data.data.is_empty() {
+                        break;
+                    }
+                    bytes.extend_from_slice(&data.data);
+                    if bytes.len() > TEXT_LIMIT {
+                        bail!("Text editing is limited to 256 KiB.");
+                    }
+                }
+                Err(SftpError::Status(status)) if status.status_code == StatusCode::Eof => break,
+                Err(error) => return Err(error.into()),
+            }
+        }
+        let text = String::from_utf8(bytes).context("This file is not UTF-8 text.")?;
+        validate_text(&text)?;
+        Ok((text, metadata))
     }
     async fn snapshot(&self, path: &str) -> Result<(TextDocument, FileAttributes)> {
         validate_path(path)?;
@@ -96,7 +151,9 @@ impl SftpTextFiles {
             .context("Server did not resolve the file path")?
             .filename;
         let before = self.raw.stat(&path).await?.attrs;
-        if !before.is_regular() || before.size.is_some_and(|s| s > TEXT_LIMIT as u64) {
+        if !crate::transfers::regular_file(&before)
+            || before.size.is_some_and(|s| s > TEXT_LIMIT as u64)
+        {
             bail!("Open a regular UTF-8 text file no larger than 256 KiB.");
         }
         let handle = self
@@ -104,37 +161,21 @@ impl SftpTextFiles {
             .open(&path, OpenFlags::READ, FileAttributes::empty())
             .await?
             .handle;
-        let result: Result<(String, FileAttributes)> = async {
-            let metadata = self.raw.fstat(&handle).await?.attrs;
-            if !metadata.is_regular() {
-                bail!("Text editing supports regular files only.");
-            }
-            let mut bytes = Vec::new();
-            loop {
-                match self.raw.read(&handle, bytes.len() as u64, 32768).await {
-                    Ok(data) => {
-                        if data.data.is_empty() {
-                            break;
-                        }
-                        bytes.extend_from_slice(&data.data);
-                        if bytes.len() > TEXT_LIMIT {
-                            bail!("Text editing is limited to 256 KiB.");
-                        }
-                    }
-                    Err(SftpError::Status(status)) if status.status_code == StatusCode::Eof => {
-                        break
-                    }
-                    Err(error) => return Err(error.into()),
-                }
-            }
-            let text = String::from_utf8(bytes).context("This file is not UTF-8 text.")?;
-            validate_text(&text)?;
-            Ok((text, metadata))
-        }
-        .await;
+        let result = self.read_handle(&handle).await;
         let close = self.raw.close(handle).await;
-        let (text, metadata) = result?;
+        let (text, mut metadata) = result?;
         close?;
+        if self.windows {
+            // Windows FSTAT synthesizes mode bits. Use path metadata for the
+            // editor revision while retaining the open-handle consistency check.
+            let after = self.raw.stat(&path).await?.attrs;
+            if !crate::transfers::opened_metadata_matches(&before, &metadata, true)
+                || crate::entry_revision(&before) != crate::entry_revision(&after)
+            {
+                bail!("CONFLICT: The remote file changed while reading it.");
+            }
+            metadata = after;
+        }
         let location = crate::provider::sftp_location(path);
         Ok((
             TextDocument {
@@ -177,7 +218,7 @@ impl TextFileService for SftpTextFiles {
         validate_path(path)?;
         validate_text(text)?;
         let _lock = self.save_lock.lock().await;
-        let original = self.snapshot(path).await?.0;
+        let (original, original_metadata) = self.snapshot(path).await?;
         check_revision(&original.revision, revision)?;
         if original.path != path {
             bail!("The file path changed. Reopen its resolved path before saving.");
@@ -186,20 +227,55 @@ impl TextFileService for SftpTextFiles {
         // In-place writes preserve owner/permissions but are deliberately non-atomic.
         let handle = self
             .raw
-            .open(path, OpenFlags::WRITE, FileAttributes::empty())
+            .open(
+                path,
+                if self.windows {
+                    OpenFlags::READ | OpenFlags::WRITE
+                } else {
+                    OpenFlags::WRITE
+                },
+                FileAttributes::empty(),
+            )
             .await?
             .handle;
         let write: Result<()> = async {
-            let current = self.snapshot(path).await?.0;
-            if current.path != path {
-                bail!("CONFLICT: The remote file path changed.");
+            if self.windows {
+                // Windows may deny a second open while a writable handle exists.
+                // Recheck contents through the exact handle we will write to.
+                let (current_text, handle_metadata) = self
+                    .read_handle(&handle)
+                    .await
+                    .context("Reading the writable file handle")?;
+                let path_metadata = self
+                    .raw
+                    .lstat(path)
+                    .await
+                    .context("Rechecking the writable file path")?
+                    .attrs;
+                if !crate::transfers::opened_metadata_matches(
+                    &path_metadata,
+                    &handle_metadata,
+                    true,
+                ) || crate::entry_revision(&path_metadata)
+                    != crate::entry_revision(&original_metadata)
+                {
+                    bail!("CONFLICT: The remote file changed while opening for saving.");
+                }
+                check_revision(&document_revision(&current_text, &path_metadata), revision)?;
+            } else {
+                let current = self
+                    .snapshot(path)
+                    .await
+                    .context("Rechecking the file after opening for writing")?
+                    .0;
+                if current.path != path {
+                    bail!("CONFLICT: The remote file path changed.");
+                }
+                check_revision(&current.revision, revision)?;
             }
-            check_revision(&current.revision, revision)?;
-            for (index, chunk) in text.as_bytes().chunks(32768).enumerate() {
-                self.raw
-                    .write(&handle, (index * 32768) as u64, chunk.to_vec())
-                    .await?;
-            }
+            self.write_chunks(&handle, 0, text.as_bytes())
+                .await
+                .context("Writing existing file contents")?;
             self.raw
                 .fsetstat(
                     &handle,
@@ -208,7 +284,8 @@ impl TextFileService for SftpTextFiles {
                         ..FileAttributes::empty()
                     },
                 )
-                .await?;
+                .await
+                .context("Setting saved file length")?;
             if self.fsync {
                 self.extension("fsync@openssh.com", &[&handle]).await?;
             }
@@ -254,11 +331,7 @@ impl TextFileService for SftpTextFiles {
             })?
             .handle;
         let write: Result<()> = async {
-            for (index, chunk) in text.as_bytes().chunks(32768).enumerate() {
-                self.raw
-                    .write(&handle, (index * 32768) as u64, chunk.to_vec())
-                    .await?;
-            }
+            self.write_chunks(&handle, 0, text.as_bytes()).await?;
             if self.fsync {
                 self.extension("fsync@openssh.com", &[&handle]).await?;
             }
@@ -307,7 +380,7 @@ impl TextFileService for SftpTextFiles {
         validate_text(text)?;
         if !self.can_save() {
             bail!(
-                "This SFTP server does not support atomic file replacement. Confirm a non-atomic save in the editor or use Save As with a new name."
+                "Atomic saving with permission preservation is unavailable on this server. Confirm a non-atomic save in the editor or use Save As with a new name."
             );
         }
         let _lock = self.save_lock.lock().await;
@@ -336,11 +409,7 @@ impl TextFileService for SftpTextFiles {
             .await?
             .handle;
         let write: Result<()> = async {
-            for (index, chunk) in text.as_bytes().chunks(32768).enumerate() {
-                self.raw
-                    .write(&handle, (index * 32768) as u64, chunk.to_vec())
-                    .await?;
-            }
+            self.write_chunks(&handle, 0, text.as_bytes()).await?;
             self.raw
                 .fsetstat(
                     &handle,

@@ -6,18 +6,28 @@ The task list behind the [roadmap](ROADMAP.md). Each item has a stable ID, a com
 
 **How to read it.** `[x]` means implemented and checked within the stated scope; `[ ]` means pending or partly implemented, as the entry says. Scope matters: a fixture, a browser preview, a native build, a user confirmation and a live-host run are different kinds of evidence, and each entry names the ones it has. For BASE-11, the [kernel roadmap](docs/kernel-roadmap.md) and the [eight-area acceptance audit](docs/kernel-acceptance.md) take precedence over older notes here; superseded checkpoints live in the [kernel history](docs/kernel-history.md).
 
+## Windows OpenSSH acceptance follow-up (2026-09-13)
+
+- [ ] **WIN-HOST-04 — Native mapped-file sharing and rename.** The protocol-2 release probe found I/O errors for a second reader while a writable file handle remained open, and for native rename on Windows OpenSSH. Save-close-open and ordinary/busy detach pass; rejected rename preserves source bytes. Investigate server handle-sharing and rename/delete semantics without silently closing user handles or replaying mutations. Gate: live concurrent-reader and rename/delete tests against Windows SFTP, verified independently through SFTP, with failure preservation checks.
+
+- [x] **WIN-HOST-01 — Reliable existing-file saves.** Windows uses explicitly confirmed in-place saves, preserving the existing file's security descriptor. A single read/write handle avoids Windows sharing failures while rechecking contents. Live overwrite, larger Unicode text, stale revision rejection and empty saves passed; unconfirmed saves left the original intact.
+- [x] **WIN-HOST-02 — Binary transfer interoperability.** Split SFTP writes into 16 KiB requests without changing logical transfer limits. Account for Windows' synthetic FSTAT permissions while checking full path and handle revisions independently. Live normal upload, download, copy, cancellation cleanup and stale-source rejection passed on a 2 MiB fixture.
+- [ ] **WIN-HOST-03 — Desktop acceptance.** Verify the repaired Drives view, native clipboard/folder round trips, WinFSP and cross-drive behavior on Windows OpenSSH. Clock timeout handling now allows bounded Windows startup, retains fresh samples and retries failures sooner; prolonged contention still needs observation.
+
+See [Windows-host live results](docs/windows-host-validation.md) for passed checks, exact remaining gaps and the repeatable disposable probe.
+
 ## Status at a glance
 
-| Area | Done | In progress | Not started |
-| --- | --- | --- | --- |
-| **M1 · Extensible base** | BASE-01 to BASE-11 | | |
-| **M2 · Everyday workspace** | CORE-00, CORE-01a, CORE-05a, CORE-07, CORE-08, CORE-09a, CORE-10a, CORE-10b (themes) | CORE-01b, CORE-02, CORE-03, CORE-04, CORE-05, CORE-06, CORE-09b, CORE-10b (host settings), UX-01 | |
-| **File clipboard** | CORE-05b, CORE-05d, CORE-05e | | CORE-05c |
-| **M3 · Remote providers** | | HOST-02 | HOST-01, HOST-03, HOST-04 |
-| **M4 · External extensions** | EXT-01, EXT-02, EXT-04, EXT-05 | EXT-03 | |
-| **Connection adapters** | | | LINK-01 to LINK-04 |
-| **M5 · Optional AI assistant** | AI-00, AI-02, AI-03 | | AI-01 |
-| **M6 · Distribution and community** | SHIP-00, SHIP-01, COMM-00 | SHIP-02, COMM-01 | SHIP-03, SHIP-04 |
+| Area                                | Done                                                                                 | In progress                                                                                      | Not started               |
+| ----------------------------------- | ------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------ | ------------------------- |
+| **M1 · Extensible base**            | BASE-01 to BASE-11                                                                   |                                                                                                  |                           |
+| **M2 · Everyday workspace**         | CORE-00, CORE-01a, CORE-05a, CORE-07, CORE-08, CORE-09a, CORE-10a, CORE-10b (themes) | CORE-01b, CORE-02, CORE-03, CORE-04, CORE-05, CORE-06, CORE-09b, CORE-10b (host settings), UX-01 |                           |
+| **File clipboard**                  | CORE-05b, CORE-05d, CORE-05e                                                         |                                                                                                  | CORE-05c                  |
+| **M3 · Remote providers**           |                                                                                      | HOST-02                                                                                          | HOST-01, HOST-03, HOST-04 |
+| **M4 · External extensions**        | EXT-01, EXT-02, EXT-04, EXT-05                                                       | EXT-03                                                                                           |                           |
+| **Connection adapters**             |                                                                                      |                                                                                                  | LINK-01 to LINK-04        |
+| **M5 · Optional AI assistant**      | AI-00, AI-02, AI-03                                                                  |                                                                                                  | AI-01                     |
+| **M6 · Distribution and community** | SHIP-00, SHIP-01, COMM-00                                                            | SHIP-02, COMM-01                                                                                 | SHIP-03, SHIP-04          |
 
 "In progress" covers entries marked partly implemented or partly validated, and items with delivered parts. The [post-goal handoff](docs/post-goal-backlog.md) adds the POST, BRIDGE and later items.
 

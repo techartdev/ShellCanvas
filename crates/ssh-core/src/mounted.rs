@@ -329,11 +329,11 @@ impl MountedFile for RemoteFile {
             ));
         }
         let id = self.handle.id.read().await;
-        request(self.handle.service.raw.write(
-            id.as_ref().ok_or_else(closed)?,
-            offset,
-            bytes.to_vec(),
-        ))
+        request(
+            self.handle
+                .service
+                .write_chunks(id.as_ref().ok_or_else(closed)?, offset, bytes),
+        )
         .await?;
         Ok(())
     }
@@ -468,7 +468,7 @@ impl MountedFileSystem for SftpMount {
     fn capabilities(&self) -> FsCapabilities {
         FsCapabilities {
             writable: self.writable,
-            atomic_replace: self.service.can_save(),
+            atomic_replace: self.service.can_replace_atomically(),
             durable_flush: self.service.fsync,
         }
     }
@@ -624,7 +624,7 @@ impl MountedFileSystem for SftpMount {
             return Ok(());
         }
         if replace {
-            if !self.service.can_save() {
+            if !self.service.can_replace_atomically() {
                 return Err(FsError::new(
                     FsErrorKind::Unsupported,
                     "Server does not support atomic replacement",

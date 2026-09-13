@@ -1502,6 +1502,7 @@ export function Files({
         <FileVolumes
           key={sourceKey}
           services={services}
+          session={session}
           connected={connected}
           host={workspaceLabel || session?.info.hostname || "This host"}
           setBusy={setBusy}

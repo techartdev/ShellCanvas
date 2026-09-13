@@ -12,11 +12,38 @@ use russh_sftp::{
 };
 use std::sync::Arc;
 
+pub(crate) fn regular_file(attrs: &FileAttributes) -> bool {
+    // File type is a masked enum, not independent flags: a symlink's type bits
+    // also contain S_IFREG, so a bitwise `contains` test is insufficient.
+    attrs
+        .permissions
+        .is_some_and(|mode| mode & 0o170000 == 0o100000)
+}
+
+pub(crate) fn opened_metadata_matches(
+    path: &FileAttributes,
+    handle: &FileAttributes,
+    windows: bool,
+) -> bool {
+    if !regular_file(path) || !regular_file(handle) {
+        return false;
+    }
+    let mut comparable = handle.clone();
+    if windows {
+        // Win32 OpenSSH FSTAT synthesizes 0666 rather than the path's mode.
+        // Only cross-source mode comparison is relaxed. Each source's complete
+        // revision is still checked independently at the end of the read.
+        comparable.permissions = path.permissions;
+    }
+    entry_revision(path) == entry_revision(&comparable)
+}
+
 struct Reader {
     service: Arc<SftpTextFiles>,
     handle: Option<String>,
     file: TransferFile,
     revision: String,
+    handle_revision: String,
     offset: u64,
 }
 #[async_trait]
@@ -52,7 +79,7 @@ impl TransferReader for Reader {
             .await?
             .attrs;
         if self.offset != self.file.size
-            || entry_revision(&current) != self.revision
+            || entry_revision(&current) != self.handle_revision
             || entry_revision(&path_current) != self.revision
         {
             bail!(
@@ -117,11 +144,10 @@ impl TransferWriter for Writer {
             bail!("Upload exceeds its declared size or chunk limit");
         }
         self.service
-            .raw
-            .write(
+            .write_chunks(
                 self.handle.as_ref().context("Upload handle is closed")?,
                 self.offset,
-                bytes.to_vec(),
+                bytes,
             )
             .await?;
         self.offset += bytes.len() as u64;
@@ -232,7 +258,7 @@ impl FileTransferService for SftpTextFiles {
         validate_path(path)?;
         // Refuse links and special files. The selected listing supplies a precondition.
         let metadata = self.raw.lstat(path).await?.attrs;
-        if !metadata.is_regular() {
+        if !regular_file(&metadata) {
             bail!("Download supports regular files only.");
         }
         if revision.len() != 64 || entry_revision(&metadata) != revision {
@@ -245,7 +271,7 @@ impl FileTransferService for SftpTextFiles {
             .handle;
         let checked: Result<FileAttributes> = async {
             let current = self.raw.fstat(&handle).await?.attrs;
-            if !current.is_regular() || entry_revision(&current) != revision {
+            if !opened_metadata_matches(&metadata, &current, self.windows) {
                 bail!("The remote file changed while opening it.");
             }
             current
@@ -269,6 +295,7 @@ impl FileTransferService for SftpTextFiles {
                 size: current.size.unwrap(),
             },
             revision: revision.into(),
+            handle_revision: entry_revision(&current),
             offset: 0,
         }))
     }

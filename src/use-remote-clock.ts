@@ -5,6 +5,7 @@ import {
   anchorClock,
   remoteDate,
   offsetLabel,
+  usableClockAnchor,
   type ClockAnchor,
 } from "./remote-clock";
 
@@ -36,9 +37,12 @@ export function useRemoteClock(
     if (!session || !connected || !services.readClock) return;
     let disposed = false;
     let pending = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
     const refresh = async () => {
       if (pending || disposed) return;
+      clearTimeout(timer);
       pending = true;
+      let retryAfter = 60_000;
       const started = performance.now();
       try {
         const value = await services.readClock!(
@@ -51,13 +55,15 @@ export function useRemoteClock(
             anchor: anchorClock(value, started, performance.now()),
           });
       } catch {
-        if (!disposed) setSample(null);
+        // A transient failure does not invalidate the previous host sample.
+        // Its existing freshness bound still applies, including across hosts.
+        retryAfter = 10_000;
       } finally {
         pending = false;
+        if (!disposed) timer = setTimeout(() => void refresh(), retryAfter);
       }
     };
     void refresh();
-    const timer = setInterval(() => void refresh(), 60_000);
     const wake = () => {
       if (document.visibilityState === "visible") void refresh();
     };
@@ -65,17 +71,12 @@ export function useRemoteClock(
     document.addEventListener("visibilitychange", wake);
     return () => {
       disposed = true;
-      clearInterval(timer);
+      clearTimeout(timer);
       window.removeEventListener("focus", wake);
       document.removeEventListener("visibilitychange", wake);
     };
   }, [services, key]);
-  const anchor =
-    sample?.key === key &&
-    connected &&
-    performance.now() - sample.anchor.receivedAt < 120_000
-      ? sample.anchor
-      : null;
+  const anchor = usableClockAnchor(sample, key, connected, performance.now());
   return {
     date: anchor ? remoteDate(anchor, performance.now()) : new Date(),
     timeZone: anchor ? "UTC" : undefined,
