@@ -623,13 +623,7 @@ impl MountedFileSystem for SftpMount {
         if from == to {
             return Ok(());
         }
-        if replace {
-            if !self.service.can_replace_atomically() {
-                return Err(FsError::new(
-                    FsErrorKind::Unsupported,
-                    "Server does not support atomic replacement",
-                ));
-            }
+        if replace && self.service.can_replace_atomically() {
             tokio::time::timeout(
                 OP_TIMEOUT,
                 self.service
@@ -647,13 +641,24 @@ impl MountedFileSystem for SftpMount {
             match request(self.service.raw.lstat(&to)).await {
                 Ok(_) => {
                     return Err(FsError::new(
-                        FsErrorKind::AlreadyExists,
-                        "Destination already exists",
+                        if replace {
+                            FsErrorKind::Unsupported
+                        } else {
+                            FsErrorKind::AlreadyExists
+                        },
+                        if replace {
+                            "Server does not support atomic replacement"
+                        } else {
+                            "Destination already exists"
+                        },
                     ))
                 }
                 Err(e) if e.kind == FsErrorKind::NotFound => {}
                 Err(e) => return Err(e),
             }
+            // REPLACE_IF_EXISTS also occurs for a rename to an unused name.
+            // SFTP v3 RENAME must refuse an existing destination, including one
+            // created after our check. Never emulate replacement by deleting it.
             request(self.service.raw.rename(from, to)).await?;
         }
         Ok(())
@@ -679,6 +684,96 @@ mod acquisition_tests {
         stream.write_u8(kind).await.unwrap();
         stream.write_all(id).await.unwrap();
         stream.write_all(body).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn rename_without_extension_uses_no_clobber_and_never_deletes_destination() {
+        for (replace, exists, race) in [
+            (true, false, false),
+            (true, true, false),
+            (true, false, true),
+            (false, true, false),
+        ] {
+            let (client, mut remote) = tokio::io::duplex(4096);
+            let peer = tokio::spawn(async move {
+                assert_eq!(packet(&mut remote).await[0], 1);
+                remote
+                    .write_all(&[0, 0, 0, 5, 2, 0, 0, 0, 3])
+                    .await
+                    .unwrap();
+                let mut target_stats = 0;
+                loop {
+                    let request = packet(&mut remote).await;
+                    match request[0] {
+                        7 => {
+                            let path = std::str::from_utf8(&request[9..]).unwrap();
+                            let target = path.ends_with("/to");
+                            if target {
+                                target_stats += 1;
+                            }
+                            if target && !exists {
+                                let mut status = vec![0; 12];
+                                status[3] = 2;
+                                reply(&mut remote, 101, &request[1..5], &status).await;
+                            } else {
+                                let mode: u32 = if path == "/fixture" {
+                                    0o40755
+                                } else {
+                                    0o100644
+                                };
+                                let mut attrs = 4u32.to_be_bytes().to_vec();
+                                attrs.extend_from_slice(&mode.to_be_bytes());
+                                reply(&mut remote, 105, &request[1..5], &attrs).await;
+                            }
+                            if target && target_stats == 2 && exists {
+                                break;
+                            }
+                        }
+                        18 => {
+                            assert!(!exists);
+                            assert_eq!(target_stats, 2);
+                            let mut status = vec![0; 12];
+                            if race {
+                                status[3] = 4;
+                            } // Destination appeared; server refuses RENAME.
+                            reply(&mut remote, 101, &request[1..5], &status).await;
+                            break;
+                        }
+                        other => panic!(
+                            "Unexpected mutation {other}: must not delete or emulate replacement"
+                        ),
+                    }
+                }
+            });
+            let mount = SftpMount {
+                service: Arc::new(SftpTextFiles::from_stream(client).await.unwrap()),
+                root: "/fixture".into(),
+                writable: true,
+                connection: None,
+            };
+            let result = mount
+                .rename(
+                    &MountPath::root().child("from").unwrap(),
+                    &MountPath::root().child("to").unwrap(),
+                    replace,
+                )
+                .await;
+            if exists {
+                assert_eq!(
+                    result.unwrap_err().kind,
+                    if replace {
+                        FsErrorKind::Unsupported
+                    } else {
+                        FsErrorKind::AlreadyExists
+                    }
+                );
+            } else if race {
+                assert!(result.is_err());
+            } else {
+                result.unwrap();
+            }
+            peer.await.unwrap();
+        }
     }
 
     #[tokio::test(start_paused = true)]

@@ -8,6 +8,9 @@ async fn main() -> anyhow::Result<()> {
     probe::run().await
 }
 #[cfg(windows)]
+#[path = "support/windows_semantics.rs"]
+mod windows_semantics;
+#[cfg(windows)]
 mod probe {
     use anyhow::{ensure, Context, Result};
     use shellcanvas_core::*;
@@ -104,7 +107,21 @@ mod probe {
         let name = format!("shellcanvas-native-{}", uuid::Uuid::new_v4());
         let root = service.make_directory(&home, &name).await?;
         println!("Disposable fixture: {root}; local mount: {drive}");
-        let mounted = browser.mount_root(&root, true).await?;
+        let mounted = match browser.mount_root(&root, true).await {
+            Ok(mounted) => mounted,
+            Err(error) => {
+                let entry = browser
+                    .list(Some(&home))
+                    .await?
+                    .entries
+                    .into_iter()
+                    .find(|entry| entry.name == name)
+                    .context("Startup fixture entry")?;
+                service.remove_entry(&root, &entry.revision).await?;
+                connection.disconnect().await?;
+                return Err(error.into());
+            }
+        };
         let mut child = tokio::process::Command::new(&args[5])
             .args(["--mount", &drive])
             .stdin(Stdio::piped())
@@ -121,10 +138,23 @@ mod probe {
         let native = PathBuf::from(format!("{drive}\\probe.txt"));
         let result: Result<()> = async {
         phase(&control, BridgePhase::Attached).await?;
+        let local = tempfile::tempdir()?;
+        let baseline = super::windows_semantics::check(local.path());
+        let comparison = super::windows_semantics::check(&PathBuf::from(format!("{drive}\\")));
+        for ((case, native), (_, mapped)) in baseline.iter().zip(&comparison) {
+            ensure!(native.is_ok(), "Native baseline failed for {case}: {native:?}");
+            ensure!(!matches!(mapped, Err(message) if message.starts_with("ASSERTION:")), "Windows safety assertion failed: {case}: {mapped:?}");
+            println!("WINDOWS COMPARISON {case}: native={native:?}; mapped={mapped:?}");
+        }
+        for required in ["closed-rename", "closed-delete", "rename-denied", "exclusive-denied"] {
+            let (_, outcome) = comparison.iter().find(|(case, _)| case == required).unwrap();
+            ensure!(outcome.is_ok(), "Required Windows behavior failed: {required}: {outcome:?}");
+        }
         let bytes = "native bridge protocol two\r\n".repeat(4096).into_bytes();
         let mut held = std::fs::OpenOptions::new().read(true).write(true).create_new(true).open(&native).context("native create")?;
         held.write_all(&bytes).context("native write")?;
-        held.sync_all().context("native flush")?; drop(held);
+        held.sync_all().context("native flush")?;
+        drop(held);
         ensure!(std::fs::read(&native).context("native read")? == bytes, "Local mapped bytes differ");
         ensure!(service.read_text(&format!("{root}/probe.txt")).await?.text.as_bytes() == bytes, "Independent SFTP bytes differ");
         let held = std::fs::File::open(&native).context("native held read")?;
@@ -133,20 +163,21 @@ mod probe {
         ensure!(control.snapshot()?.message.is_some(), "Busy detach lacked a reason");
         drop(held);
         let renamed = native.with_file_name("renamed.txt");
-        match std::fs::rename(&native, &renamed) {
-            Ok(()) => {
-                ensure!(std::fs::read(&renamed)? == bytes, "Rename lost bytes");
-                std::fs::remove_file(renamed).context("native delete")?;
-            }
-            Err(error) => {
-                ensure!(std::fs::read(&native)? == bytes && !renamed.exists(), "Rejected rename changed files");
-                println!("LIMITATION: Windows SFTP native rename rejected without changing source: {error}");
-            }
-        }
+        std::fs::rename(&native, &renamed).context("native rename")?;
+        ensure!(std::fs::read(&renamed)? == bytes, "Rename lost bytes");
+        std::fs::remove_file(&renamed).context("native delete")?;
+        ensure!(!renamed.exists(), "Native deletion did not remove the file");
         control.request_detach()?;
         phase(&control, BridgePhase::Detached).await?;
         ensure!(tokio::time::timeout(Duration::from_secs(10), child.wait()).await??.success(), "Bridge failed on exit");
-        println!("PASS: current desktop protocol handshake, native mount, 108 KiB write/read, independent SFTP verification, busy detach and ordinary detach; see any LIMITATION lines above");
+        println!("PASS: Windows SFTP, protocol handshake, 108 KiB write/read, independent SFTP verification, closed-file rename/delete, busy detach and ordinary detach");
+        let full_parity = comparison.iter().all(|(_, result)| result.is_ok());
+        if !full_parity {
+            println!("ACCEPTED LIMITATIONS: shared reader/writer and open-file rename; see comparison rows. Release acceptance is not full Windows parity.");
+        }
+        if std::env::var("SHELLCANVAS_REQUIRE_WINDOWS_PARITY").as_deref() == Ok("1") {
+            ensure!(full_parity, "Additional mapped sharing restrictions remain; see WINDOWS COMPARISON rows");
+        }
         Ok(())
     }.await;
         if result.is_err() {
