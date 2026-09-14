@@ -20,6 +20,19 @@ Relocation mappings carry no text or replacement revision. Providers supporting 
 
 The SFTP adapter currently implements POSIX SFTP conventions, including `/` and the server's canonical `.` directory. Those assumptions stay inside the adapter. This change does not add production Windows or appliance support.
 
+## SSH hosts without SFTP
+
+If opening SFTP fails, the built-in SSH connection probes a POSIX shell on separate exec channels. Compatible Linux hosts can browse directories without an SFTP subsystem or installed helper. A failed shell probe leaves terminal access independent and reports why file access is unavailable. The fallback respects the account's existing permissions and cannot provide files through a forced-command or restricted account that forbids the required commands.
+
+Browsing requires shell builtins and GNU/BusyBox-compatible `stat -c`. Listings are NUL-framed and delivered in pages of 128 entries; names with whitespace or shell metacharacters are quoted, never parsed from `ls`. Non-UTF-8 names produce an explicit error. Commands/pages have 15-second timeouts and bounded output buffers.
+
+Individual-file download and read-only text preview additionally require `cat` and working Linux `/proc/self/fd` metadata. Downloads verify the opened descriptor and path against the selected revision before/after streaming, plus the byte count. Preview is limited to 256 KiB of UTF-8 text. Individual-file upload requires `mktemp`, `base64 -d`, `rm` and `ln -T`; capability checks are read-only, and actual directory permissions/filesystem hard-link support are checked by the operation. Uploads stream encoded chunks into a private temporary sibling and publish only on an explicit commit, without replacing an existing file, symlink or directory. Abort requests await temporary-file cleanup. Lost connections/forced termination can still leave a temporary file or an uncertain publication acknowledgement.
+
+This compatibility mode advertises only supported browsing, upload, download and file-copy capabilities. It does not advertise editing, rename/delete/move, directory creation, recursive folder transfers or local drive attachment. It does not change the full SFTP service. Transfer contents remain inside native Rust/SSH, outside JavaScript.
+
+Manual check on a host with SFTP disabled: connect and confirm the shell-mode notice; navigate Home/Parent/hidden folders; upload and download a binary file; compare hashes; repeat an upload with the same name and confirm the original survives; cancel a partial upload and check for temporary files. Confirm Terminal remains usable. Repeat with an account that also denies exec requests and check for a clear file-access notice. Automated loopback SSH tests reject SFTP and cover paging, quoting, transfer publication/cancellation, binary command output and restricted-shell failure. Linux descriptor-based downloads require a real Linux test environment; Windows Git Bash is not equivalent.
+
+
 ## Evidence
 
 The development fixture `/tests/fixtures/filesystems.html` supplies Unix paths, drive roots, and opaque volume/node/object IDs. Its provider rejects invented locations. Browser checks verified child/parent/root navigation, disabled Parent at roots, multiple drives, absent Home, editor titles independent of object IDs, Save As using provider parents, subsequent normal Save using the new object ID, and a new draft creating a file in the provider's default drive folder.

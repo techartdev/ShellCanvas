@@ -260,11 +260,30 @@ async fn prepare_ssh(
             ]);
             Some(service)
         }
-        Err(error) => {
-            info.notices
-                .push(format!("File access unavailable: {error}"));
-            None
-        }
+        Err(error) => match ShellFiles::probe(connection.clone()).await {
+            Ok(service) => {
+                info.home = Some(service.home().into());
+                info.capabilities.push("files.read".into());
+                if service.can_download() {
+                    info.capabilities.push("files.download".into());
+                }
+                if service.can_upload() {
+                    info.capabilities.push("files.upload".into());
+                }
+                if service.can_download() && service.can_upload() {
+                    info.capabilities.push("files.copy".into());
+                }
+                info.notices.push("SFTP is unavailable. Using SSH shell file access: browsing and supported individual-file transfers. Editing, file management, folder transfers and local drive attachment are unavailable in this mode.".into());
+                let service = Arc::new(service);
+                files = Some(service.clone());
+                transfers = Some(service.clone());
+                Some(service as Arc<dyn TextFileService>)
+            }
+            Err(shell_error) => {
+                info.notices.push(format!("File access unavailable: SFTP: {error}; SSH shell fallback: {shell_error}. The account must allow SFTP or compatible shell commands. Terminal access is independent."));
+                None
+            }
+        },
     };
     let clock =
         shellcanvas_core::clock::SshHostClock::for_provider(connection.clone(), &info.provider);

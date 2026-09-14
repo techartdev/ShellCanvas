@@ -117,7 +117,7 @@ impl Connection {
         .await
     }
 
-    async fn connect_using(
+    pub(crate) async fn connect_using(
         options: &ConnectOptions,
         known_hosts: PathBuf,
         additional_known_hosts: Option<PathBuf>,
