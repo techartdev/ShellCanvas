@@ -11,6 +11,13 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  ssh-core-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - name: Verify shell fallback against a Linux SSH fixture without SFTP
+        run: cargo test -p shellcanvas-core shell_files --lib --locked
+
   verify:
     runs-on: windows-latest
     steps:

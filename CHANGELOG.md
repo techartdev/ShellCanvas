@@ -2,6 +2,18 @@
 
 Notable changes to ShellCanvas, newest first. Published SDK packages follow [semantic versioning](https://semver.org/), and desktop releases use the same version where practical. The project is pre-1.0, so a minor release may include breaking changes; those come with migration notes.
 
+## [0.1.8] - 2026-09-14
+
+### Added
+
+- Automatically try SSH shell file access when SFTP is unavailable. Compatible Linux hosts support paged browsing, individual-file uploads/downloads, file copy and read-only text preview without installing a remote helper.
+- Probe each transfer capability independently, preserve existing destinations during upload, and clean up canceled temporary uploads. Restricted accounts receive a clear explanation when neither SFTP nor compatible shell commands are available; terminal access remains independent.
+
+### Known limitations
+
+- Shell mode requires permitted POSIX shell commands and compatible utilities. It does not support editing, rename/delete/move, folder creation or transfers, or local drive attachment. Downloads require Linux descriptor metadata; uploads require temporary-file and no-clobber hard-link support. See [SSH hosts without SFTP](docs/filesystem-contract.md#ssh-hosts-without-sftp).
+- Manual verification on the reported restricted Linux host remains pending.
+
 ## [0.1.7] - 2026-09-14
 
 ### Added
