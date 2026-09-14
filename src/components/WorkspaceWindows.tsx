@@ -17,6 +17,7 @@ export function WorkspaceWindows({
   dispatch,
   connect,
   reportError,
+  pinToDesktop,
 }: {
   workspace: Workspace;
   runtime: DesktopRuntime;
@@ -26,6 +27,7 @@ export function WorkspaceWindows({
   dispatch(action: DesktopAction): void;
   connect(): void;
   reportError(message: string): void;
+  pinToDesktop?(folder: { path: string; name: string }): void;
 }) {
   const [identity, setIdentity] = useState<{
     connection: Workspace["connection"];
@@ -82,6 +84,7 @@ export function WorkspaceWindows({
     connect,
     reportError,
     openApp: (id, launch) => dispatch({ type: "new", id, launch }),
+    pinToDesktop,
     connected: workspace.connected !== false,
   };
   return (

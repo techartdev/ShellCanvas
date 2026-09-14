@@ -2,6 +2,13 @@
 
 Notable changes to ShellCanvas, newest first. Published SDK packages follow [semantic versioning](https://semver.org/), and desktop releases use the same version where practical. The project is pre-1.0, so a minor release may include breaking changes; those come with migration notes.
 
+## [0.1.7] - 2026-09-14
+
+### Added
+
+- [Desktop icons](docs/desktop-icons.md): app and folder shortcuts tile on the desktop, drag to rearrange onto a grid, and open on double-click. Right-clicking an icon offers its own actions rather than the desktop menu. Each host keeps its own arrangement between sessions, stored locally and never written to the remote host.
+- Desktop shortcut layouts preserve overflow in scrollable columns when the window shrinks, and keep host identities isolated while switching workspaces. Storage errors remain visible and unreadable saved layouts are preserved.
+
 ## [0.1.6] - 2026-09-13
 
 ### Added
