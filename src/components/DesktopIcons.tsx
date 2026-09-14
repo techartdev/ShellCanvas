@@ -8,6 +8,7 @@ import {
   cellOrigin,
   cellWidth,
   gridFor,
+  gridForIcons,
   type DesktopShortcut,
   type GridCell,
   type GridMetrics,
@@ -59,7 +60,10 @@ export function DesktopIcons({
     const element = ground.current;
     if (!element) return;
     const measure = () => {
-      const next = gridFor(element.clientWidth, element.clientHeight);
+      const next = gridForIcons(
+        gridFor(element.clientWidth, element.clientHeight),
+        icons.length,
+      );
       setGrid(next);
       report?.(next);
     };
@@ -67,7 +71,7 @@ export function DesktopIcons({
     const observer = new ResizeObserver(measure);
     observer.observe(element);
     return () => observer.disconnect();
-  }, [report]);
+  }, [report, icons.length]);
 
   // A drag interrupted by anything at all ends where it started.
   useEffect(() => {
@@ -190,7 +194,8 @@ export function DesktopIcons({
               const area = ground.current;
               if (!area) return;
               const bounds = area.getBoundingClientRect();
-              const left = event.clientX - bounds.left - current.offsetX;
+              const left =
+                event.clientX - bounds.left - current.offsetX + area.scrollLeft;
               const top = event.clientY - bounds.top - current.offsetY;
               if (
                 !current.moved &&
@@ -201,7 +206,7 @@ export function DesktopIcons({
               current.moved = true;
               current.left = Math.max(
                 0,
-                Math.min(area.clientWidth - cellWidth, left),
+                Math.min(grid.columns * cellWidth - cellWidth, left),
               );
               current.top = Math.max(
                 0,
@@ -210,8 +215,14 @@ export function DesktopIcons({
               setDragging({ ...current });
             }}
             onPointerUp={() => finish(icon)}
-            onPointerCancel={() => finish(icon)}
-            onLostPointerCapture={() => finish(icon)}
+            onPointerCancel={() => {
+              drag.current = null;
+              setDragging(null);
+            }}
+            onLostPointerCapture={() => {
+              drag.current = null;
+              setDragging(null);
+            }}
           >
             <span className="desktop-icon-art">
               {icon.kind === "folder" ? (

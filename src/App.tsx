@@ -241,38 +241,54 @@ export default function App({
    * the session, so icons return to the same machine after a reconnect, a
    * rename or a new key, and never follow a different one.
    */
-  const [desktopId, setDesktopId] = useState<string | null>(null);
+  const [desktopIdentity, setDesktopIdentity] = useState<{
+    key: string;
+    connection: typeof workspace.connection;
+    id: string | null;
+  }>();
+  const desktopId = !workspace.session
+    ? "local"
+    : desktopIdentity?.key === workspace.key &&
+        desktopIdentity.connection === workspace.connection
+      ? desktopIdentity.id
+      : null;
   useEffect(() => {
-    if (!workspace.session) {
-      setDesktopId("local");
-      return;
-    }
+    if (!workspace.session) return;
     let current = true;
+    const resolveIdentity = (id: string | null) => {
+      if (current)
+        setDesktopIdentity({
+          key: workspace.key,
+          connection: workspace.connection,
+          id,
+        });
+    };
     void workspaceIdentity(workspace.connection)
       .then((id) => {
         // Preview runs a synthetic host with no endpoint; its own store keeps
         // that layout away from real desktops.
-        if (current) setDesktopId(id ?? (isNative ? null : "preview"));
+        resolveIdentity(id ?? (isNative ? null : "preview"));
       })
       .catch(() => {
-        if (current) setDesktopId(null);
+        resolveIdentity(null);
       });
     return () => {
       current = false;
     };
-  }, [workspace.session, workspace.connection]);
+  }, [workspace.key, workspace.session, workspace.connection, isNative]);
   const desktopIcons = useDesktopIcons(desktopId, isNative);
+  const { icons, set: saveIcons, blocked: iconsBlocked } = desktopIcons;
   const iconGrid = useRef<GridMetrics>({ columns: 1, rows: 1 });
   const reportIconGrid = useCallback(
     (grid: GridMetrics) => {
       iconGrid.current = grid;
-      if (!desktopId) return;
+      if (!desktopId || iconsBlocked) return;
       // A desktop that got narrower must not leave icons past its edge.
-      const rescued = reflow(desktopIcons.icons, grid);
-      if (rescued.some((icon, index) => icon !== desktopIcons.icons[index]))
-        desktopIcons.set(desktopId, rescued);
+      const rescued = reflow(icons, grid);
+      if (rescued.some((icon, index) => icon !== icons[index]))
+        saveIcons(desktopId, rescued);
     },
-    [desktopId, desktopIcons],
+    [desktopId, icons, saveIcons, iconsBlocked],
   );
   const switcher = useRef<HTMLDivElement>(null);
   const [profiles, setProfiles] = useState<HostProfile[]>([]);
@@ -807,6 +823,7 @@ export default function App({
     target: string;
     name: string;
   }) {
+    if (!desktopId || desktopIcons.blocked) return;
     const before = desktopIcons.icons;
     if (
       before.some(
@@ -869,7 +886,7 @@ export default function App({
           id: "pin",
           label: "Add to desktop",
           separatorBefore: true,
-          disabled: !desktopId,
+          disabled: !desktopId || desktopIcons.blocked,
           run: () =>
             pinShortcut({ kind: "app", target: app.id, name: app.title }),
         },
@@ -1227,7 +1244,7 @@ export default function App({
               reportError={setToast}
               pinToDesktop={
                 // Only the workspace on screen may write to the desktop shown.
-                w.key === workspace.key
+                w.key === workspace.key && desktopId && !desktopIcons.blocked
                   ? (folder) =>
                       pinShortcut({
                         kind: "folder",
@@ -1414,17 +1431,19 @@ export default function App({
               : "Close workspace"}
         </button>
       </footer>
-      {toast && (
+      {(toast || desktopIcons.error) && (
         <div className="toast" role="status">
           <ShieldCheck size={18} />
-          <span>{toast}</span>
-          <button
-            className="icon-button"
-            aria-label="Dismiss notification"
-            onClick={() => setToast("")}
-          >
-            <X size={15} />
-          </button>
+          <span>{toast || desktopIcons.error}</span>
+          {toast && (
+            <button
+              className="icon-button"
+              aria-label="Dismiss notification"
+              onClick={() => setToast("")}
+            >
+              <X size={15} />
+            </button>
+          )}
         </div>
       )}
       {connectOpen && (

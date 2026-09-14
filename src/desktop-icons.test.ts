@@ -135,6 +135,38 @@ describe("arranging and reflowing", () => {
     const fixed = reflow(icons, { columns: 2, rows: 2 });
     expect(fixed).toEqual([icon("a", 0, 0), icon("b", 0, 1)]);
   });
+
+  it("preserves every shortcut when a smaller window has fewer visible cells", () => {
+    const original = [
+      icon("a", 0, 0),
+      icon("b", 0, 1),
+      icon("c", 2, 0),
+      icon("d", 3, 1),
+    ];
+    const narrow = reflow(original, { columns: 1, rows: 1 });
+    expect(narrow.map((item) => item.id).sort()).toEqual(["a", "b", "c", "d"]);
+    expect(
+      new Set(narrow.map((item) => `${item.column},${item.row}`)).size,
+    ).toBe(4);
+    expect(reflow(narrow, { columns: 1, rows: 1 })).toEqual(narrow);
+    const target = storage();
+    const store = createDesktopIconsStore(() => target.access);
+    store.set("host", narrow);
+    const restored = createDesktopIconsStore(() => target.access).icons("host");
+    expect(reflow(restored, { columns: 4, rows: 2 })).toHaveLength(4);
+  });
+
+  it("arranges overflow into distinct scrollable cells", () => {
+    const arranged = arrange(
+      [icon("a", 4, 0), icon("b", 3, 0), icon("c", 2, 0)],
+      { columns: 1, rows: 1 },
+    );
+    expect(arranged).toEqual([
+      icon("c", 0, 0),
+      icon("b", 1, 0),
+      icon("a", 2, 0),
+    ]);
+  });
 });
 
 describe("adding and removing shortcuts", () => {
@@ -231,6 +263,9 @@ describe("the saved layout", () => {
     expect(store.icons("workspace-v1-aaa")).toEqual([]);
     // The unreadable payload is still on disk for recovery.
     expect(corrupt.entries.get("shellcanvas.desktop-icons")).toBe("{not json");
+    store.set("workspace-v1-aaa", [icon("a", 0, 0)]);
+    expect(corrupt.entries.get("shellcanvas.desktop-icons")).toBe("{not json");
+    expect(store.getSnapshot().blocked).toBe(true);
   });
 
   it("refuses a future version and a malformed shortcut", () => {

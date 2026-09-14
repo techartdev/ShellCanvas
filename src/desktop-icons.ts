@@ -52,6 +52,14 @@ export function gridFor(width: number, height: number): GridMetrics {
   };
 }
 
+/** Keep overflow in additional scrollable columns rather than losing shortcuts. */
+export function gridForIcons(grid: GridMetrics, count: number): GridMetrics {
+  return {
+    ...grid,
+    columns: Math.max(grid.columns, Math.ceil(count / grid.rows)),
+  };
+}
+
 const at = (cell: GridCell) => cell.column + "," + cell.row;
 
 export function clampCell(cell: GridCell, grid: GridMetrics): GridCell {
@@ -119,6 +127,7 @@ export function arrange(
   icons: readonly DesktopShortcut[],
   grid: GridMetrics,
 ): DesktopShortcut[] {
+  grid = gridForIcons(grid, icons.length);
   const ordered = [...icons].sort(
     (a, b) => a.column - b.column || a.row - b.row,
   );
@@ -138,6 +147,7 @@ export function reflow(
   icons: readonly DesktopShortcut[],
   grid: GridMetrics,
 ): DesktopShortcut[] {
+  grid = gridForIcons(grid, icons.length);
   const settled: DesktopShortcut[] = [];
   const displaced: DesktopShortcut[] = [];
   for (const icon of icons) {
@@ -251,7 +261,7 @@ export function createDesktopIconsStore(
         desktops: {},
         blocked: true,
         error:
-          "Saved desktop icons could not be read, so this desktop starts empty. Adding an icon replaces the saved layout.",
+          "Saved desktop icons could not be read. The saved layout has been preserved; shortcuts cannot be changed until it is recovered.",
       };
     }
   }
@@ -282,6 +292,7 @@ export function createDesktopIconsStore(
     icons: (desktop: string | null) =>
       (desktop && snapshot.desktops[desktop]) || empty,
     set(desktop: string, icons: readonly DesktopShortcut[]) {
+      if (snapshot.blocked) return;
       write({ ...snapshot.desktops, [desktop]: icons.slice(0, maxShortcuts) });
     },
     reload() {

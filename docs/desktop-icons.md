@@ -43,7 +43,9 @@ separate from any real host.
 
 If the saved layout cannot be read — edited by hand into something invalid, or
 written by a newer version — the desktop starts empty and says so rather than
-discarding what is there. Adding an icon then replaces it.
+discarding what is there. Changes to shortcuts are blocked until the saved
+layout is recovered. Storage write failures are also shown; those changes remain
+available for the current session.
 
 ## Limitations
 
@@ -53,4 +55,6 @@ discarding what is there. Adding an icon then replaces it.
 - Shortcuts cannot be renamed, and there is no multiple selection.
 - Icons cannot be dragged out of Files onto the desktop; use **Add to desktop**.
 - A narrower desktop pulls icons back inside the grid, which can change an
-  arrangement that no longer fits. Icons that still fit are left alone.
+  arrangement that no longer fits. Icons that still fit are left alone. If there
+  are more shortcuts than visible cells, additional columns can be scrolled into
+  view; resizing never removes shortcuts.

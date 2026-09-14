@@ -12,6 +12,7 @@
   bottom: calc(var(--dock-reserve) + var(--window-bottom));
   z-index: 0;
   pointer-events: auto;
+  overflow: auto;
 }
 
 .desktop-icon {
