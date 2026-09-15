@@ -335,6 +335,15 @@ async fn restricted_shell_and_command_failures_fail_closed() {
     assert!(ShellFiles::probe(fixture.connection.clone()).await.is_err());
     assert!(!fixture.connection.handle.is_closed());
     let fixture = Fixture::new(false).await;
+    for provider in ["routeros", "windows"] {
+        let result = ShellFiles::probe_for_host(fixture.connection.clone(), provider).await;
+        assert!(result
+            .err()
+            .unwrap()
+            .to_string()
+            .contains("POSIX shell file access is unavailable"));
+        assert!(!fixture.connection.handle.is_closed());
+    }
     assert!(collect(&fixture.connection, "printf partial; exit 1", 100)
         .await
         .is_err());
