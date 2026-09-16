@@ -18,6 +18,7 @@ export function AppLauncher({
   running,
   blocked,
   launch,
+  menu,
   close,
   connect,
 }: {
@@ -26,6 +27,8 @@ export function AppLauncher({
   /** Why an app cannot open right now; undefined when it can. */
   blocked(app: DesktopApp): string | undefined;
   launch(id: string): void;
+  /** Opens the shared app menu at the requested screen position. */
+  menu?: (app: DesktopApp, x: number, y: number) => void;
   close(): void;
   connect(): void;
 }) {
@@ -174,6 +177,24 @@ export function AppLauncher({
               aria-label={`${app.title}${active ? ", running" : ""}${reason ? `, unavailable: ${reason}` : ""}`}
               title={reason ?? app.description ?? app.subtitle}
               onClick={() => open(app)}
+              onContextMenu={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                if (!menu) return;
+                event.currentTarget.focus({ preventScroll: true });
+                menu(app, event.clientX, event.clientY);
+              }}
+              onKeyDown={(event) => {
+                if (
+                  event.key !== "ContextMenu" &&
+                  !(event.shiftKey && event.key === "F10")
+                )
+                  return;
+                if (!menu) return;
+                event.preventDefault();
+                const bounds = event.currentTarget.getBoundingClientRect();
+                menu(app, bounds.left, bounds.top);
+              }}
             >
               <AppIcon
                 id={app.id}

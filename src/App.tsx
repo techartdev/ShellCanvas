@@ -1275,6 +1275,7 @@ export default function App({
               : undefined
           }
           launch={openApp}
+          menu={dockMenu}
           close={() => setLauncherOpen(false)}
           connect={showConnect}
         />
