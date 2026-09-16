@@ -218,20 +218,17 @@ async fn prepare_ssh(
                 .map_err(|e| format!("{e:#}"))?
         }
     };
-    let connection = Arc::new(connection);
+    let mut connection = Arc::new(connection);
     let mut info = inspect_host(&connection).await;
     if options.allow_legacy_mac {
         info.notices.push("Legacy SSH compatibility enabled: HMAC-SHA1, RSA/SHA1 authentication and 2048-bit exchange groups are allowed when needed. Modern algorithms remain preferred; MD5 is disabled.".into());
-    }
-    let settings = settings_for_host(&info.provider, Some(connection.clone()));
-    if settings.is_some() {
-        info.capabilities.push("host.settings".into());
     }
     let mut files: Option<Arc<dyn FileSystemProvider>> = None;
     let mut mutations: Option<Arc<dyn FileMutationService>> = None;
     let mut moves: Option<Arc<dyn FileMoveService>> = None;
     let mut transfers: Option<Arc<dyn FileTransferService>> = None;
-    let text: Option<Arc<dyn TextFileService>> = match connection.text_files().await {
+    let sftp = connection.text_files().await;
+    let mut text: Option<Arc<dyn TextFileService>> = match sftp {
         Ok(service) => {
             let service = service.with_identified_provider(&info.provider);
             info.capabilities.push("files.edit".into());
@@ -260,7 +257,25 @@ async fn prepare_ssh(
             ]);
             Some(service)
         }
-        Err(error) => match ShellFiles::probe(connection.clone()).await {
+        Err(error) if info.provider == "routeros" => {
+            if connection.handle.is_closed() {
+                connection = Arc::new(connection.reconnect(&options).await.map_err(|reconnect_error| {
+                    format!("The host closed SSH after rejecting SFTP, and reconnecting for RouterOS file metadata failed: {reconnect_error:#}")
+                })?);
+                info.notices.push("The host closed SSH after rejecting SFTP. Reconnected with the verified host key before trying read-only RouterOS file metadata.".into());
+            }
+            match shellcanvas_core::RouterOsFiles::probe(connection.clone()).await {
+                Ok(service) => {
+                    info.home = Some("/".into());
+                    info.capabilities.push("files.read".into());
+                    info.notices.push("SFTP is unavailable. Using read-only RouterOS file metadata: folder browsing is available, while file contents, transfers, editing, management and local drive attachment are unavailable.".into());
+                    files = Some(Arc::new(service));
+                }
+                Err(metadata_error) => info.notices.push(format!("File access unavailable: SFTP: {error:#}; RouterOS metadata: {metadata_error:#}. The account must permit read-only /file metadata.")),
+            }
+            None
+        }
+        Err(error) => match ShellFiles::probe_for_host(connection.clone(), &info.provider).await {
             Ok(service) => {
                 info.home = Some(service.home().into());
                 info.capabilities.push("files.read".into());
@@ -280,11 +295,32 @@ async fn prepare_ssh(
                 Some(service as Arc<dyn TextFileService>)
             }
             Err(shell_error) => {
-                info.notices.push(format!("File access unavailable: SFTP: {error}; SSH shell fallback: {shell_error}. The account must allow SFTP or compatible shell commands. Terminal access is independent."));
+                info.notices.push(format!("File access unavailable: SFTP: {error:#}; SSH shell fallback: {shell_error:#}. The account must allow SFTP or compatible shell commands."));
                 None
             }
         },
     };
+    if connection.handle.is_closed() {
+        // Some appliances terminate SSH itself when they reject SFTP. Recover
+        // once before leasing the workspace; never retain services from the old
+        // transport or repeat the probe that just disconnected it.
+        connection = Arc::new(connection.reconnect(&options).await.map_err(|error| {
+            format!("The host closed SSH during file-service startup, and reconnecting for terminal access failed: {error:#}")
+        })?);
+        files = None;
+        text = None;
+        mutations = None;
+        moves = None;
+        transfers = None;
+        info.home = None;
+        info.capabilities
+            .retain(|capability| !capability.starts_with("files."));
+        info.notices.push("The host closed SSH during file-service startup. Reconnected for terminal access; file services are unavailable for this workspace. Check the server's file-service support and this account's permissions.".into());
+    }
+    let settings = settings_for_host(&info.provider, Some(connection.clone()));
+    if settings.is_some() {
+        info.capabilities.push("host.settings".into());
+    }
     let clock =
         shellcanvas_core::clock::SshHostClock::for_provider(connection.clone(), &info.provider);
     let resource = ConnectionResource::with_clock(

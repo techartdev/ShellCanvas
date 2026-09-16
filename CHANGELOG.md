@@ -2,6 +2,21 @@
 
 Notable changes to ShellCanvas, newest first. Published SDK packages follow [semantic versioning](https://semver.org/), and desktop releases use the same version where practical. The project is pre-1.0, so a minor release may include breaking changes; those come with migration notes.
 
+## [0.1.9] - 2026-09-16
+
+### Added
+
+- Browse RouterOS 6 file metadata when SFTP is unavailable. The read-only fallback supports root, home and parent navigation, nested and empty directories, and disk roots without inserting selected paths into router commands.
+
+### Fixed
+
+- Recover terminal startup when an appliance closes the SSH transport after rejecting SFTP. Reconnection keeps the same endpoint and account, requires the previously verified host key and current trust approval, and never retries the rejected SFTP request.
+
+### Known limitations
+
+- RouterOS metadata fallback does not read file contents or support previews, transfers, editing, management or local drive attachment. The full file manager requires working SFTP and account permission for file transfer.
+- Remote Settings remains available only for supported Linux hosts; RouterOS does not expose that service.
+
 ## [0.1.8] - 2026-09-14
 
 ### Added

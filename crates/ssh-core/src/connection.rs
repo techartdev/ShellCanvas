@@ -9,12 +9,16 @@ use russh_sftp::client::SftpSession;
 use serde::Deserialize;
 use std::{
     path::{Path, PathBuf},
-    sync::Arc,
+    sync::{Arc, OnceLock},
     time::Duration,
 };
 use tokio::time::timeout;
 
 pub const OP_TIMEOUT: Duration = Duration::from_secs(15);
+
+#[cfg(test)]
+#[path = "connection_recovery_tests.rs"]
+mod recovery_tests;
 
 // Never derives Debug or Serialize: authentication material must not enter logs.
 #[derive(Deserialize)]
@@ -36,6 +40,7 @@ pub struct VerifiedHost {
     known_hosts: PathBuf,
     additional_known_hosts: Option<PathBuf>,
     approved_key: Option<keys::PublicKey>,
+    verified_key: Arc<OnceLock<keys::PublicKey>>,
 }
 
 pub fn verify_host_key(host: &str, port: u16, key: &keys::PublicKey, path: &Path) -> Result<()> {
@@ -62,12 +67,22 @@ impl client::Handler for VerifiedHost {
             &self.known_hosts,
             self.additional_known_hosts.as_deref(),
         )?;
+        let verified = self.verified_key.get_or_init(|| key.public_key());
+        if verified.key_data() != key.public_key().key_data() {
+            bail!("Host key changed during the SSH connection");
+        }
         Ok(true)
     }
 }
 
 pub struct Connection {
     pub handle: client::Handle<VerifiedHost>,
+    host: String,
+    port: u16,
+    username: String,
+    host_key: keys::PublicKey,
+    known_hosts: PathBuf,
+    additional_known_hosts: Option<PathBuf>,
 }
 
 #[async_trait::async_trait]
@@ -82,6 +97,25 @@ impl shellcanvas_services::ConnectionLifecycle for Connection {
 }
 
 impl Connection {
+    /// Recover startup after an optional probe closes the transport. Authenticate
+    /// only the same account/endpoint and exact previously verified host key;
+    /// trust files are rechecked, and no failed operation is retried here.
+    pub async fn reconnect(&self, options: &ConnectOptions) -> Result<Self> {
+        if options.host != self.host
+            || options.port != self.port
+            || options.username != self.username
+        {
+            bail!("SSH recovery must use the original host and account");
+        }
+        Self::connect_using(
+            options,
+            self.known_hosts.clone(),
+            self.additional_known_hosts.clone(),
+            Some(self.host_key.clone()),
+        )
+        .await
+    }
+
     pub async fn connect(options: ConnectOptions) -> Result<Self> {
         let known_hosts = dirs::home_dir()
             .context("Cannot locate your home directory")?
@@ -128,12 +162,14 @@ impl Connection {
         {
             bail!("A host, username, and valid port are required.");
         }
+        let verified_key = Arc::new(OnceLock::new());
         let handler = VerifiedHost {
             host: options.host.clone(),
             port: options.port,
-            known_hosts,
-            additional_known_hosts,
+            known_hosts: known_hosts.clone(),
+            additional_known_hosts: additional_known_hosts.clone(),
             approved_key,
+            verified_key: verified_key.clone(),
         };
         let config = client::Config {
             preferred: ssh_preferences(options.allow_legacy_mac),
@@ -203,7 +239,18 @@ impl Connection {
             if !auth.success() {
                 bail!("Authentication rejected. Check the username and authentication method.");
             }
-            Ok(Self { handle })
+            Ok(Self {
+                handle,
+                host: options.host.clone(),
+                port: options.port,
+                username: options.username.clone(),
+                host_key: verified_key
+                    .get()
+                    .context("SSH host key was not verified")?
+                    .clone(),
+                known_hosts,
+                additional_known_hosts,
+            })
         })
         .await
         .context("Connection timed out after 30 seconds")?
@@ -215,6 +262,15 @@ impl Connection {
 
     /// Trusted provider command execution, never exposed as a desktop IPC command.
     pub(crate) async fn exec_bounded(&self, command: &str) -> Result<String> {
+        Ok(
+            String::from_utf8_lossy(&self.exec_bounded_bytes(command).await?)
+                .trim()
+                .to_owned(),
+        )
+    }
+
+    /// Binary-safe variant for provider protocols that validate UTF-8 themselves.
+    pub(crate) async fn exec_bounded_bytes(&self, command: &str) -> Result<Vec<u8>> {
         timeout(OP_TIMEOUT, async {
             let mut channel = self.handle.channel_open_session().await?;
             channel.exec(true, command).await?;
@@ -245,7 +301,7 @@ impl Connection {
                     String::from_utf8_lossy(&stderr).trim()
                 );
             }
-            Ok(String::from_utf8_lossy(&bytes).trim().to_owned())
+            Ok(bytes)
         })
         .await
         .context("Host command timed out")?

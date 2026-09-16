@@ -213,6 +213,17 @@ pub struct ShellFiles {
     uploads: bool,
 }
 impl ShellFiles {
+    /// Recognized command languages must not receive POSIX shell scripts.
+    pub async fn probe_for_host(connection: Arc<Connection>, provider: &str) -> Result<Self> {
+        if matches!(provider, "routeros" | "windows") {
+            bail!("POSIX shell file access is unavailable for {provider}");
+        }
+        if connection.handle.is_closed() {
+            bail!("SSH connection closed before shell file probing");
+        }
+        Self::probe(connection).await
+    }
+
     /// All probing is read-only. Incompatible/restricted shells fail closed.
     pub async fn probe(connection: Arc<Connection>) -> Result<Self> {
         let bytes = collect(&connection, PROBE, FIELD_LIMIT).await?;
