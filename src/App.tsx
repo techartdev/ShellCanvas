@@ -880,7 +880,10 @@ export default function App({
           disabled:
             !!unavailableReason(app, session) ||
             !!runtime.disabledReason(app.id),
-          run: () => dispatch({ type: "new", id: app.id }),
+          run: () => {
+            setLauncherOpen(false);
+            dispatch({ type: "new", id: app.id });
+          },
         },
         {
           id: "pin",
@@ -893,7 +896,10 @@ export default function App({
         ...ids.map((id) => ({
           id,
           label: `${instanceTitle(app, desktop.instances[id])}${desktop.minimized.includes(id) ? " · Minimized" : ""}`,
-          run: () => dispatch({ type: "focus", id }),
+          run: () => {
+            setLauncherOpen(false);
+            dispatch({ type: "focus", id });
+          },
         })),
       ],
     });

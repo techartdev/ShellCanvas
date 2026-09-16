@@ -12,6 +12,22 @@ import { matchesSearch } from "../extensions/app-listing";
 import { AppIcon } from "./AppIcon";
 import "./AppLauncher.css";
 
+export function handleLauncherContextMenuKey(
+  event: Pick<KeyboardEvent, "key" | "shiftKey" | "preventDefault">,
+  app: DesktopApp,
+  menu: (app: DesktopApp, x: number, y: number) => void,
+  bounds: Pick<DOMRect, "left" | "top">,
+) {
+  if (
+    event.key !== "ContextMenu" &&
+    !(event.shiftKey && event.key === "F10")
+  )
+    return false;
+  event.preventDefault();
+  menu(app, bounds.left, bounds.top);
+  return true;
+}
+
 /** Full-desktop launcher for apps that can open now. Managing apps is separate. */
 export function AppLauncher({
   apps,
@@ -185,15 +201,9 @@ export function AppLauncher({
                 menu(app, event.clientX, event.clientY);
               }}
               onKeyDown={(event) => {
-                if (
-                  event.key !== "ContextMenu" &&
-                  !(event.shiftKey && event.key === "F10")
-                )
-                  return;
                 if (!menu) return;
-                event.preventDefault();
                 const bounds = event.currentTarget.getBoundingClientRect();
-                menu(app, bounds.left, bounds.top);
+                handleLauncherContextMenuKey(event, app, menu, bounds);
               }}
             >
               <AppIcon
