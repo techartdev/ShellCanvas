@@ -191,6 +191,30 @@ export function addShortcut(
   return [...icons, { ...shortcut, id, ...spot }];
 }
 
+export type PinShortcutResult = "added" | "duplicate" | "full" | "unavailable";
+
+/** Apply the Add to desktop command to one resolved desktop identity. */
+export function pinDesktopShortcut(
+  desktop: string | null,
+  blocked: boolean,
+  icons: readonly DesktopShortcut[],
+  shortcut: Omit<DesktopShortcut, "id" | "column" | "row">,
+  grid: GridMetrics,
+  save: (desktop: string, icons: readonly DesktopShortcut[]) => void,
+): PinShortcutResult {
+  if (!desktop || blocked) return "unavailable";
+  if (
+    icons.some(
+      (icon) => icon.kind === shortcut.kind && icon.target === shortcut.target,
+    )
+  )
+    return "duplicate";
+  const next = addShortcut(icons, shortcut, grid);
+  if (next.length === icons.length) return "full";
+  save(desktop, next);
+  return "added";
+}
+
 export function removeShortcut(
   icons: readonly DesktopShortcut[],
   id: string,

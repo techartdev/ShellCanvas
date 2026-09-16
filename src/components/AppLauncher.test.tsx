@@ -42,6 +42,37 @@ it("opens the app menu from keyboard context-menu keys without launching", () =>
   expect(opened).toEqual(["notes"]);
 });
 
+it("accepts the dedicated context-menu key and ignores ordinary launch keys", () => {
+  const opened: string[] = [];
+  let prevented = 0;
+  const item = app("notes", "Notes");
+  const menu = (selected: DesktopApp) => opened.push(selected.id);
+  const bounds = { left: 2, top: 3 };
+
+  expect(
+    handleLauncherContextMenuKey(
+      {
+        key: "ContextMenu",
+        shiftKey: false,
+        preventDefault: () => prevented++,
+      },
+      item,
+      menu,
+      bounds,
+    ),
+  ).toBe(true);
+  expect(
+    handleLauncherContextMenuKey(
+      { key: "Enter", shiftKey: false, preventDefault: () => prevented++ },
+      item,
+      menu,
+      bounds,
+    ),
+  ).toBe(false);
+  expect(prevented).toBe(1);
+  expect(opened).toEqual(["notes"]);
+});
+
 it("lists apps as large icons with running and unavailable states", () => {
   const markup = renderToStaticMarkup(
     <AppLauncher

@@ -36,8 +36,8 @@ import {
 import { WorkspaceWindows } from "./components/WorkspaceWindows";
 import { DesktopIcons } from "./components/DesktopIcons";
 import {
-  addShortcut,
   arrange,
+  pinDesktopShortcut,
   place,
   reflow,
   removeShortcut,
@@ -46,6 +46,7 @@ import {
   type GridCell,
   type GridMetrics,
 } from "./desktop-icons";
+import { launcherMenuActions } from "./launcher-actions";
 import { workspaceIdentity } from "./workspace-identity";
 import { ShellCanvasMark } from "./components/ShellCanvasMark";
 import { ContextMenu, type MenuAction } from "./components/ContextMenu";
@@ -823,23 +824,21 @@ export default function App({
     target: string;
     name: string;
   }) {
-    if (!desktopId || desktopIcons.blocked) return;
-    const before = desktopIcons.icons;
-    if (
-      before.some(
-        (icon) =>
-          icon.kind === shortcut.kind && icon.target === shortcut.target,
-      )
-    ) {
+    const result = pinDesktopShortcut(
+      desktopId,
+      desktopIcons.blocked,
+      desktopIcons.icons,
+      shortcut,
+      iconGrid.current,
+      desktopIcons.set,
+    );
+    if (result === "duplicate") {
       setToast(`${shortcut.name} is already on this desktop.`);
       return;
     }
-    const next = addShortcut(before, shortcut, iconGrid.current);
-    if (next.length === before.length) {
+    if (result === "full") {
       setToast("This desktop has no free space for another icon.");
-      return;
     }
-    setIcons(next);
   }
   function iconMenu(icon: DesktopShortcut, x: number, y: number) {
     const reason = shortcutReason(icon);
@@ -871,37 +870,21 @@ export default function App({
       x,
       y,
       label: `${app.title} windows`,
-      actions: [
-        {
-          id: "open",
-          label: app.window?.multiple
-            ? `New ${app.title} window`
-            : `Open ${app.title}`,
-          disabled:
-            !!unavailableReason(app, session) ||
-            !!runtime.disabledReason(app.id),
-          run: () => {
-            setLauncherOpen(false);
-            dispatch({ type: "new", id: app.id });
-          },
-        },
-        {
-          id: "pin",
-          label: "Add to desktop",
-          separatorBefore: true,
-          disabled: !desktopId || desktopIcons.blocked,
-          run: () =>
-            pinShortcut({ kind: "app", target: app.id, name: app.title }),
-        },
-        ...ids.map((id) => ({
+      actions: launcherMenuActions({
+        app,
+        unavailable:
+          !!unavailableReason(app, session) ||
+          !!runtime.disabledReason(app.id),
+        canPin: !!desktopId && !desktopIcons.blocked,
+        windows: ids.map((id) => ({
           id,
           label: `${instanceTitle(app, desktop.instances[id])}${desktop.minimized.includes(id) ? " · Minimized" : ""}`,
-          run: () => {
-            setLauncherOpen(false);
-            dispatch({ type: "focus", id });
-          },
         })),
-      ],
+        closeLauncher: () => setLauncherOpen(false),
+        dispatch,
+        pin: () =>
+          pinShortcut({ kind: "app", target: app.id, name: app.title }),
+      }),
     });
   }
   return (
