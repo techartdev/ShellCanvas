@@ -12,6 +12,8 @@ pub mod mounted;
 pub mod probe;
 pub mod profiles;
 pub mod provider;
+pub mod routeros_files;
+pub use routeros_files::RouterOsFiles;
 pub mod settings;
 pub mod shell_files;
 pub use shell_files::ShellFiles;

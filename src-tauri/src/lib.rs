@@ -227,7 +227,8 @@ async fn prepare_ssh(
     let mut mutations: Option<Arc<dyn FileMutationService>> = None;
     let mut moves: Option<Arc<dyn FileMoveService>> = None;
     let mut transfers: Option<Arc<dyn FileTransferService>> = None;
-    let mut text: Option<Arc<dyn TextFileService>> = match connection.text_files().await {
+    let sftp = connection.text_files().await;
+    let mut text: Option<Arc<dyn TextFileService>> = match sftp {
         Ok(service) => {
             let service = service.with_identified_provider(&info.provider);
             info.capabilities.push("files.edit".into());
@@ -255,6 +256,24 @@ async fn prepare_ssh(
                 "files.folders".into(),
             ]);
             Some(service)
+        }
+        Err(error) if info.provider == "routeros" => {
+            if connection.handle.is_closed() {
+                connection = Arc::new(connection.reconnect(&options).await.map_err(|reconnect_error| {
+                    format!("The host closed SSH after rejecting SFTP, and reconnecting for RouterOS file metadata failed: {reconnect_error:#}")
+                })?);
+                info.notices.push("The host closed SSH after rejecting SFTP. Reconnected with the verified host key before trying read-only RouterOS file metadata.".into());
+            }
+            match shellcanvas_core::RouterOsFiles::probe(connection.clone()).await {
+                Ok(service) => {
+                    info.home = Some("/".into());
+                    info.capabilities.push("files.read".into());
+                    info.notices.push("SFTP is unavailable. Using read-only RouterOS file metadata: folder browsing is available, while file contents, transfers, editing, management and local drive attachment are unavailable.".into());
+                    files = Some(Arc::new(service));
+                }
+                Err(metadata_error) => info.notices.push(format!("File access unavailable: SFTP: {error:#}; RouterOS metadata: {metadata_error:#}. The account must permit read-only /file metadata.")),
+            }
+            None
         }
         Err(error) => match ShellFiles::probe_for_host(connection.clone(), &info.provider).await {
             Ok(service) => {
@@ -296,7 +315,7 @@ async fn prepare_ssh(
         info.home = None;
         info.capabilities
             .retain(|capability| !capability.starts_with("files."));
-        info.notices.push("The host closed SSH during file-service startup. Reconnected for terminal access; file services are unavailable for this workspace. Check the server's SFTP support and this account's file permissions.".into());
+        info.notices.push("The host closed SSH during file-service startup. Reconnected for terminal access; file services are unavailable for this workspace. Check the server's file-service support and this account's permissions.".into());
     }
     let settings = settings_for_host(&info.provider, Some(connection.clone()));
     if settings.is_some() {

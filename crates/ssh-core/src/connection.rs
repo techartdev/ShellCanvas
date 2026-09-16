@@ -262,6 +262,15 @@ impl Connection {
 
     /// Trusted provider command execution, never exposed as a desktop IPC command.
     pub(crate) async fn exec_bounded(&self, command: &str) -> Result<String> {
+        Ok(
+            String::from_utf8_lossy(&self.exec_bounded_bytes(command).await?)
+                .trim()
+                .to_owned(),
+        )
+    }
+
+    /// Binary-safe variant for provider protocols that validate UTF-8 themselves.
+    pub(crate) async fn exec_bounded_bytes(&self, command: &str) -> Result<Vec<u8>> {
         timeout(OP_TIMEOUT, async {
             let mut channel = self.handle.channel_open_session().await?;
             channel.exec(true, command).await?;
@@ -292,7 +301,7 @@ impl Connection {
                     String::from_utf8_lossy(&stderr).trim()
                 );
             }
-            Ok(String::from_utf8_lossy(&bytes).trim().to_owned())
+            Ok(bytes)
         })
         .await
         .context("Host command timed out")?
