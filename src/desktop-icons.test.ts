@@ -9,6 +9,7 @@ import {
   freeCell,
   gridFor,
   place,
+  pinDesktopShortcut,
   reflow,
   removeShortcut,
   type DesktopShortcut,
@@ -234,6 +235,73 @@ describe("adding and removing shortcuts", () => {
     const icons = [icon("a", 0, 0), icon("b", 0, 1)];
     expect(removeShortcut(icons, "a")).toEqual([icon("b", 0, 1)]);
     expect(removeShortcut(icons, "missing")).toEqual(icons);
+  });
+
+  it("pins through the real store, scopes duplicates by host, and survives reload", () => {
+    const target = storage();
+    const store = createDesktopIconsStore(() => target.access);
+    const shortcut = { kind: "app" as const, target: "files", name: "Files" };
+    const pin = (desktop: string) =>
+      pinDesktopShortcut(
+        desktop,
+        store.getSnapshot().blocked,
+        store.icons(desktop),
+        shortcut,
+        grid,
+        store.set,
+      );
+
+    expect(pin("workspace-v1-a")).toBe("added");
+    expect(pin("workspace-v1-a")).toBe("duplicate");
+    expect(pin("workspace-v1-b")).toBe("added");
+    const restored = createDesktopIconsStore(() => target.access);
+    expect(restored.icons("workspace-v1-a")).toHaveLength(1);
+    expect(restored.icons("workspace-v1-b")).toHaveLength(1);
+    expect(restored.icons("workspace-v1-a")[0]).toMatchObject(shortcut);
+  });
+
+  it("does not pin without a usable desktop, and distinguishes a full grid", () => {
+    const shortcut = { kind: "app" as const, target: "files", name: "Files" };
+    let saves = 0;
+    const save = () => saves++;
+    expect(pinDesktopShortcut(null, false, [], shortcut, grid, save)).toBe(
+      "unavailable",
+    );
+    expect(pinDesktopShortcut("host", true, [], shortcut, grid, save)).toBe(
+      "unavailable",
+    );
+    expect(
+      pinDesktopShortcut(
+        "host",
+        false,
+        [icon("occupied", 0, 0)],
+        shortcut,
+        { columns: 1, rows: 1 },
+        save,
+      ),
+    ).toBe("full");
+    expect(saves).toBe(0);
+  });
+
+  it("keeps a newly pinned shortcut in memory when storage rejects the write", () => {
+    const store = createDesktopIconsStore(() => ({
+      getItem: () => null,
+      setItem: () => {
+        throw new Error("quota");
+      },
+    }));
+    expect(
+      pinDesktopShortcut(
+        "host",
+        false,
+        store.icons("host"),
+        { kind: "app", target: "files", name: "Files" },
+        grid,
+        store.set,
+      ),
+    ).toBe("added");
+    expect(store.icons("host")).toHaveLength(1);
+    expect(store.getSnapshot().error).toContain("could not be saved");
   });
 });
 

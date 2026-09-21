@@ -2,6 +2,21 @@
 
 Notable changes to ShellCanvas, newest first. Published SDK packages follow [semantic versioning](https://semver.org/), and desktop releases use the same version where practical. The project is pre-1.0, so a minor release may include breaking changes; those come with migration notes.
 
+## [0.1.10] - 2026-09-21
+
+### Added
+
+- Add applications to the current host's desktop from the launcher context menu, opened with right-click, the Context Menu key or Shift+F10. Opening a new window or focusing an existing one from this menu closes the launcher.
+
+### Fixed
+
+- Keep two-line desktop shortcut labels readable without clipping their second line.
+- Include the year in every known file modification date so backups from different years are distinguishable.
+
+### Testing
+
+- Expanded regression coverage for launcher menu actions, desktop shortcut persistence and host isolation, full and unavailable desktop states, storage failures, and RouterOS metadata framing and path navigation.
+
 ## [0.1.9] - 2026-09-16
 
 ### Added

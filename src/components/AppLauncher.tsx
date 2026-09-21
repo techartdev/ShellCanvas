@@ -12,12 +12,29 @@ import { matchesSearch } from "../extensions/app-listing";
 import { AppIcon } from "./AppIcon";
 import "./AppLauncher.css";
 
+export function handleLauncherContextMenuKey(
+  event: Pick<KeyboardEvent, "key" | "shiftKey" | "preventDefault">,
+  app: DesktopApp,
+  menu: (app: DesktopApp, x: number, y: number) => void,
+  bounds: Pick<DOMRect, "left" | "top">,
+) {
+  if (
+    event.key !== "ContextMenu" &&
+    !(event.shiftKey && event.key === "F10")
+  )
+    return false;
+  event.preventDefault();
+  menu(app, bounds.left, bounds.top);
+  return true;
+}
+
 /** Full-desktop launcher for apps that can open now. Managing apps is separate. */
 export function AppLauncher({
   apps,
   running,
   blocked,
   launch,
+  menu,
   close,
   connect,
 }: {
@@ -26,6 +43,8 @@ export function AppLauncher({
   /** Why an app cannot open right now; undefined when it can. */
   blocked(app: DesktopApp): string | undefined;
   launch(id: string): void;
+  /** Opens the shared app menu at the requested screen position. */
+  menu?: (app: DesktopApp, x: number, y: number) => void;
   close(): void;
   connect(): void;
 }) {
@@ -174,6 +193,18 @@ export function AppLauncher({
               aria-label={`${app.title}${active ? ", running" : ""}${reason ? `, unavailable: ${reason}` : ""}`}
               title={reason ?? app.description ?? app.subtitle}
               onClick={() => open(app)}
+              onContextMenu={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                if (!menu) return;
+                event.currentTarget.focus({ preventScroll: true });
+                menu(app, event.clientX, event.clientY);
+              }}
+              onKeyDown={(event) => {
+                if (!menu) return;
+                const bounds = event.currentTarget.getBoundingClientRect();
+                handleLauncherContextMenuKey(event, app, menu, bounds);
+              }}
             >
               <AppIcon
                 id={app.id}

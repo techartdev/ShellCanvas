@@ -3,7 +3,7 @@ import { expect, it } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import { FolderClosed, SquareTerminal } from "lucide-react";
 import type { DesktopApp } from "../sdk";
-import { AppLauncher } from "./AppLauncher";
+import { AppLauncher, handleLauncherContextMenuKey } from "./AppLauncher";
 
 const app = (
   id: string,
@@ -21,6 +21,57 @@ const app = (
   ...extra,
 });
 const image = `data:image/svg+xml;base64,${btoa('<svg xmlns="http://www.w3.org/2000/svg"/>')}`;
+
+it("opens the app menu from keyboard context-menu keys without launching", () => {
+  const opened: string[] = [];
+  let prevented = false;
+  const handled = handleLauncherContextMenuKey(
+    {
+      key: "F10",
+      shiftKey: true,
+      preventDefault: () => {
+        prevented = true;
+      },
+    },
+    app("notes", "Notes"),
+    (item) => opened.push(item.id),
+    { left: 12, top: 34 },
+  );
+  expect(handled).toBe(true);
+  expect(prevented).toBe(true);
+  expect(opened).toEqual(["notes"]);
+});
+
+it("accepts the dedicated context-menu key and ignores ordinary launch keys", () => {
+  const opened: string[] = [];
+  let prevented = 0;
+  const item = app("notes", "Notes");
+  const menu = (selected: DesktopApp) => opened.push(selected.id);
+  const bounds = { left: 2, top: 3 };
+
+  expect(
+    handleLauncherContextMenuKey(
+      {
+        key: "ContextMenu",
+        shiftKey: false,
+        preventDefault: () => prevented++,
+      },
+      item,
+      menu,
+      bounds,
+    ),
+  ).toBe(true);
+  expect(
+    handleLauncherContextMenuKey(
+      { key: "Enter", shiftKey: false, preventDefault: () => prevented++ },
+      item,
+      menu,
+      bounds,
+    ),
+  ).toBe(false);
+  expect(prevented).toBe(1);
+  expect(opened).toEqual(["notes"]);
+});
 
 it("lists apps as large icons with running and unavailable states", () => {
   const markup = renderToStaticMarkup(

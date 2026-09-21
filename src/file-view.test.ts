@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 import { expect, it } from "vitest";
-import { visibleFiles } from "./file-view";
+import { formatFileModified, visibleFiles } from "./file-view";
 import { defaultPreferences } from "./preferences";
 import type { FileEntry } from "./sdk";
 const entries: FileEntry[] = [
@@ -40,4 +40,13 @@ it("keeps unknown dates last and independently controls folders and direction", 
       filesDescending: true,
     }).map((entry) => entry.name),
   ).toEqual(["folder", "file10", "file2", ".hidden"]);
+});
+
+it("formats every known modified date with its year", () => {
+  const localDate = new Date(2024, 8, 25, 12);
+  expect(formatFileModified(localDate.getTime() / 1000, "en-US")).toBe(
+    "Sep 25, 2024",
+  );
+  expect(formatFileModified(0, "en-US")).toBe("—");
+  expect(formatFileModified(null, "en-US")).toBe("—");
 });

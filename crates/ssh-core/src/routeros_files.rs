@@ -155,6 +155,22 @@ fn location(path: &str) -> Result<FileLocation> {
     })
 }
 
+fn locate(items: &[Item], path: &str) -> Result<FileLocation> {
+    let relative = validate_path(path)?;
+    if relative.is_empty()
+        || items.iter().any(|item| item.name == relative)
+        || items.iter().any(|item| {
+            item.name
+                .strip_prefix(relative)
+                .is_some_and(|tail| tail.starts_with('/'))
+        })
+    {
+        location(path)
+    } else {
+        bail!("RouterOS file does not exist")
+    }
+}
+
 fn is_directory(kind: &str) -> bool {
     matches!(kind, "directory" | "disk")
 }
@@ -261,19 +277,7 @@ impl FileSystemProvider for RouterOsFiles {
     }
     async fn locate(&self, path: &str) -> Result<FileLocation> {
         let items = self.snapshot().await?;
-        let relative = validate_path(path)?;
-        if relative.is_empty()
-            || items.iter().any(|item| item.name == relative)
-            || items.iter().any(|item| {
-                item.name
-                    .strip_prefix(relative)
-                    .is_some_and(|tail| tail.starts_with('/'))
-            })
-        {
-            location(path)
-        } else {
-            bail!("RouterOS file does not exist")
-        }
+        locate(&items, path)
     }
     async fn preview(&self, _path: &str) -> Result<String> {
         bail!("File-content preview is unavailable through RouterOS metadata browsing")
@@ -323,6 +327,38 @@ mod tests {
         }
         assert!(parse_snapshot(&snapshot(vec![])).unwrap().is_empty());
     }
+
+    #[test]
+    fn requires_an_exact_counted_end_marker_without_trailing_output() {
+        let valid = record(b"flash/a", b"file", "1");
+        let mut wrong_count = b"ShellCanvas-Files-1\n".to_vec();
+        wrong_count.extend(&valid);
+        wrong_count.extend(b"SCEND|2\n");
+        let mut trailing = snapshot(vec![valid]);
+        trailing.extend(b"unexpected\n");
+        let mut oversized =
+            format!("ShellCanvas-Files-1\nSCF1|{}|4|1\n", MAX_FIELD + 1).into_bytes();
+        oversized.extend(std::iter::repeat_n(b'a', MAX_FIELD + 1));
+        oversized.extend(b"\nfile\nSCEND|1\n");
+
+        for bytes in [wrong_count, trailing, oversized] {
+            assert!(parse_snapshot(&bytes).is_err());
+        }
+    }
+
+    #[test]
+    fn rejects_names_that_escape_or_alias_the_router_namespace() {
+        for name in [
+            b"/absolute".as_slice(),
+            b"flash/".as_slice(),
+            b"flash//file".as_slice(),
+            b"flash/../file".as_slice(),
+            b"flash/./file".as_slice(),
+            b"flash/a\0b".as_slice(),
+        ] {
+            assert!(parse_snapshot(&snapshot(vec![record(name, b"file", "1")])).is_err());
+        }
+    }
     #[test]
     fn builds_safe_nested_directories_and_disk_roots() {
         let items = parse_snapshot(&snapshot(vec![
@@ -363,6 +399,23 @@ mod tests {
         for path in ["flash", "//flash", "/flash/../root.txt", "/flash/"] {
             assert!(directory(&items, path).is_err());
         }
+    }
+
+    #[test]
+    fn locates_exact_files_and_implicit_directories_without_prefix_confusion() {
+        let items = parse_snapshot(&snapshot(vec![
+            record(b"flash/dir/file.txt", b"file", "9"),
+            record(b"flash2/other.txt", b"file", "4"),
+        ]))
+        .unwrap();
+        assert_eq!(locate(&items, "/").unwrap().parent, None);
+        assert_eq!(locate(&items, "/flash/dir").unwrap().name, "dir");
+        let file = locate(&items, "/flash/dir/file.txt").unwrap();
+        assert_eq!(file.path, "/flash/dir/file.txt");
+        assert_eq!(file.name, "file.txt");
+        assert_eq!(file.parent.as_deref(), Some("/flash/dir"));
+        assert!(locate(&items, "/flash2-other").is_err());
+        assert!(locate(&items, "/missing").is_err());
     }
 
     #[tokio::test]
