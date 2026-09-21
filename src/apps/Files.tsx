@@ -42,7 +42,7 @@ import { ContextMenu, type MenuAction } from "../components/ContextMenu";
 import { clipboard } from "../clipboard";
 import { fileClipboard } from "../file-clipboard";
 import { usePreferences } from "../preferences";
-import { visibleFiles } from "../file-view";
+import { formatFileModified, visibleFiles } from "../file-view";
 import { FileActionDialog } from "../components/FileActionDialog";
 import { FileVolumes } from "../components/FileVolumes";
 import { AttachDriveDialog } from "../components/AttachDriveDialog";
@@ -1915,14 +1915,7 @@ export function Files({
                         )}
                         {entry.kind === "symlink" && <small>link</small>}
                       </span>
-                      <span>
-                        {entry.modified
-                          ? new Date(entry.modified * 1000).toLocaleDateString(
-                              undefined,
-                              { month: "short", day: "numeric" },
-                            )
-                          : "—"}
-                      </span>
+                      <span>{formatFileModified(entry.modified)}</span>
                       <span>
                         {entry.kind === "directory" ? "—" : size(entry.size)}
                       </span>

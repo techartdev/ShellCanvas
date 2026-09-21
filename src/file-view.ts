@@ -2,6 +2,19 @@
 import type { Preferences } from "./preferences";
 import type { FileEntry } from "./sdk";
 
+export function formatFileModified(
+  modified: number | null,
+  locales?: Intl.LocalesArgument,
+) {
+  return !modified
+    ? "—"
+    : new Date(modified * 1000).toLocaleDateString(locales, {
+        year: "numeric",
+        month: "short",
+        day: "numeric",
+      });
+}
+
 /** Sorting changes only the view; never mutate provider-owned directory data. */
 export function visibleFiles(
   entries: readonly FileEntry[],
