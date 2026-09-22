@@ -22,6 +22,12 @@ export interface InstalledApp {
   readonly generation: string;
   readonly grants: readonly string[];
   readonly enabled: boolean;
+  readonly nativeAdapter?: NativeAdapterPin;
+}
+export interface NativeAdapterPin {
+  readonly id: string;
+  readonly version: string;
+  readonly digest: string;
 }
 export interface CatalogSnapshot {
   readonly format: 1;
@@ -43,6 +49,7 @@ export interface InstallReview {
   readonly package: AppPackage;
   readonly digest: string;
   readonly replaces: InstalledApp | null;
+  readonly nativeAdapter?: NativeAdapterPin;
 }
 const identity = /^[a-zA-Z0-9-]{1,100}$/;
 /** Repository descriptions are free text; listings show them on one line. */
@@ -61,6 +68,19 @@ function grantsFor(app: AppPackage, grants: readonly string[]) {
       "Approve only permissions declared by this package.",
     );
   return Object.freeze([...grants]);
+}
+function nativeAdapterPin(value: unknown): NativeAdapterPin | undefined {
+  if (value === undefined) return undefined;
+  if (!value || typeof value !== "object" || Array.isArray(value))
+    throw new RpcError("invalid", "Invalid native adapter dependency.");
+  const item = value as Record<string, unknown>;
+  if (
+    Object.keys(item).some((key) => !["id", "version", "digest"].includes(key)) ||
+    typeof item.id !== "string" || !/^[a-zA-Z][a-zA-Z0-9-]*(?:\.[a-zA-Z][a-zA-Z0-9-]*)+$/.test(item.id) ||
+    typeof item.version !== "string" || !/^\d+\.\d+\.\d+(?:-[a-zA-Z0-9.-]+)?$/.test(item.version) ||
+    typeof item.digest !== "string" || !/^[a-f0-9]{64}$/.test(item.digest)
+  ) throw new RpcError("invalid", "Invalid native adapter dependency.");
+  return Object.freeze({ id: item.id, version: item.version, digest: item.digest });
 }
 export function parseCatalog(value: unknown): CatalogSnapshot | null {
   if (value === null || value === undefined) return null;
@@ -119,6 +139,7 @@ export function parseCatalog(value: unknown): CatalogSnapshot | null {
         ? {}
         : { source: parseRepositorySource(entry.source) }),
       ...(typeof entry.listing === "string" ? { listing: entry.listing } : {}),
+      ...(entry.nativeAdapter === undefined ? {} : { nativeAdapter: nativeAdapterPin(entry.nativeAdapter) }),
     });
   });
   return Object.freeze({
@@ -280,6 +301,7 @@ export class AppCatalog {
     raw: string,
     source?: RepositorySource,
     listing?: string,
+    nativeAdapter?: NativeAdapterPin,
   ): Promise<InstallReview> {
     this.check();
     listing = source ? listingText(listing) : undefined;
@@ -312,6 +334,7 @@ export class AppCatalog {
       replaces,
       ...(source ? { source } : {}),
       ...(listing ? { listing } : {}),
+      ...(nativeAdapter ? { nativeAdapter: nativeAdapterPin(nativeAdapter) } : {}),
     });
     this.reviews.add(result);
     return result;
@@ -338,6 +361,19 @@ export class AppCatalog {
           "This app changed after review. Review the current update again.",
         );
       this.requireCompatible(review.package);
+      if (review.nativeAdapter) {
+        const conflict = this.snapshot().find(
+          (entry) =>
+            entry.package.id !== review.package.id &&
+            entry.nativeAdapter?.id === review.nativeAdapter!.id &&
+            entry.nativeAdapter.digest !== review.nativeAdapter!.digest,
+        );
+        if (conflict)
+          throw new RpcError(
+            "invalid",
+            `${conflict.package.title} requires a different version of ${review.nativeAdapter.id}. Resolve the native adapter conflict before installing.`,
+          );
+      }
       const installed: InstalledApp = Object.freeze({
         package: review.package,
         principal: current?.principal ?? crypto.randomUUID(),
@@ -346,6 +382,7 @@ export class AppCatalog {
         enabled: true,
         ...(review.source ? { source: review.source } : {}),
         ...(review.listing ? { listing: review.listing } : {}),
+        ...(review.nativeAdapter ? { nativeAdapter: review.nativeAdapter } : {}),
       });
       await this.commit([
         ...this.snapshot().filter(
@@ -355,6 +392,28 @@ export class AppCatalog {
       ]);
       this.reviews.delete(review);
       return installed;
+    });
+  }
+  /** Best-effort compensation for a combined native install that failed after app commit. */
+  rollbackInstall(installed: InstalledApp, previous: InstalledApp | null) {
+    return this.serial(async () => {
+      const current = this.current(installed.package.id, installed.generation);
+      if (current.enabled !== installed.enabled)
+        throw new RpcError(
+          "busy",
+          "The app changed after installation; it was not rolled back.",
+        );
+      const release = await this.storage.hold?.(installed.package.id, "exclusive");
+      try {
+        await this.commit([
+          ...this.snapshot().filter(
+            (entry) => entry.package.id !== installed.package.id,
+          ),
+          ...(previous ? [previous] : []),
+        ]);
+      } finally {
+        release?.();
+      }
     });
   }
   private current(id: string, generation: string) {

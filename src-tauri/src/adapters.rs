@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
-use shellcanvas_adapter_runtime::catalog::{AdapterInfo, Catalog, Review};
+use sha2::{Digest, Sha256};
+use shellcanvas_adapter_runtime::catalog::{AdapterInfo, Catalog, Manifest, Review};
 use shellcanvas_services::{ConnectionIdentity, HostInfo};
 use std::{
     collections::HashMap,
@@ -406,6 +407,207 @@ pub struct AdapterReview {
     package: AdapterInfo,
     replaces: bool,
 }
+#[derive(Clone, Debug, serde::Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct RepositoryAdapterPackage {
+    platform: String,
+    path: String,
+    sha256: String,
+}
+#[derive(Clone, serde::Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct RepositoryAdapterSource {
+    owner: String,
+    repository: String,
+    reference: String,
+    id: String,
+    version: String,
+    packages: Vec<RepositoryAdapterPackage>,
+}
+
+fn stage_repository_manifest(
+    root: &std::path::Path,
+    manifest: &Manifest,
+    bytes: &[u8],
+) -> Result<std::path::PathBuf, String> {
+    let path = loop {
+        let name = format!(".shellcanvas-review-{}.json", uuid::Uuid::new_v4());
+        if !manifest
+            .files
+            .iter()
+            .any(|file| file.path.eq_ignore_ascii_case(&name))
+        {
+            break root.join(name);
+        }
+    };
+    std::fs::OpenOptions::new()
+        .create_new(true)
+        .write(true)
+        .open(&path)
+        .and_then(|mut file| std::io::Write::write_all(&mut file, bytes))
+        .map_err(|_| "Unable to stage native adapter manifest.".to_string())?;
+    Ok(path)
+}
+
+#[tauri::command]
+pub async fn review_repository_adapter(
+    request_id: String,
+    source: RepositoryAdapterSource,
+    window: WebviewWindow,
+    state: State<'_, AdapterJobs>,
+) -> Result<AdapterReview, String> {
+    let jobs = state.inner().clone();
+    let owner = window.label().to_string();
+    let app = window.app_handle().clone();
+    let canceled = jobs.begin(&request_id, &owner)?;
+    let result = async {
+        let platform = format!("{}-{}", std::env::consts::OS, std::env::consts::ARCH);
+        let package = source.package_for_platform(&platform)?;
+        let manifest_bytes = crate::repository_install::download_repository_bytes(
+            source.owner.clone(),
+            source.repository.clone(),
+            source.reference.clone(),
+            package.path.clone(),
+            1024 * 1024,
+            Some(&canceled),
+        )
+        .await?;
+        if format!("{:x}", Sha256::digest(&manifest_bytes)) != package.sha256 {
+            return Err(
+                "Native adapter manifest integrity check failed. Review the repository again."
+                    .into(),
+            );
+        }
+        let manifest: Manifest = serde_json::from_slice(&manifest_bytes)
+            .map_err(|_| "Native adapter manifest is invalid.".to_string())?;
+        manifest.validate().map_err(|error| error.to_string())?;
+        if manifest.id != source.id
+            || manifest.version != source.version
+            || manifest.platform != platform
+        {
+            return Err(
+                "Native adapter identity, version, or platform does not match the app declaration."
+                    .into(),
+            );
+        }
+        let expected_digest = format!(
+            "{:x}",
+            Sha256::digest(
+                serde_json::to_vec(&manifest)
+                    .map_err(|_| "Native adapter manifest is invalid.".to_string())?
+            )
+        );
+        let temporary = tempfile::tempdir()
+            .map_err(|_| "Unable to stage native adapter download.".to_string())?;
+        // The reviewed manifest is not a package asset. Keep it at an unpredictable,
+        // collision-checked name and create every staged file exclusively so a declared
+        // asset can never replace bytes whose identity was verified above.
+        let manifest_path =
+            stage_repository_manifest(temporary.path(), &manifest, &manifest_bytes)?;
+        let base = package.path.rsplit_once('/').map(|(base, _)| base);
+        let mut total = 0u64;
+        for file in &manifest.files {
+            if canceled.load(Ordering::Acquire) {
+                return Err("Adapter review canceled".into());
+            }
+            total = total
+                .checked_add(file.size)
+                .ok_or("Native adapter package size overflow.")?;
+            if file.size > 32 * 1024 * 1024 || total > 128 * 1024 * 1024 {
+                return Err("Native adapter package exceeds the download limit.".into());
+            }
+            let path = match base {
+                Some(base) => format!("{base}/{}", file.path),
+                None => file.path.clone(),
+            };
+            let bytes = crate::repository_install::download_repository_bytes(
+                source.owner.clone(),
+                source.repository.clone(),
+                source.reference.clone(),
+                path,
+                usize::try_from(file.size.max(1))
+                    .map_err(|_| "Native adapter file is too large.")?,
+                Some(&canceled),
+            )
+            .await?;
+            let output =
+                file.path
+                    .split('/')
+                    .fold(temporary.path().to_path_buf(), |mut path, part| {
+                        path.push(part);
+                        path
+                    });
+            std::fs::create_dir_all(
+                output
+                    .parent()
+                    .ok_or("Invalid native adapter asset path.")?,
+            )
+            .map_err(|_| "Unable to stage native adapter assets.".to_string())?;
+            std::fs::OpenOptions::new()
+                .create_new(true)
+                .write(true)
+                .open(output)
+                .and_then(|mut file| std::io::Write::write_all(&mut file, &bytes))
+                .map_err(|_| "Unable to stage native adapter assets.".to_string())?;
+        }
+        let catalog = catalog(&app)?;
+        let review = tauri::async_runtime::spawn_blocking(move || {
+            catalog
+                .review(&manifest_path, &canceled)
+                .map_err(|error| error.to_string())
+        })
+        .await
+        .map_err(|error| error.to_string())??;
+        let response = AdapterReview {
+            request_id: request_id.clone(),
+            package: review.info(),
+            replaces: review.replaces(),
+        };
+        if response.package.digest != expected_digest {
+            return Err("Staged native adapter no longer matches its reviewed manifest.".into());
+        }
+        jobs.finish(&request_id, &owner, review)?;
+        Ok(response)
+    }
+    .await;
+    if result.is_err() {
+        jobs.forget(&request_id, &owner);
+    }
+    result
+}
+
+impl RepositoryAdapterSource {
+    fn package_for_platform(&self, platform: &str) -> Result<&RepositoryAdapterPackage, String> {
+        let mut platforms = std::collections::HashSet::new();
+        let valid = !self.packages.is_empty()
+            && self.packages.len() <= 8
+            && self.id.len() <= 200
+            && self.version.len() <= 100
+            && self.packages.iter().all(|item| {
+                item.path.len() <= 240
+                    && item.path.split('/').all(|part| {
+                        !part.is_empty()
+                            && part
+                                .bytes()
+                                .all(|b| b.is_ascii_alphanumeric() || b"._-".contains(&b))
+                    })
+                    && item.sha256.len() == 64
+                    && item
+                        .sha256
+                        .bytes()
+                        .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+                    && item.platform.len() <= 100
+                    && platforms.insert(item.platform.as_str())
+            });
+        if !valid {
+            return Err("Invalid native adapter dependency declaration.".into());
+        }
+        self.packages
+            .iter()
+            .find(|package| package.platform == platform)
+            .ok_or_else(|| format!("This app's native component is not available for {platform}."))
+    }
+}
 #[cfg(debug_assertions)]
 #[tauri::command]
 pub async fn review_fixture_adapter(
@@ -556,6 +758,31 @@ pub async fn install_adapter(
     .map_err(|error| error.to_string())?
 }
 #[tauri::command]
+pub async fn install_adapter_dependency(
+    request_id: String,
+    reuse: bool,
+    window: WebviewWindow,
+    state: State<'_, AdapterJobs>,
+) -> Result<AdapterInfo, String> {
+    let _update_operation = crate::update_gate::operation()?;
+    let jobs = state.inner().clone();
+    let owner = window.label().to_string();
+    let catalog = catalog(window.app_handle())?;
+    tauri::async_runtime::spawn_blocking(move || {
+        let review = jobs.take(&request_id, &owner)?;
+        let info = if reuse {
+            catalog.satisfy(review)
+        } else {
+            catalog.install(review)
+        }
+        .map_err(|error| error.to_string())?;
+        let _ = catalog.collect();
+        Ok(info)
+    })
+    .await
+    .map_err(|error| error.to_string())?
+}
+#[tauri::command]
 pub async fn set_adapter_enabled(
     id: String,
     revision: String,
@@ -594,6 +821,7 @@ pub async fn remove_adapter(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::json;
     #[test]
     fn review_cancellation_is_window_owned_and_can_precede_start() {
         let jobs = AdapterJobs::default();
@@ -608,5 +836,52 @@ mod tests {
         jobs.cancel(&id, "main").unwrap();
         assert!(flag.load(Ordering::Acquire));
         assert!(jobs.take(&id, "main").is_err());
+    }
+
+    #[test]
+    fn repository_asset_named_adapter_json_cannot_replace_reviewed_manifest() {
+        let root = tempfile::tempdir().unwrap();
+        let bytes = b"reviewed manifest";
+        let manifest: Manifest = serde_json::from_value(json!({
+            "schemaVersion": 1,
+            "id": "dev.shellcanvas.fixture",
+            "name": "Fixture",
+            "version": "1.0.0",
+            "description": "Fixture",
+            "platform": format!("{}-{}", std::env::consts::OS, std::env::consts::ARCH),
+            "entrypoint": "adapter.json",
+            "files": [{"path":"adapter.json","size":0,"sha256":format!("{:x}", Sha256::digest([])),"executable":true}],
+            "configuration": []
+        })).unwrap();
+        let path = stage_repository_manifest(root.path(), &manifest, bytes).unwrap();
+        assert_ne!(path, root.path().join("adapter.json"));
+        std::fs::write(root.path().join("adapter.json"), []).unwrap();
+        assert_eq!(std::fs::read(path).unwrap(), bytes);
+    }
+
+    #[test]
+    fn repository_dependency_requires_one_unique_matching_platform() {
+        let package = RepositoryAdapterPackage {
+            platform: "windows-x86_64".into(),
+            path: "dist/adapter.json".into(),
+            sha256: "a".repeat(64),
+        };
+        let mut source = RepositoryAdapterSource {
+            owner: "example".into(),
+            repository: "app".into(),
+            reference: "main".into(),
+            id: "dev.example.adapter".into(),
+            version: "1.0.0".into(),
+            packages: vec![package.clone()],
+        };
+        assert!(source
+            .package_for_platform("linux-x86_64")
+            .unwrap_err()
+            .contains("not available"));
+        source.packages.push(package);
+        assert_eq!(
+            source.package_for_platform("windows-x86_64").unwrap_err(),
+            "Invalid native adapter dependency declaration."
+        );
     }
 }

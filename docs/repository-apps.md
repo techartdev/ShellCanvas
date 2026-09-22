@@ -82,6 +82,67 @@ The SDK exports `./repository` plus `./schemas/app-repository.schema.json`.
 Unknown fields, malformed identifiers and unsafe paths are rejected. Paths must
 use simple ASCII filename segments and remain below the repository root.
 
+### Optional native companion
+
+A repository app may declare one required native adapter. Each platform entry
+points to that adapter's normal `adapter.json` and pins its raw SHA-256:
+
+```json
+"nativeAdapter": {
+  "id": "org.example.notes-connector",
+  "version": "0.1.0",
+  "packages": [{
+    "platform": "windows-x86_64",
+    "path": "dist/adapter-windows-x86_64/adapter.json",
+    "sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+  }]
+}
+```
+
+This is available only for GitHub repository installs because local app files
+do not identify where native package assets came from. App Manager downloads
+the exact platform package from the same owner, repository and reference,
+verifies the manifest and every declared asset, then shows one review that
+separates app permissions from native-code trust. Approval installs the app and
+the staged adapter; it does not launch the adapter, connect it or collect its
+configuration. Hash pins provide content integrity, not publisher authentication.
+
+An identical enabled adapter is reverified and reused. A disabled dependency
+must be enabled under **Connection adapters** before reviewing again. Managed
+updates may replace the app's prior pinned adapter, while an unknown legacy
+installation or another installed app's conflicting pin blocks replacement.
+Existing running connections retain their generation. Installation is a
+recoverable two-step commit: if the native commit fails, the desktop restores
+the exact preceding app generation when it is still safe; a concurrent app
+change or open candidate window can require separate manual cleanup.
+
+`shellcanvas-app repository` preserves and validates an existing
+`nativeAdapter` declaration when regenerating package hashes, so repository
+builds do not silently remove the pin. Older descriptors without this field and
+local app-file installation remain app-only.
+
+Apps installed with a native companion may explicitly connect that companion
+from their own UI. Discover `system.companion.connect` before using this desktop
+API through the SDK's low-level `client.call`:
+
+- `system.companion.connect({ configuration })` validates fields against the
+  installed, enabled, hash-pinned companion and opens one window-owned session.
+  The app cannot supply adapter IDs, executable paths, workspace IDs or bindings.
+- `system.companion.status()` returns `{ connected, binding }`, with an opaque
+  binding identity. `system.companion.list()` describes the connected methods.
+- `system.companion.call({ method, params })` checks the app's service grants
+  before dispatching to its own session. Ordinary `services.call` continues to
+  address the accepted workspace.
+- `system.companion.disconnect()` cancels pending setup and closes that session.
+  Closing the app also cancels pending setup and releases the session. Credentials
+  remain in memory and are not stored as a workspace profile.
+
+The `system.companion` event invalidates connection state. A connection attempt
+is bounded to 45 seconds and can be canceled through the SDK signal. Successful
+replacement closes the preceding session; failed setup leaves it available.
+This API connects endpoints reachable from the desktop PC; it does not create
+SSH tunnels or discover remote database instances.
+
 ## What verification means
 
 The raw artifact SHA-256 must match the descriptor. Package format, identity,

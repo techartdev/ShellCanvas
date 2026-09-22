@@ -352,6 +352,26 @@ it("uses atomic compare-and-set to reject another desktop's stale writes", async
   );
   await two.install(await two.review(raw("2.0.0")), []);
 });
+it("persists native pins, blocks conflicting apps and rolls back only the exact generation", async () => {
+  const saved = storage();
+  const catalog = new AppCatalog(saved.api);
+  await catalog.load();
+  const firstPin = { id: "dev.example.connector", version: "1.0.0", digest: "a".repeat(64) };
+  const installed = await catalog.install(await catalog.review(raw(), undefined, undefined, firstPin), []);
+  expect(installed.nativeAdapter).toEqual(firstPin);
+  const other = raw().replaceAll("org.example.notes", "org.example.other").replace('"Notes"', '"Other"');
+  await expect(catalog.install(await catalog.review(other, undefined, undefined, {
+    ...firstPin, version: "2.0.0", digest: "b".repeat(64),
+  }), [])).rejects.toThrow("different version");
+
+  const update = await catalog.install(await catalog.review(raw("2.0.0"), undefined, undefined, firstPin), []);
+  await catalog.rollbackInstall(update, installed);
+  expect(catalog.snapshot()[0].generation).toBe(installed.generation);
+
+  const changed = await catalog.install(await catalog.review(raw("2.0.0"), undefined, undefined, firstPin), []);
+  await catalog.setEnabled(changed.package.id, changed.generation, false);
+  await expect(catalog.rollbackInstall(changed, installed)).rejects.toThrow("changed");
+});
 it("blocks launch while a remove transaction is pending, avoiding an untracked live window", async () => {
   const saved = storage();
   const catalog = new AppCatalog(saved.api);

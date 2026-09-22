@@ -32,6 +32,8 @@ pub struct AdapterInfo {
     pub enabled: bool,
     pub file_count: usize,
     pub bytes: u64,
+    /** Canonical manifest digest; binds identity, platform and every asset hash. */
+    pub digest: String,
 }
 #[derive(Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -56,8 +58,17 @@ impl Record {
             enabled: self.enabled,
             file_count: self.manifest.files.len(),
             bytes: self.manifest.files.iter().map(|file| file.size).sum(),
+            digest: manifest_digest(&self.manifest),
         }
     }
+}
+fn manifest_digest(manifest: &Manifest) -> String {
+    format!(
+        "{:x}",
+        Sha256::digest(
+            serde_json::to_vec(manifest).expect("validated adapter manifest serializes")
+        )
+    )
 }
 #[derive(Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -280,6 +291,31 @@ impl Catalog {
             }
             self.save(&store)?;
             Ok(info)
+        })
+    }
+    /// Consume a fully staged review only when the identical package is still installed.
+    pub fn satisfy(&self, review: Review) -> Result<AdapterInfo> {
+        self.locked(|| {
+            if review.owner != self.root.canonicalize()? {
+                bail!("This review belongs to another adapter catalog");
+            }
+            let store = self.load()?;
+            let record = store
+                .records
+                .iter()
+                .find(|record| record.manifest.id == review.record.manifest.id)
+                .context("The required native adapter is no longer installed")?;
+            if Some(record.revision.as_str()) != review.expected.as_deref()
+                || manifest_digest(&record.manifest) != manifest_digest(&review.record.manifest)
+            {
+                bail!("The installed native adapter changed after review; review the app again");
+            }
+            if !record.enabled {
+                bail!(
+                    "The required native adapter is disabled; enable it and review the app again"
+                );
+            }
+            Ok(record.info())
         })
     }
     pub fn set_enabled(&self, id: &str, revision: &str, enabled: bool) -> Result<AdapterInfo> {

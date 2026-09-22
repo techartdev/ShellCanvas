@@ -1,7 +1,11 @@
 // SPDX-License-Identifier: MPL-2.0
 import { beforeEach, expect, it, vi } from "vitest";
 import { invoke, isTauri } from "@tauri-apps/api/core";
-import { isFrameHandshake, mountAppDocument } from "./frame-document";
+import {
+  frameFocusScript,
+  isFrameHandshake,
+  mountAppDocument,
+} from "./frame-document";
 import { parseAppPackage } from "./package";
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: vi.fn(),
@@ -23,6 +27,31 @@ const turn = () => new Promise((resolve) => setTimeout(resolve, 0));
 beforeEach(() => {
   vi.clearAllMocks();
   vi.mocked(isTauri).mockReturnValue(true);
+});
+it("forwards trusted pointer and keyboard focus from the isolated document", () => {
+  const listeners = new Map<string, (event: { isTrusted: boolean }) => void>();
+  const postMessage = vi.fn();
+  new Function("document", "parent", frameFocusScript("window-token"))(
+    {
+      addEventListener: (
+        type: string,
+        listener: (event: { isTrusted: boolean }) => void,
+      ) => listeners.set(type, listener),
+    },
+    { postMessage },
+  );
+  listeners.get("pointerdown")!({ isTrusted: false });
+  expect(postMessage).not.toHaveBeenCalled();
+  listeners.get("pointerdown")!({ isTrusted: true });
+  listeners.get("focusin")!({ isTrusted: true });
+  expect(postMessage).toHaveBeenCalledTimes(2);
+  expect(postMessage).toHaveBeenLastCalledWith(
+    { type: "shellcanvas:focus:v1", token: "window-token" },
+    "*",
+  );
+  expect(
+    isFrameHandshake(postMessage.mock.calls[0][0], "focus", "other-window"),
+  ).toBe(false);
 });
 it("releases a late native publication after its frame owner closes", async () => {
   let publish!: (value: unknown) => void;

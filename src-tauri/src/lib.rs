@@ -10,6 +10,7 @@ use tokio::sync::{mpsc, Mutex};
 mod adapter_diagnostics;
 mod adapters;
 mod app_network;
+mod app_tunnels;
 #[cfg(desktop)]
 mod app_update;
 mod builtin_ssh;
@@ -64,6 +65,7 @@ struct DesktopState {
     next_id: AtomicU64,
     attempts: Mutex<connection_attempts::ConnectionAttempts>,
     transfers: Mutex<transfers::TransferRegistry>,
+    tunnels: Mutex<app_tunnels::TunnelRegistry>,
 }
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -323,7 +325,7 @@ async fn prepare_ssh(
     }
     let clock =
         shellcanvas_core::clock::SshHostClock::for_provider(connection.clone(), &info.provider);
-    let resource = ConnectionResource::with_clock(
+    let resource = ConnectionResource::with_ssh(
         ConnectionIdentity {
             instance: state.next_id.fetch_add(1, Ordering::Relaxed) + 1,
             generation: 1,
@@ -957,6 +959,8 @@ pub fn run() {
                 app_network::app_network_start,
                 app_network::app_network_read,
                 app_network::app_network_close,
+                app_tunnels::app_tunnel_open,
+                app_tunnels::app_tunnel_close,
                 adapters::list_adapters,
                 adapter_diagnostics::adapter_diagnostics,
                 adapters::available_connections,
@@ -972,6 +976,8 @@ pub fn run() {
                 adapters::review_adapter,
                 adapters::cancel_adapter_review,
                 adapters::install_adapter,
+                adapters::install_adapter_dependency,
+                adapters::review_repository_adapter,
                 adapters::set_adapter_enabled,
                 adapters::remove_adapter,
                 extension_frames::publish_app_frame,

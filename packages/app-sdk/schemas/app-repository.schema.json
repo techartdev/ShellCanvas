@@ -17,6 +17,24 @@
         "path": { "type": "string", "minLength": 1, "maxLength": 240, "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._-]*(?:/[a-zA-Z0-9][a-zA-Z0-9._-]*)*$" },
         "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" }
       }
+    },
+    "nativeAdapter": {
+        "type": "object", "additionalProperties": false, "required": ["id", "version", "packages"],
+        "properties": {
+          "id": { "type": "string", "pattern": "^[a-zA-Z][a-zA-Z0-9-]*(?:\\.[a-zA-Z][a-zA-Z0-9-]*)+$" },
+          "version": { "type": "string", "pattern": "^\\d+\\.\\d+\\.\\d+(?:-[a-zA-Z0-9.-]+)?$" },
+          "packages": {
+            "type": "array", "minItems": 1, "maxItems": 8,
+            "items": {
+              "type": "object", "additionalProperties": false, "required": ["platform", "path", "sha256"],
+              "properties": {
+                "platform": { "type": "string", "pattern": "^[a-z0-9]+-[a-z0-9_]+$" },
+                "path": { "type": "string", "minLength": 1, "maxLength": 240, "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._-]*(?:/[a-zA-Z0-9][a-zA-Z0-9._-]*)*$" },
+                "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" }
+              }
+            }
+          }
+        }
     }
   }
 }

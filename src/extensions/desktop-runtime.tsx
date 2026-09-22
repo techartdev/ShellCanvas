@@ -21,6 +21,7 @@ import type { AppStorageBackend } from "./storage-api";
 import { RuntimeEnvironment } from "./environment";
 import type { AppEnvironment } from "./environment-api";
 import type { CustomAccess } from "../custom-services";
+import type { CompanionHost, CompanionHostGetter } from "./companion";
 import { RpcError } from "./rpc";
 import type { AppFileSourceGetter } from "./file-bridge";
 import type { AppConsoleSourceGetter } from "./console-bridge";
@@ -43,7 +44,10 @@ function descriptor(
     title: entry.package.title,
     subtitle: `Version ${entry.package.version}`,
     description: appSummary(entry),
-    scope: capabilities.length ? "host" : "local",
+    scope:
+      capabilities.length || entry.grants.includes("host.tcp")
+        ? "host"
+        : "local",
     allowWithoutHost: true,
     requires: [],
     optional: capabilities,
@@ -163,6 +167,19 @@ function RuntimeDocument({
     binding: state.binding,
     services: acceptedServices,
   });
+  const sshSources =
+    context.session?.connections?.filter(
+      (source) => source.adapter === "ssh",
+    ) ?? [];
+  const companionTarget = useRef<CompanionHost | undefined>(undefined);
+  companionTarget.current =
+    state.connection === "connected" && sshSources.length === 1
+      ? { sessionId: context.session!.id, source: sshSources[0] }
+      : undefined;
+  const companionHost = useMemo<CompanionHostGetter>(
+    () => () => companionTarget.current,
+    [],
+  );
   fileTarget.current = { binding: state.binding, services: acceptedServices };
   const fileSource = useMemo<AppFileSourceGetter>(
     () => () => {
@@ -250,6 +267,7 @@ function RuntimeDocument({
           consoleSource={consoleSource}
           transferSource={transferSource}
           hostSettingsSource={hostSettingsSource}
+          companionHost={companionHost}
         />
       </div>
     </div>

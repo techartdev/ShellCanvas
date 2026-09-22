@@ -27,6 +27,7 @@ const installed: AdapterInfo = {
   enabled: true,
   fileCount: 1,
   bytes: 1,
+  digest: "a".repeat(64),
   configuration: [
     { id: "device", label: "Device", kind: "text", required: true },
     { id: "token", label: "Token", kind: "password", required: true },

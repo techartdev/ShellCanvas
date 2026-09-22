@@ -20,10 +20,19 @@ export async function repositoryManifest(directory, { path = "dist/app.shellcanv
   directory = resolve(directory);
   const bytes = await readFile(join(directory, path));
   const app = parseAppPackage(new TextDecoder("utf-8", { fatal: true }).decode(bytes));
+  let nativeAdapter;
+  try {
+    nativeAdapter = parseAppRepository(
+      await readFile(join(directory, "shellcanvas.repo.json"), "utf8"),
+    ).nativeAdapter;
+  } catch (error) {
+    if (error?.code !== "ENOENT") throw error;
+  }
   const manifest = parseAppRepository(JSON.stringify({
     format: 1, kind: "app-repository", id: app.id, version: app.version, title: app.title,
     description: description ?? app.description ?? "",
     package: { path, sha256: createHash("sha256").update(bytes).digest("hex") },
+    ...(nativeAdapter ? { nativeAdapter } : {}),
   }));
   const destination = join(directory, "shellcanvas.repo.json");
   const temporary = join(directory, `.repository-${randomUUID()}.tmp`);

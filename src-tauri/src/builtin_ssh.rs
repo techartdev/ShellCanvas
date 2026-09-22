@@ -13,7 +13,7 @@ pub fn info() -> AdapterInfo {
             {"id":"allowLegacyMac","label":"Allow legacy SSH: HMAC-SHA1, RSA/SHA1, 2048-bit groups","kind":"boolean","default":false},
             {"id":"password","label":"Password","kind":"password"},
             {"id":"passphrase","label":"Key passphrase","kind":"password"}
-        ],"generation":"builtin","revision":REVISION,"enabled":true,"fileCount":0,"bytes":0
+        ],"generation":"builtin","revision":REVISION,"enabled":true,"fileCount":0,"bytes":0,"digest":""
     })).expect("Built-in SSH descriptor")
 }
 pub fn options(source: &AdapterSource) -> Result<shellcanvas_core::ConnectOptions, String> {

@@ -40,6 +40,18 @@ export interface AppRepositoryManifest {
   readonly title: string;
   readonly description: string;
   readonly package: { readonly path: string; readonly sha256: string };
+  /** Optional native packages reviewed and installed with repository installs. */
+  readonly nativeAdapter?: NativeAdapterDependency;
+}
+export interface NativeAdapterPackage {
+  readonly platform: string;
+  readonly path: string;
+  readonly sha256: string;
+}
+export interface NativeAdapterDependency {
+  readonly id: string;
+  readonly version: string;
+  readonly packages: readonly NativeAdapterPackage[];
 }
 
 export function validRepositoryPath(path: string): boolean {
@@ -66,6 +78,20 @@ export function parseAppRepository(raw: string): AppRepositoryManifest {
   } catch {
     throw new RpcError("invalid", "Repository manifest is not valid JSON.");
   }
+  const adapter = item?.nativeAdapter;
+  const validAdapter = adapter === undefined || (
+      adapter && typeof adapter === "object" && !Array.isArray(adapter) &&
+      Object.keys(adapter).every((key) => ["id", "version", "packages"].includes(key)) &&
+      typeof adapter.id === "string" && /^[a-zA-Z][a-zA-Z0-9-]*(?:\.[a-zA-Z][a-zA-Z0-9-]*)+$/.test(adapter.id) &&
+      typeof adapter.version === "string" && /^\d+\.\d+\.\d+(?:-[a-zA-Z0-9.-]+)?$/.test(adapter.version) &&
+      Array.isArray(adapter.packages) && adapter.packages.length > 0 && adapter.packages.length <= 8 &&
+      new Set(adapter.packages.map((pkg: any) => pkg?.platform)).size === adapter.packages.length &&
+      adapter.packages.every((pkg: any) => pkg && typeof pkg === "object" && !Array.isArray(pkg) &&
+        Object.keys(pkg).every((key) => ["platform", "path", "sha256"].includes(key)) &&
+        typeof pkg.platform === "string" && /^[a-z0-9]+-[a-z0-9_]+$/.test(pkg.platform) &&
+        typeof pkg.path === "string" && validRepositoryPath(pkg.path) &&
+        typeof pkg.sha256 === "string" && /^[a-f0-9]{64}$/.test(pkg.sha256))
+  );
   if (
     !item ||
     typeof item !== "object" ||
@@ -98,9 +124,11 @@ export function parseAppRepository(raw: string): AppRepositoryManifest {
           "title",
           "description",
           "package",
+          "nativeAdapter",
         ].includes(key),
     ) ||
-    Object.keys(item.package).some((key) => !["path", "sha256"].includes(key))
+    Object.keys(item.package).some((key) => !["path", "sha256"].includes(key)) ||
+    !validAdapter
   )
     throw new RpcError(
       "invalid",
@@ -109,5 +137,6 @@ export function parseAppRepository(raw: string): AppRepositoryManifest {
   return Object.freeze({
     ...item,
     package: Object.freeze({ ...item.package }),
+    ...(adapter === undefined ? {} : { nativeAdapter: Object.freeze({ ...adapter, packages: Object.freeze(adapter.packages.map((pkg: any) => Object.freeze({ ...pkg }))) }) }),
   });
 }
