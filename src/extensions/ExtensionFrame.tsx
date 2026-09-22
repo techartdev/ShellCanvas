@@ -43,7 +43,11 @@ import {
 import { ConnectionDialog } from "./ConnectionDialog";
 import type { AppConnection } from "../../packages/app-sdk/src/network-client";
 import { readAppAppearance, watchAppAppearance } from "./appearance";
-import { AppCompanion, nativeCompanionBackend } from "./companion";
+import {
+  AppCompanion,
+  nativeCompanionBackend,
+  type CompanionHostGetter,
+} from "./companion";
 
 /** Isolated app document shared by the desktop and development workbenches.
  * One effect owns one document, port and system handle. A prop change retires that instance.
@@ -63,6 +67,7 @@ export function ExtensionFrame({
   consoleSource,
   transferSource,
   hostSettingsSource,
+  companionHost,
 }: {
   app: AppPackage;
   system: SystemAPI;
@@ -78,6 +83,7 @@ export function ExtensionFrame({
   consoleSource?: AppConsoleSourceGetter;
   transferSource?: AppTransferSourceGetter;
   hostSettingsSource?: AppHostSettingsSourceGetter;
+  companionHost?: CompanionHostGetter;
 }) {
   const ref = useRef<HTMLIFrameElement>(null);
   const [error, setError] = useState("");
@@ -152,6 +158,7 @@ export function ExtensionFrame({
             () => {
               if (!retired) events.publish("system.companion", null);
             },
+            companionHost,
           )
         : undefined;
     const closeCompanion = () => {
@@ -357,6 +364,11 @@ export function ExtensionFrame({
         },
       });
       const publishEnvironment = () => {
+        void companion
+          ?.refreshHost()
+          .catch((failure) =>
+            console.warn("Host connector cleanup failed", failure),
+          );
         fileClipboard?.refresh();
         transfers?.refresh();
         directories?.refresh(environment.snapshot().connection === "connected");
@@ -445,6 +457,7 @@ export function ExtensionFrame({
     consoleSource,
     transferSource,
     hostSettingsSource,
+    companionHost,
   ]);
   return (
     <div

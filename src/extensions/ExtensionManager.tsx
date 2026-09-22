@@ -35,6 +35,8 @@ import {
 } from "./native-dependency";
 
 function permissionName(name: string) {
+  if (name === "host.tcp")
+    return "Connect to TCP services through the selected SSH host";
   if (name === "system.network")
     return "Send data to API endpoints you configure for this app";
   if (name === "system.console") return "Open and control remote consoles";
@@ -133,7 +135,8 @@ export function ExtensionManager({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [review, setReview] = useState<InstallReview | null>(null);
-  const [nativeReview, setNativeReview] = useState<NativeDependencyReview | null>(null);
+  const [nativeReview, setNativeReview] =
+    useState<NativeDependencyReview | null>(null);
   const [nativeTrusted, setNativeTrusted] = useState(false);
   const [grants, setGrants] = useState<readonly string[]>([]);
   const sequence = useRef(0);
@@ -409,16 +412,20 @@ export function ExtensionManager({
         </p>
       )}
       {nativeReview && (
-        <section className="native-dependency-review" aria-label="Native component review">
+        <section
+          className="native-dependency-review"
+          aria-label="Native component review"
+        >
           <h4>Native component</h4>
           <p>
             <strong>{nativeReview.review.package.name}</strong>{" "}
-            {nativeReview.review.package.version} · {nativeReview.review.package.platform}
+            {nativeReview.review.package.version} ·{" "}
+            {nativeReview.review.package.platform}
           </p>
           <p>
             This trusted executable runs with your operating-system permissions.
-            It will be installed but will not run or request database credentials
-            until you configure a connection.
+            It will be installed but will not run or request database
+            credentials until you configure a connection.
           </p>
           <p>
             {nativeReview.mode === "reuse"
@@ -429,9 +436,15 @@ export function ExtensionManager({
           </p>
           <details>
             <summary>Native package details</summary>
-            <p>{nativeReview.review.package.fileCount} file · {nativeReview.review.package.bytes.toLocaleString()} bytes</p>
+            <p>
+              {nativeReview.review.package.fileCount} file ·{" "}
+              {nativeReview.review.package.bytes.toLocaleString()} bytes
+            </p>
             <code>{nativeReview.review.package.digest}</code>
-            <p>This fingerprint verifies the reviewed bytes; it does not authenticate a publisher.</p>
+            <p>
+              This fingerprint verifies the reviewed bytes; it does not
+              authenticate a publisher.
+            </p>
           </details>
           <label>
             <input
@@ -440,7 +453,9 @@ export function ExtensionManager({
               disabled={busy}
               onChange={(event) => setNativeTrusted(event.target.checked)}
             />
-            <span>I trust this reviewed native component to run on this device.</span>
+            <span>
+              I trust this reviewed native component to run on this device.
+            </span>
           </label>
         </section>
       )}
@@ -524,7 +539,11 @@ export function ExtensionManager({
         </button>
         <button
           className="extension-primary"
-          disabled={busy || (nativeReview !== null && !nativeTrusted) || !!catalog.compatibilityReason(review.package)}
+          disabled={
+            busy ||
+            (nativeReview !== null && !nativeTrusted) ||
+            !!catalog.compatibilityReason(review.package)
+          }
           onClick={() => {
             const expected = sequence.current;
             const requestId = nativeRequest.current;

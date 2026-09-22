@@ -18,6 +18,7 @@ pub struct ConnectionResource {
     leases: Mutex<usize>,
     runtime: tokio::runtime::Handle,
     pub clock: Option<Arc<dyn shellcanvas_services::HostClock>>,
+    pub ssh: Option<Arc<shellcanvas_core::Connection>>,
 }
 
 impl ConnectionResource {
@@ -30,6 +31,23 @@ impl ConnectionResource {
         lifecycle: Arc<dyn ConnectionLifecycle>,
         clock: Option<Arc<dyn shellcanvas_services::HostClock>>,
     ) -> Arc<Self> {
+        Self::build(identity, lifecycle, clock, None)
+    }
+
+    pub fn with_ssh(
+        identity: ConnectionIdentity,
+        ssh: Arc<shellcanvas_core::Connection>,
+        clock: Option<Arc<dyn shellcanvas_services::HostClock>>,
+    ) -> Arc<Self> {
+        Self::build(identity, ssh.clone(), clock, Some(ssh))
+    }
+
+    fn build(
+        identity: ConnectionIdentity,
+        lifecycle: Arc<dyn ConnectionLifecycle>,
+        clock: Option<Arc<dyn shellcanvas_services::HostClock>>,
+        ssh: Option<Arc<shellcanvas_core::Connection>>,
+    ) -> Arc<Self> {
         let (outcome, _) = watch::channel(None);
         Arc::new(Self {
             identity,
@@ -39,6 +57,7 @@ impl ConnectionResource {
             leases: Mutex::new(0),
             runtime: tokio::runtime::Handle::current(),
             clock,
+            ssh,
         })
     }
 

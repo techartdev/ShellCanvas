@@ -153,6 +153,23 @@ macro_rules! bind_role {
     };
 }
 impl WorkspaceServices {
+    /// Capture a particular accepted SSH source; never follow a replacement.
+    pub fn ssh_source(
+        &self,
+        expected: &ConnectionIdentity,
+    ) -> Result<(Arc<ConnectionResource>, Arc<AtomicBool>), String> {
+        let owned = self
+            .connections
+            .iter()
+            .find(|owned| owned.resource().identity() == expected)
+            .ok_or("The SSH connection changed; accept the reconnected host first")?;
+        let source = owned.resource();
+        if !owned.alive.load(Ordering::Acquire) || !source.is_connected() || source.ssh.is_none() {
+            return Err("This workspace has no connected SSH transport".into());
+        }
+        Ok((source.clone(), owned.alive.clone()))
+    }
+
     pub fn new(sources: Vec<Arc<ConnectionResource>>) -> Result<Self, String> {
         let mut connections: Vec<OwnedSource> = Vec::new();
         for source in sources {
