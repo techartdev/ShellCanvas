@@ -2,6 +2,22 @@
 
 Notable changes to ShellCanvas, newest first. Published SDK packages follow [semantic versioning](https://semver.org/), and desktop releases use the same version where practical. The project is pre-1.0, so a minor release may include breaking changes; those come with migration notes.
 
+## [0.1.12] - 2026-09-23
+
+### Added
+
+- Install an app and its hash-pinned native connector together through one App Manager review, with platform checks, shared-package conflict detection and installation rollback.
+- Let app-owned connectors reach TCP services through the accepted SSH host with the new host TCP permission. Connections are tied to the app window and host generation; cancellation, closing or replacing the host releases their tunnels.
+
+### Fixed
+
+- Bring app windows to the front when clicking or focusing controls inside their isolated content.
+- Show native connector errors instead of a generic service-operation failure, and repair the built-in SSH adapter descriptor.
+
+### Known limitations
+
+- Host TCP routing requires an SSH server that permits forwarding and a workspace with one SSH source. The Database app is distributed separately; network databases use SSH by default, while SQLite files remain local to the desktop.
+
 ## [0.1.11] - 2026-09-22
 
 ### Added
