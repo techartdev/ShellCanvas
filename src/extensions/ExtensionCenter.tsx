@@ -59,6 +59,7 @@ export function ExtensionCenter({
           page={tab === "adapters" ? "installed" : tab}
           navigate={setTab}
           visit={visit}
+          adapters={adapters}
         />
       )}
     </div>

@@ -82,6 +82,45 @@ The SDK exports `./repository` plus `./schemas/app-repository.schema.json`.
 Unknown fields, malformed identifiers and unsafe paths are rejected. Paths must
 use simple ASCII filename segments and remain below the repository root.
 
+### Optional native companion
+
+A repository app may declare one required native adapter. Each platform entry
+points to that adapter's normal `adapter.json` and pins its raw SHA-256:
+
+```json
+"nativeAdapter": {
+  "id": "org.example.notes-connector",
+  "version": "0.1.0",
+  "packages": [{
+    "platform": "windows-x86_64",
+    "path": "dist/adapter-windows-x86_64/adapter.json",
+    "sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+  }]
+}
+```
+
+This is available only for GitHub repository installs because local app files
+do not identify where native package assets came from. App Manager downloads
+the exact platform package from the same owner, repository and reference,
+verifies the manifest and every declared asset, then shows one review that
+separates app permissions from native-code trust. Approval installs the app and
+the staged adapter; it does not launch the adapter, connect it or collect its
+configuration. Hash pins provide content integrity, not publisher authentication.
+
+An identical enabled adapter is reverified and reused. A disabled dependency
+must be enabled under **Connection adapters** before reviewing again. Managed
+updates may replace the app's prior pinned adapter, while an unknown legacy
+installation or another installed app's conflicting pin blocks replacement.
+Existing running connections retain their generation. Installation is a
+recoverable two-step commit: if the native commit fails, the desktop restores
+the exact preceding app generation when it is still safe; a concurrent app
+change or open candidate window can require separate manual cleanup.
+
+`shellcanvas-app repository` preserves and validates an existing
+`nativeAdapter` declaration when regenerating package hashes, so repository
+builds do not silently remove the pin. Older descriptors without this field and
+local app-file installation remain app-only.
+
 ## What verification means
 
 The raw artifact SHA-256 must match the descriptor. Package format, identity,

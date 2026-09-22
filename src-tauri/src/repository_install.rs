@@ -2,7 +2,10 @@
 //! Read-only repository transport for the trusted Apps manager, never an app HTTP API.
 use std::{
     collections::HashMap,
-    sync::{LazyLock, Mutex},
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        LazyLock, Mutex,
+    },
     time::{Duration, Instant},
 };
 use tokio::sync::{watch, Semaphore};
@@ -104,6 +107,18 @@ async fn download_file(
     path: String,
     limit: usize,
 ) -> Result<String, String> {
+    let bytes = download_repository_bytes(owner, repository, reference, path, limit, None).await?;
+    String::from_utf8(bytes).map_err(|_| "Repository file must be UTF-8 JSON.".into())
+}
+
+pub(crate) async fn download_repository_bytes(
+    owner: String,
+    repository: String,
+    reference: String,
+    path: String,
+    limit: usize,
+    canceled: Option<&AtomicBool>,
+) -> Result<Vec<u8>, String> {
     if limit == 0 || limit > 32 * 1024 * 1024 {
         return Err("Invalid package download limit.".into());
     }
@@ -139,12 +154,18 @@ async fn download_file(
         .await
         .map_err(|_| "Repository download was interrupted.")?
     {
+        if canceled.is_some_and(|flag| flag.load(Ordering::Acquire)) {
+            return Err("Repository download canceled.".into());
+        }
         if chunk.len() > limit - bytes.len() {
             return Err("Repository file exceeds the package size limit.".into());
         }
         bytes.extend_from_slice(&chunk);
     }
-    String::from_utf8(bytes).map_err(|_| "Repository file must be UTF-8 JSON.".into())
+    if canceled.is_some_and(|flag| flag.load(Ordering::Acquire)) {
+        return Err("Repository download canceled.".into());
+    }
+    Ok(bytes)
 }
 
 fn fresh_repository_request(client: &reqwest::Client, url: &str) -> reqwest::RequestBuilder {

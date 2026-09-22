@@ -78,3 +78,31 @@ test("repository description defaults to the package description", async () => {
   await writeFile(join(root, "dist/app.shellcanvas.json"), JSON.stringify(plain));
   assert.equal((await read()).description, "");
 });
+
+test("repository tooling preserves and validates a native adapter declaration", async () => {
+  const root = await mkdtemp(join(tmpdir(), "shellcanvas-repository-native-"));
+  await mkdir(join(root, "dist"));
+  await writeFile(join(root, "dist/app.shellcanvas.json"), JSON.stringify({
+    format: 1, kind: "app", id: "org.example.app", version: "1.0.0",
+    title: "App", permissions: [], script: "void 0", style: "",
+  }));
+  const nativeAdapter = {
+    id: "org.example.connector",
+    version: "2.1.0",
+    packages: [{
+      platform: "windows-x86_64",
+      path: "dist/adapter/adapter.json",
+      sha256: "a".repeat(64),
+    }],
+  };
+  await writeFile(join(root, "shellcanvas.repo.json"), JSON.stringify({
+    format: 1, kind: "app-repository", id: "org.example.app", version: "1.0.0",
+    title: "App", description: "", package: { path: "dist/old.json", sha256: "b".repeat(64) },
+    nativeAdapter,
+  }));
+  const generated = parseAppRepository(await readFile(await repositoryManifest(root), "utf8"));
+  assert.deepEqual(generated.nativeAdapter, nativeAdapter);
+
+  await writeFile(join(root, "shellcanvas.repo.json"), "{}");
+  await assert.rejects(() => repositoryManifest(root), /Invalid or unsupported/);
+});

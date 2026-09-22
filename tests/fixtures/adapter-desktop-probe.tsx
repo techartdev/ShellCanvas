@@ -48,6 +48,7 @@ const sample = (): AdapterInfo => ({
   enabled: true,
   fileCount: 1,
   bytes: 1773568,
+  digest: "a".repeat(64),
   configuration: [
     {
       id: "transfers",

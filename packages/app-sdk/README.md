@@ -24,6 +24,10 @@ The generator requires a new directory and never overwrites an existing project.
 To distribute through GitHub, build first and run
 `shellcanvas-app repository . --description "What your app does"`.
 Commit both the generated root `shellcanvas.repo.json` and its referenced package.
+If that descriptor already contains a valid `nativeAdapter` companion declaration,
+the command preserves it while updating the app artifact hash; invalid declarations
+fail instead of being silently discarded. Native companion installation is available
+only through a repository-aware desktop that supports this optional field.
 Preserve package bytes with a final `dist/app.shellcanvas.json -text` rule in
 `.gitattributes`. Users choose **App Manager → Add apps → From GitHub** and review the exact
 downloaded package. Installation downloads files directly; it runs no npm scripts

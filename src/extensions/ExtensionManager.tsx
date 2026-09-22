@@ -27,6 +27,12 @@ import {
   firstPartyCatalog,
   firstPartyRecommendations,
 } from "./first-party-catalog";
+import type { AdapterServices } from "../adapters";
+import {
+  installWithNativeDependency,
+  resolveNativeDependency,
+  type NativeDependencyReview,
+} from "./native-dependency";
 
 function permissionName(name: string) {
   if (name === "system.network")
@@ -105,6 +111,7 @@ export function ExtensionManager({
   page,
   navigate,
   visit = 0,
+  adapters,
 }: {
   catalog: AppCatalog;
   launch?(lease: AppLease): void;
@@ -114,6 +121,7 @@ export function ExtensionManager({
   navigate?(page: ManagerPage): void;
   /** Changes whenever the parent's tab is chosen, returning to that section's start. */
   visit?: number;
+  adapters?: AdapterServices;
 }) {
   const apps = useSyncExternalStore(catalog.subscribe, catalog.snapshot);
   const [ownPage, setOwnPage] = useState<ManagerPage>("installed");
@@ -125,11 +133,15 @@ export function ExtensionManager({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [review, setReview] = useState<InstallReview | null>(null);
+  const [nativeReview, setNativeReview] = useState<NativeDependencyReview | null>(null);
+  const [nativeTrusted, setNativeTrusted] = useState(false);
   const [grants, setGrants] = useState<readonly string[]>([]);
   const sequence = useRef(0);
   const inspection = useRef<number | null>(null);
   const file = useRef<HTMLInputElement>(null);
   const download = useRef<AbortController | null>(null);
+  const nativeRequest = useRef<string | null>(null);
+  const mutation = useRef(false);
   const [repository, setRepository] = useState("");
   const [reference, setReference] = useState("main");
   const [fetching, setFetching] = useState(false);
@@ -143,14 +155,20 @@ export function ExtensionManager({
     sequence.current++;
     download.current?.abort();
     download.current = null;
+    if (nativeRequest.current && adapters) {
+      void adapters.cancelReview(nativeRequest.current).catch(() => {});
+      nativeRequest.current = null;
+    }
     setFetching(false);
+    setBusy(false);
     if (inspection.current !== null) {
       inspection.current = null;
-      setBusy(false);
     }
     setSelected(null);
     setRemoving(null);
     setReview(null);
+    setNativeReview(null);
+    setNativeTrusted(false);
     setError("");
   };
   const refresh = async () => {
@@ -170,11 +188,15 @@ export function ExtensionManager({
     return () => {
       sequence.current++;
       download.current?.abort();
+      if (nativeRequest.current && adapters)
+        void adapters.cancelReview(nativeRequest.current).catch(() => {});
       recommendationLoader.current?.cancel();
     };
   }, [catalog, visit]);
   useEffect(leave, [visit]);
   const run = async (action: () => Promise<unknown>, expected?: number) => {
+    if (mutation.current) return;
+    mutation.current = true;
     const current = () =>
       expected === undefined || sequence.current === expected;
     setBusy(true);
@@ -185,13 +207,19 @@ export function ExtensionManager({
       if (current())
         setError(failure instanceof Error ? failure.message : String(failure));
     } finally {
+      mutation.current = false;
       if (current()) setBusy(false);
       if (expected !== undefined && inspection.current === expected)
         inspection.current = null;
     }
   };
-  const reviewing = (next: InstallReview) => {
+  const reviewing = (
+    next: InstallReview,
+    native: NativeDependencyReview | null = null,
+  ) => {
     setReview(next);
+    setNativeReview(native);
+    setNativeTrusted(false);
     setGrants(
       next.replaces
         ? next.replaces.grants.filter((grant) =>
@@ -220,6 +248,10 @@ export function ExtensionManager({
     const expected = ++sequence.current;
     inspection.current = expected;
     download.current?.abort();
+    if (nativeRequest.current && adapters) {
+      void adapters.cancelReview(nativeRequest.current).catch(() => {});
+      nativeRequest.current = null;
+    }
     const controller = new AbortController();
     download.current = controller;
     setFetching(true);
@@ -235,13 +267,60 @@ export function ExtensionManager({
           )
         : await inspectRepository(input, ref, controller.signal);
       if (controller.signal.aborted || sequence.current !== expected) return;
-      const next = await catalog.review(
-        result.raw,
-        result.source,
-        result.manifest.description,
-      );
+      let native: NativeDependencyReview | null = null;
+      let pin: { id: string; version: string; digest: string } | undefined;
+      if (result.manifest.nativeAdapter) {
+        if (!adapters?.reviewRepository || !adapters.installDependency)
+          throw new Error(
+            "This desktop cannot install the native component required by this app.",
+          );
+        const requestId = crypto.randomUUID();
+        nativeRequest.current = requestId;
+        try {
+          const staged = await adapters.reviewRepository(requestId, {
+            owner: result.source.owner,
+            repository: result.source.repository,
+            reference: result.source.ref,
+            ...result.manifest.nativeAdapter,
+          });
+          if (controller.signal.aborted || sequence.current !== expected) {
+            await adapters.cancelReview(requestId).catch(() => {});
+            return;
+          }
+          native = resolveNativeDependency(
+            result.manifest.id,
+            staged,
+            await adapters.list(),
+            catalog.snapshot(),
+          );
+          pin = {
+            id: staged.package.id,
+            version: staged.package.version,
+            digest: staged.package.digest,
+          };
+        } catch (error) {
+          await adapters.cancelReview(requestId).catch(() => {});
+          if (nativeRequest.current === requestId) nativeRequest.current = null;
+          throw error;
+        }
+      }
+      let next: InstallReview;
+      try {
+        next = await catalog.review(
+          result.raw,
+          result.source,
+          result.manifest.description,
+          pin,
+        );
+      } catch (error) {
+        if (nativeRequest.current && adapters) {
+          await adapters.cancelReview(nativeRequest.current).catch(() => {});
+          nativeRequest.current = null;
+        }
+        throw error;
+      }
       if (controller.signal.aborted || sequence.current !== expected) return;
-      reviewing(next);
+      reviewing(next, native);
     }, expected);
     if (sequence.current === expected) setFetching(false);
     if (download.current === controller) download.current = null;
@@ -329,6 +408,42 @@ export function ExtensionManager({
           {review.source.ref}
         </p>
       )}
+      {nativeReview && (
+        <section className="native-dependency-review" aria-label="Native component review">
+          <h4>Native component</h4>
+          <p>
+            <strong>{nativeReview.review.package.name}</strong>{" "}
+            {nativeReview.review.package.version} · {nativeReview.review.package.platform}
+          </p>
+          <p>
+            This trusted executable runs with your operating-system permissions.
+            It will be installed but will not run or request database credentials
+            until you configure a connection.
+          </p>
+          <p>
+            {nativeReview.mode === "reuse"
+              ? "The identical enabled component is already installed; it will be reverified and kept."
+              : nativeReview.mode === "replace"
+                ? "The app-managed component will be replaced. Existing connections retain their current running generation."
+                : "A new connection adapter will be installed."}
+          </p>
+          <details>
+            <summary>Native package details</summary>
+            <p>{nativeReview.review.package.fileCount} file · {nativeReview.review.package.bytes.toLocaleString()} bytes</p>
+            <code>{nativeReview.review.package.digest}</code>
+            <p>This fingerprint verifies the reviewed bytes; it does not authenticate a publisher.</p>
+          </details>
+          <label>
+            <input
+              type="checkbox"
+              checked={nativeTrusted}
+              disabled={busy}
+              onChange={(event) => setNativeTrusted(event.target.checked)}
+            />
+            <span>I trust this reviewed native component to run on this device.</span>
+          </label>
+        </section>
+      )}
       <p>Client support: {platforms(review.package)}</p>
       {catalog.compatibilityReason(review.package) && (
         <p className="extension-error" role="status">
@@ -396,29 +511,64 @@ export function ExtensionManager({
           disabled={busy}
           onClick={() => {
             sequence.current++;
+            if (nativeRequest.current && adapters) {
+              void adapters.cancelReview(nativeRequest.current).catch(() => {});
+              nativeRequest.current = null;
+            }
             setReview(null);
+            setNativeReview(null);
+            setNativeTrusted(false);
           }}
         >
           Cancel
         </button>
         <button
           className="extension-primary"
-          disabled={busy || !!catalog.compatibilityReason(review.package)}
-          onClick={() =>
+          disabled={busy || (nativeReview !== null && !nativeTrusted) || !!catalog.compatibilityReason(review.package)}
+          onClick={() => {
+            const expected = sequence.current;
+            const requestId = nativeRequest.current;
+            if (nativeReview) nativeRequest.current = null;
             void run(async () => {
-              const installed = await catalog.install(review, grants);
-              setReview(null);
-              setQuery("");
-              setSelected(installed.package.id);
-              show("installed");
-            })
-          }
+              try {
+                const installed = nativeReview
+                  ? await installWithNativeDependency(
+                      catalog,
+                      review,
+                      grants,
+                      adapters!,
+                      nativeReview,
+                    )
+                  : await catalog.install(review, grants);
+                if (sequence.current !== expected) return;
+                setReview(null);
+                setNativeReview(null);
+                setNativeTrusted(false);
+                setQuery("");
+                setSelected(installed.package.id);
+                show("installed");
+              } catch (failure) {
+                // Both app and native reviews are single use once approval starts.
+                // A retry must fetch and review fresh bytes and current catalogs.
+                if (requestId && adapters)
+                  await adapters.cancelReview(requestId).catch(() => {});
+                if (sequence.current === expected) {
+                  setReview(null);
+                  setNativeReview(null);
+                  setNativeTrusted(false);
+                }
+                throw failure;
+              }
+            }, expected);
+          }}
         >
           {busy
             ? "Saving…"
             : review.replaces
               ? "Install update"
-              : "Install app"}
+              : nativeReview
+                ? "Install app and native component"
+                : "Install app"}
         </button>
       </div>
     </section>

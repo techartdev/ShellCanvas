@@ -111,6 +111,30 @@ fn disabled_and_changed_packages_cannot_be_launched_and_stale_decisions_are_refu
     fs::write(executable, b"modified installed bytes").unwrap();
     assert!(catalog.acquire(&enabled.id, &enabled.revision).is_err());
 }
+
+#[test]
+fn dependency_reuse_requires_the_exact_still_enabled_reviewed_revision() {
+    let root = tempfile::tempdir().unwrap();
+    let catalog = Catalog::new(root.path().to_path_buf());
+    let (source, _) = source();
+    let installed = catalog.install(review(&catalog, &source)).unwrap();
+    let reusable = review(&catalog, &source);
+    let reused = catalog.satisfy(reusable).unwrap();
+    assert_eq!(reused.revision, installed.revision);
+    assert_eq!(reused.digest, installed.digest);
+
+    let stale = review(&catalog, &source);
+    let disabled = catalog
+        .set_enabled(&installed.id, &installed.revision, false)
+        .unwrap();
+    let error = catalog.satisfy(stale).unwrap_err().to_string();
+    assert!(error.contains("changed after review"));
+
+    let disabled_review = review(&catalog, &source);
+    let error = catalog.satisfy(disabled_review).unwrap_err().to_string();
+    assert!(error.contains("disabled"));
+    assert!(!disabled.enabled);
+}
 #[test]
 fn competing_installations_use_catalog_revisions_and_keep_one_complete_generation() {
     let root = tempfile::tempdir().unwrap();

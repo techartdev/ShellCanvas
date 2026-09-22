@@ -972,6 +972,8 @@ pub fn run() {
                 adapters::review_adapter,
                 adapters::cancel_adapter_review,
                 adapters::install_adapter,
+                adapters::install_adapter_dependency,
+                adapters::review_repository_adapter,
                 adapters::set_adapter_enabled,
                 adapters::remove_adapter,
                 extension_frames::publish_app_frame,

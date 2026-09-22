@@ -24,6 +24,7 @@ export interface AdapterInfo {
   enabled: boolean;
   fileCount: number;
   bytes: number;
+  digest: string;
 }
 export interface AdapterReview {
   requestId: string;
@@ -91,8 +92,13 @@ export interface AdapterServices {
   ): Promise<SourceReplacement>;
   list(): Promise<AdapterInfo[]>;
   review(requestId: string): Promise<AdapterReview | null>;
+  reviewRepository?(
+    requestId: string,
+    source: RepositoryAdapterSource,
+  ): Promise<AdapterReview>;
   cancelReview(requestId: string): Promise<void>;
   install(requestId: string): Promise<AdapterInfo>;
+  installDependency?(requestId: string, reuse: boolean): Promise<AdapterInfo>;
   setEnabled(
     id: string,
     revision: string,
@@ -104,6 +110,14 @@ export interface AdapterServices {
     signal?: AbortSignal,
     reviewHostKey?: HostKeyReviewer,
   ): Promise<Session>;
+}
+export interface RepositoryAdapterSource {
+  owner: string;
+  repository: string;
+  reference: string;
+  id: string;
+  version: string;
+  packages: readonly { platform: string; path: string; sha256: string }[];
 }
 function connectionReview(
   options: AdapterConnectionOptions,
@@ -236,8 +250,12 @@ export const nativeAdapterServices: AdapterServices = {
   },
   list: () => invoke("list_adapters"),
   review: (requestId) => invoke("review_adapter", { requestId }),
+  reviewRepository: (requestId, source) =>
+    invoke("review_repository_adapter", { requestId, source }),
   cancelReview: (requestId) => invoke("cancel_adapter_review", { requestId }),
   install: (requestId) => invoke("install_adapter", { requestId }),
+  installDependency: (requestId, reuse) =>
+    invoke("install_adapter_dependency", { requestId, reuse }),
   setEnabled: (id, revision, enabled) =>
     invoke("set_adapter_enabled", { id, revision, enabled }),
   remove: (id, revision) => invoke("remove_adapter", { id, revision }),
