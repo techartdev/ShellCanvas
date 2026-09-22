@@ -43,6 +43,7 @@ import {
 import { ConnectionDialog } from "./ConnectionDialog";
 import type { AppConnection } from "../../packages/app-sdk/src/network-client";
 import { readAppAppearance, watchAppAppearance } from "./appearance";
+import { AppCompanion, nativeCompanionBackend } from "./companion";
 
 /** Isolated app document shared by the desktop and development workbenches.
  * One effect owns one document, port and system handle. A prop change retires that instance.
@@ -140,7 +141,24 @@ export function ExtensionFrame({
     const events = new AppEventJournal([
       "system.environment",
       "system.services",
+      "system.companion",
     ]);
+    const companion =
+      lease?.installed.nativeAdapter && nativeCompanionBackend
+        ? new AppCompanion(
+            lease.installed.nativeAdapter,
+            grants.filter((grant) => app.permissions.includes(grant)),
+            nativeCompanionBackend,
+            () => {
+              if (!retired) events.publish("system.companion", null);
+            },
+          )
+        : undefined;
+    const closeCompanion = () => {
+      void companion
+        ?.close()
+        .catch((failure) => console.warn("Connector cleanup failed", failure));
+    };
     let stopEnvironment: (() => void) | undefined;
     let stopAppearance: (() => void) | undefined;
     const environmentSnapshot = () => ({
@@ -224,6 +242,19 @@ export function ExtensionFrame({
       : undefined;
     const receive = (event: MessageEvent) => {
       if (
+        !retired &&
+        event.source === frame.contentWindow &&
+        isFrameHandshake(event.data, "focus", token)
+      ) {
+        // Focus authority is restricted to this window; hidden workspaces cannot be raised.
+        try {
+          controls.current?.focus();
+        } catch {
+          /* The window is no longer active. */
+        }
+        return;
+      }
+      if (
         retired ||
         event.source !== frame.contentWindow ||
         !isFrameHandshake(event.data, "ready", token)
@@ -240,6 +271,9 @@ export function ExtensionFrame({
         app.permissions.includes(grant),
       );
       const methods = new Map(systemMethods(system, approved));
+      if (companion)
+        for (const [name, method] of companion.methods())
+          methods.set(name, method);
       for (const [name, method] of network.methods()) methods.set(name, method);
       for (const [name, method] of windowMethods(() => controls.current))
         methods.set(name, method);
@@ -351,6 +385,7 @@ export function ExtensionFrame({
         approved,
       );
       peer.onClose(() => {
+        closeCompanion();
         network.close();
         pendingConnection.current?.();
         fileClipboard?.close();
@@ -374,6 +409,7 @@ export function ExtensionFrame({
     setTransferFailure(null);
     const unmount = mountAppDocument(frame, app, token, setError);
     const retire = () => {
+      closeCompanion();
       network.close();
       pendingConnection.current?.();
       fileClipboard?.close();

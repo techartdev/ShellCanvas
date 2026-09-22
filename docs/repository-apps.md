@@ -121,6 +121,28 @@ change or open candidate window can require separate manual cleanup.
 builds do not silently remove the pin. Older descriptors without this field and
 local app-file installation remain app-only.
 
+Apps installed with a native companion may explicitly connect that companion
+from their own UI. Discover `system.companion.connect` before using this desktop
+API through the SDK's low-level `client.call`:
+
+- `system.companion.connect({ configuration })` validates fields against the
+  installed, enabled, hash-pinned companion and opens one window-owned session.
+  The app cannot supply adapter IDs, executable paths, workspace IDs or bindings.
+- `system.companion.status()` returns `{ connected, binding }`, with an opaque
+  binding identity. `system.companion.list()` describes the connected methods.
+- `system.companion.call({ method, params })` checks the app's service grants
+  before dispatching to its own session. Ordinary `services.call` continues to
+  address the accepted workspace.
+- `system.companion.disconnect()` cancels pending setup and closes that session.
+  Closing the app also cancels pending setup and releases the session. Credentials
+  remain in memory and are not stored as a workspace profile.
+
+The `system.companion` event invalidates connection state. A connection attempt
+is bounded to 45 seconds and can be canceled through the SDK signal. Successful
+replacement closes the preceding session; failed setup leaves it available.
+This API connects endpoints reachable from the desktop PC; it does not create
+SSH tunnels or discover remote database instances.
+
 ## What verification means
 
 The raw artifact SHA-256 must match the descriptor. Package format, identity,

@@ -2,6 +2,11 @@
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { appDocument, type AppPackage } from "./package";
 
+/** Events inside a sandboxed document do not bubble through the desktop window. */
+export function frameFocusScript(token: string): string {
+  return `(()=>{const focus=e=>{if(e.isTrusted)parent.postMessage({type:"shellcanvas:focus:v1",token:${JSON.stringify(token)}},"*")};document.addEventListener("pointerdown",focus,true);document.addEventListener("focusin",focus,true)})();\n`;
+}
+
 /** A late native publication is released even if its React owner has already closed. */
 export function mountAppDocument(
   frame: HTMLIFrameElement,
@@ -9,6 +14,7 @@ export function mountAppDocument(
   token: string,
   failed: (message: string) => void,
 ): () => void {
+  const mounted = { ...app, script: frameFocusScript(token) + app.script };
   let retired = false;
   let id: string | undefined;
   let browserDocument = false;
@@ -22,7 +28,7 @@ export function mountAppDocument(
   };
   if (isTauri()) {
     void invoke<{ id: string; url: string }>("publish_app_frame", {
-      script: app.script,
+      script: mounted.script,
       style: app.style,
       instanceToken: token,
     })
@@ -43,7 +49,7 @@ export function mountAppDocument(
     publication = setTimeout(() => {
       if (retired) return;
       browserDocument = true;
-      frame.srcdoc = appDocument(app, token);
+      frame.srcdoc = appDocument(mounted, token);
     }, 0);
   }
   return () => {
@@ -62,7 +68,7 @@ export function mountAppDocument(
 
 export function isFrameHandshake(
   value: unknown,
-  type: "ready" | "connect",
+  type: "ready" | "connect" | "focus",
   token: string,
 ): boolean {
   return (
