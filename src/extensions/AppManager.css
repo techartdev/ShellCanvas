@@ -197,6 +197,9 @@
   font: inherit;
   cursor: pointer;
 }
+.app-recommendation-main {
+  cursor: default;
+}
 .app-tile-text {
   display: grid;
   row-gap: 0.307692rem;

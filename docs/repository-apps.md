@@ -16,6 +16,31 @@ authentication is not included. Package-file installation remains available for
 private builds. The assistant's public repository is
 [techartdev/ShellCanvas-Assistant](https://github.com/techartdev/ShellCanvas-Assistant).
 
+## First-party recommendations
+
+The App Manager's default **Installed** page also shows apps curated by
+ShellCanvas. These suggestions come from the repository-root
+[`shellcanvas.catalog.json`](../shellcanvas.catalog.json), which is bundled into
+the desktop build. Catalog additions and edits therefore ship with a
+ShellCanvas desktop release; opening the store does not silently replace the
+curated list from the network.
+
+A catalog entry supplies display text and an explicit GitHub
+`owner/repository/ref`, and pins the expected app identifier. Choosing
+**Review** still downloads that app repository's normal
+`shellcanvas.repo.json` and package, verifies its SHA-256 and package identity,
+and opens the standard permission review. A recommendation neither installs an
+app nor approves access. “Recommended by ShellCanvas” describes curation by
+this repository; it is not a cryptographic publisher identity.
+
+To add another first-party app, publish its prebuilt package and root descriptor
+as described below, then add its canonical source and app ID to
+`shellcanvas.catalog.json`. Sources must remain under the `techartdev` GitHub
+owner, IDs must be unique, and the catalog must match
+[`docs/schemas/app-catalog.schema.json`](schemas/app-catalog.schema.json). Test
+the catalog parser, the live repository review, and the permission screen before
+shipping the next desktop release.
+
 ## Root descriptor
 
 ```json

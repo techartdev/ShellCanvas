@@ -18,10 +18,14 @@ import {
 } from "./catalog";
 import "./ExtensionManager.css";
 import "./AppManager.css";
-import { inspectRepository } from "./repository";
+import { inspectExpectedRepository, inspectRepository } from "./repository";
 import { clientPlatformLabels } from "../../packages/app-sdk/src/client-platform";
 import { AppIcon } from "../components/AppIcon";
 import { appSummary, byTitle, matchesSearch } from "./app-listing";
+import {
+  firstPartyCatalog,
+  firstPartyRecommendations,
+} from "./first-party-catalog";
 
 function permissionName(name: string) {
   if (name === "system.network")
@@ -203,6 +207,7 @@ export function ExtensionManager({
     input = repository,
     ref = reference,
     expectedId?: string,
+    purpose: "update" | "recommendation" = "update",
   ) => {
     const expected = ++sequence.current;
     inspection.current = expected;
@@ -212,12 +217,16 @@ export function ExtensionManager({
     setFetching(true);
     setReview(null);
     await run(async () => {
-      const result = await inspectRepository(input, ref, controller.signal);
+      const result = expectedId
+        ? await inspectExpectedRepository(
+            input,
+            ref,
+            expectedId,
+            purpose,
+            controller.signal,
+          )
+        : await inspectRepository(input, ref, controller.signal);
       if (controller.signal.aborted || sequence.current !== expected) return;
-      if (expectedId && result.manifest.id !== expectedId)
-        throw new Error(
-          "This repository now points to a different app. Its update was not installed.",
-        );
       const next = await catalog.review(
         result.raw,
         result.source,
@@ -270,6 +279,7 @@ export function ExtensionManager({
       item.source && `${item.source.owner}/${item.source.repository}`,
     ]),
   );
+  const recommendations = firstPartyRecommendations(apps, query);
 
   const reviewPage = review && (
     <section
@@ -569,8 +579,8 @@ export function ExtensionManager({
           <input
             type="search"
             value={query}
-            placeholder="Search installed apps"
-            aria-label="Search installed apps"
+            placeholder="Search apps"
+            aria-label="Search apps"
             spellCheck={false}
             onChange={(event) => setQuery(event.target.value)}
           />
@@ -652,7 +662,7 @@ export function ExtensionManager({
           Loading installed apps…
         </p>
       )}
-      {!loading && !apps.length && (
+      {!loading && !apps.length && !recommendations.length && !query.trim() && (
         <div className="extension-empty app-empty-state">
           <AppIcon id="installed-app" size="tile" />
           <h3>No apps installed yet</h3>
@@ -665,11 +675,58 @@ export function ExtensionManager({
           </div>
         </div>
       )}
-      {!!apps.length && !listed.length && (
+      {!!apps.length && !listed.length && !!recommendations.length && (
         <p className="app-quiet" role="status">
           No installed apps match “{query.trim()}”.
         </p>
       )}
+      {!!recommendations.length && (
+        <>
+          <h3 className="app-section-title">
+            {firstPartyCatalog.title} <span>{recommendations.length}</span>
+          </h3>
+          <div className="app-grid" aria-label={firstPartyCatalog.title}>
+            {recommendations.map((app) => (
+              <article className="app-tile" key={app.id}>
+                <div className="app-tile-main app-recommendation-main">
+                  <AppIcon id={app.id} size="tile" />
+                  <span className="app-tile-text">
+                    <strong>{app.title}</strong>
+                    <span>{app.description}</span>
+                  </span>
+                </div>
+                <div className="app-tile-footer">
+                  <span className="app-tile-meta">
+                    <span>By ShellCanvas</span>
+                  </span>
+                  <button
+                    className="app-open"
+                    disabled={busy || loading}
+                    onClick={() =>
+                      void fromRepository(
+                        `${app.source.owner}/${app.source.repository}`,
+                        app.source.ref,
+                        app.id,
+                        "recommendation",
+                      )
+                    }
+                  >
+                    Review
+                  </button>
+                </div>
+              </article>
+            ))}
+          </div>
+        </>
+      )}
+      {!loading &&
+        !listed.length &&
+        !recommendations.length &&
+        !!query.trim() && (
+          <p className="app-quiet" role="status">
+            No apps match “{query.trim()}”.
+          </p>
+        )}
     </>
   );
 
