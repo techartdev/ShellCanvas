@@ -1,0 +1,24 @@
+{
+  "$schema": "docs/schemas/app-catalog.schema.json",
+  "format": 1,
+  "kind": "app-catalog",
+  "id": "dev.shellcanvas.first-party",
+  "title": "Recommended by ShellCanvas",
+  "curator": {
+    "name": "ShellCanvas",
+    "owner": "techartdev",
+    "repository": "ShellCanvas"
+  },
+  "apps": [
+    {
+      "id": "dev.shellcanvas.assistant",
+      "title": "Canvas Assistant",
+      "description": "An independent assistant for your ShellCanvas workspace.",
+      "source": {
+        "owner": "techartdev",
+        "repository": "ShellCanvas-Assistant",
+        "ref": "main"
+      }
+    }
+  ]
+}

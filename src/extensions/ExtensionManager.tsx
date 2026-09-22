@@ -18,10 +18,15 @@ import {
 } from "./catalog";
 import "./ExtensionManager.css";
 import "./AppManager.css";
-import { inspectRepository } from "./repository";
+import { inspectExpectedRepository, inspectRepository } from "./repository";
 import { clientPlatformLabels } from "../../packages/app-sdk/src/client-platform";
 import { AppIcon } from "../components/AppIcon";
 import { appSummary, byTitle, matchesSearch } from "./app-listing";
+import {
+  FirstPartyCatalogLoader,
+  firstPartyCatalog,
+  firstPartyRecommendations,
+} from "./first-party-catalog";
 
 function permissionName(name: string) {
   if (name === "system.network")
@@ -128,6 +133,11 @@ export function ExtensionManager({
   const [repository, setRepository] = useState("");
   const [reference, setReference] = useState("main");
   const [fetching, setFetching] = useState(false);
+  const [recommendationCatalog, setRecommendationCatalog] =
+    useState(firstPartyCatalog);
+  const recommendationLoader = useRef<FirstPartyCatalogLoader | null>(null);
+  if (!recommendationLoader.current)
+    recommendationLoader.current = new FirstPartyCatalogLoader();
   const show = (next: ManagerPage) => (navigate ?? setOwnPage)(next);
   const leave = () => {
     sequence.current++;
@@ -144,6 +154,7 @@ export function ExtensionManager({
     setError("");
   };
   const refresh = async () => {
+    void recommendationLoader.current?.refresh(setRecommendationCatalog);
     setLoading(true);
     try {
       await catalog.load();
@@ -159,8 +170,9 @@ export function ExtensionManager({
     return () => {
       sequence.current++;
       download.current?.abort();
+      recommendationLoader.current?.cancel();
     };
-  }, [catalog]);
+  }, [catalog, visit]);
   useEffect(leave, [visit]);
   const run = async (action: () => Promise<unknown>, expected?: number) => {
     const current = () =>
@@ -203,6 +215,7 @@ export function ExtensionManager({
     input = repository,
     ref = reference,
     expectedId?: string,
+    purpose: "update" | "recommendation" = "update",
   ) => {
     const expected = ++sequence.current;
     inspection.current = expected;
@@ -212,12 +225,16 @@ export function ExtensionManager({
     setFetching(true);
     setReview(null);
     await run(async () => {
-      const result = await inspectRepository(input, ref, controller.signal);
+      const result = expectedId
+        ? await inspectExpectedRepository(
+            input,
+            ref,
+            expectedId,
+            purpose,
+            controller.signal,
+          )
+        : await inspectRepository(input, ref, controller.signal);
       if (controller.signal.aborted || sequence.current !== expected) return;
-      if (expectedId && result.manifest.id !== expectedId)
-        throw new Error(
-          "This repository now points to a different app. Its update was not installed.",
-        );
       const next = await catalog.review(
         result.raw,
         result.source,
@@ -269,6 +286,11 @@ export function ExtensionManager({
       item.package.id,
       item.source && `${item.source.owner}/${item.source.repository}`,
     ]),
+  );
+  const recommendations = firstPartyRecommendations(
+    apps,
+    query,
+    recommendationCatalog,
   );
 
   const reviewPage = review && (
@@ -569,8 +591,8 @@ export function ExtensionManager({
           <input
             type="search"
             value={query}
-            placeholder="Search installed apps"
-            aria-label="Search installed apps"
+            placeholder="Search apps"
+            aria-label="Search apps"
             spellCheck={false}
             onChange={(event) => setQuery(event.target.value)}
           />
@@ -652,7 +674,7 @@ export function ExtensionManager({
           Loading installed apps…
         </p>
       )}
-      {!loading && !apps.length && (
+      {!loading && !apps.length && !recommendations.length && !query.trim() && (
         <div className="extension-empty app-empty-state">
           <AppIcon id="installed-app" size="tile" />
           <h3>No apps installed yet</h3>
@@ -665,11 +687,58 @@ export function ExtensionManager({
           </div>
         </div>
       )}
-      {!!apps.length && !listed.length && (
+      {!!apps.length && !listed.length && !!recommendations.length && (
         <p className="app-quiet" role="status">
           No installed apps match “{query.trim()}”.
         </p>
       )}
+      {!!recommendations.length && (
+        <>
+          <h3 className="app-section-title">
+            {recommendationCatalog.title} <span>{recommendations.length}</span>
+          </h3>
+          <div className="app-grid" aria-label={recommendationCatalog.title}>
+            {recommendations.map((app) => (
+              <article className="app-tile" key={app.id}>
+                <div className="app-tile-main app-recommendation-main">
+                  <AppIcon id={app.id} size="tile" />
+                  <span className="app-tile-text">
+                    <strong>{app.title}</strong>
+                    <span>{app.description}</span>
+                  </span>
+                </div>
+                <div className="app-tile-footer">
+                  <span className="app-tile-meta">
+                    <span>By ShellCanvas</span>
+                  </span>
+                  <button
+                    className="app-open"
+                    disabled={busy || loading}
+                    onClick={() =>
+                      void fromRepository(
+                        `${app.source.owner}/${app.source.repository}`,
+                        app.source.ref,
+                        app.id,
+                        "recommendation",
+                      )
+                    }
+                  >
+                    Review
+                  </button>
+                </div>
+              </article>
+            ))}
+          </div>
+        </>
+      )}
+      {!loading &&
+        !listed.length &&
+        !recommendations.length &&
+        !!query.trim() && (
+          <p className="app-quiet" role="status">
+            No apps match “{query.trim()}”.
+          </p>
+        )}
     </>
   );
 

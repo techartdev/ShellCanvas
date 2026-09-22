@@ -1,0 +1,64 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/techartdev/ShellCanvas/blob/main/docs/schemas/app-catalog.schema.json",
+  "title": "ShellCanvas first-party app catalog",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["format", "kind", "id", "title", "curator", "apps"],
+  "properties": {
+    "$schema": { "const": "docs/schemas/app-catalog.schema.json" },
+    "format": { "const": 1 },
+    "kind": { "const": "app-catalog" },
+    "id": { "const": "dev.shellcanvas.first-party" },
+    "title": { "type": "string", "minLength": 1, "maxLength": 100 },
+    "curator": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "owner", "repository"],
+      "properties": {
+        "name": { "const": "ShellCanvas" },
+        "owner": { "const": "techartdev" },
+        "repository": { "const": "ShellCanvas" }
+      }
+    },
+    "apps": {
+      "type": "array",
+      "maxItems": 100,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "title", "description", "source"],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9-]*(\\.[a-z][a-z0-9-]*)+$"
+          },
+          "title": { "type": "string", "minLength": 1, "maxLength": 100 },
+          "description": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1000
+          },
+          "source": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["owner", "repository", "ref"],
+            "properties": {
+              "owner": { "const": "techartdev" },
+              "repository": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$"
+              },
+              "ref": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 200,
+                "pattern": "^(?!.*(?:^|/)\\.{1,2}(?:/|$))[A-Za-z0-9][A-Za-z0-9._-]*(?:/[A-Za-z0-9][A-Za-z0-9._-]*)*$"
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

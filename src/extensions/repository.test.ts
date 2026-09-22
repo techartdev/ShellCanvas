@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 import { expect, it, vi } from "vitest";
 import {
+  inspectExpectedRepository,
   inspectRepository,
   parseRepositoryLocation,
   type RepositoryReader,
@@ -76,6 +77,53 @@ it("rejects corrupt bytes and mismatched package identity", async () => {
         f.read,
       ),
     ).rejects.toThrow();
+});
+it("rejects a valid recommended repository when its app identity has drifted", async () => {
+  const replacement = JSON.stringify({
+    format: 1,
+    kind: "app",
+    id: "org.other.assistant",
+    version: "1.0.0",
+    title: "Replacement",
+    permissions: [],
+    script: "void 0;",
+    style: "",
+  });
+  const sha256 = [
+    ...new Uint8Array(
+      await crypto.subtle.digest(
+        "SHA-256",
+        new TextEncoder().encode(replacement),
+      ),
+    ),
+  ]
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("");
+  const read = vi.fn<RepositoryReader>(async (_, path) =>
+    path === "shellcanvas.repo.json"
+      ? JSON.stringify({
+          format: 1,
+          kind: "app-repository",
+          id: "org.other.assistant",
+          version: "1.0.0",
+          title: "Replacement",
+          description: "A different valid app",
+          package: { path: "dist/app.shellcanvas.json", sha256 },
+        })
+      : replacement,
+  );
+
+  await expect(
+    inspectExpectedRepository(
+      "techartdev/ShellCanvas-Assistant",
+      "main",
+      "dev.shellcanvas.assistant",
+      "recommendation",
+      new AbortController().signal,
+      read,
+    ),
+  ).rejects.toThrow("recommended repository points to a different app");
+  expect(read).toHaveBeenCalledTimes(2);
 });
 it("rejects unsafe repositories, references, paths and unknown descriptor fields", async () => {
   for (const value of [

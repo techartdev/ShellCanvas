@@ -8,6 +8,19 @@ export interface RepositoryLocation {
   repository: string;
   ref: string;
 }
+
+export function assertRepositoryAppId(
+  actualId: string,
+  expectedId: string,
+  purpose: "update" | "recommendation",
+) {
+  if (actualId === expectedId) return;
+  throw new Error(
+    purpose === "recommendation"
+      ? "This recommended repository points to a different app, so it was not opened for installation."
+      : "This repository now points to a different app. Its update was not installed.",
+  );
+}
 export function parseRepositoryLocation(
   input: string,
   ref = "main",
@@ -121,4 +134,17 @@ export async function inspectRepository(
     manifest,
     source: Object.freeze({ ...location, sha256: digest }),
   };
+}
+
+export async function inspectExpectedRepository(
+  input: string,
+  ref: string,
+  expectedId: string,
+  purpose: "update" | "recommendation",
+  signal: AbortSignal,
+  read: RepositoryReader = readRepositoryFile,
+) {
+  const result = await inspectRepository(input, ref, signal, read);
+  assertRepositoryAppId(result.manifest.id, expectedId, purpose);
+  return result;
 }

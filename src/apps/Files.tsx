@@ -42,7 +42,14 @@ import { ContextMenu, type MenuAction } from "../components/ContextMenu";
 import { clipboard } from "../clipboard";
 import { fileClipboard } from "../file-clipboard";
 import { usePreferences } from "../preferences";
-import { formatFileModified, visibleFiles } from "../file-view";
+import {
+  activateFileEntry,
+  fileLinkOpenError,
+  formatFileModified,
+  type DirectoryActivation,
+  type PreviewActivation,
+  visibleFiles,
+} from "../file-view";
 import { FileActionDialog } from "../components/FileActionDialog";
 import { FileVolumes } from "../components/FileVolumes";
 import { AttachDriveDialog } from "../components/AttachDriveDialog";
@@ -725,9 +732,11 @@ export function Files({
       background?: boolean;
       preservePreview?: boolean;
       back?: boolean;
+      linkProbe?: boolean;
     } = {},
-  ) {
-    if (!session || !connected || relocatingRef.current) return;
+  ): Promise<DirectoryActivation> {
+    if (!session || !connected || relocatingRef.current)
+      return { status: "canceled" };
     directoryScan.current?.abort();
     const scan = new AbortController();
     directoryScan.current = scan;
@@ -736,13 +745,14 @@ export function Files({
     previewPending.current = false;
     setLoading(true);
     setScanReady(false);
-    setError("");
-    if (!options.preservePreview) {
+    if (!options.linkProbe) setError("");
+    if (!options.preservePreview && !options.linkProbe) {
       view.current.document = null;
       setDocument(null);
     }
     const previous = view.current;
     let first = true;
+    let leaveLoadingForPreview = false;
     try {
       await scanDirectory(
         services,
@@ -794,6 +804,11 @@ export function Files({
             selection: nextSelection,
           };
           if (first) {
+            if (options.linkProbe) {
+              view.current.document = null;
+              setDocument(null);
+              setError("");
+            }
             setScanReady(true);
             setHistory(nextHistory);
             setPathInput(nextInput);
@@ -806,12 +821,23 @@ export function Files({
         },
       );
     } catch (e) {
-      if (current === request.current && !scan.signal.aborted)
+      if (current !== request.current || scan.signal.aborted)
+        return { status: "canceled" };
+      if (!first) {
         setError(String(e));
+        return { status: "opened" };
+      }
+      if (options.linkProbe) leaveLoadingForPreview = true;
+      else setError(String(e));
+      return { status: "failed", error: e };
     } finally {
-      if (current === request.current) setLoading(false);
+      if (current === request.current && !leaveLoadingForPreview)
+        setLoading(false);
       if (directoryScan.current === scan) directoryScan.current = null;
     }
+    return current === request.current && !first
+      ? { status: "opened" }
+      : { status: "canceled" };
   }
   useLayoutEffect(() => {
     const changed = previousSource.current !== sourceKey;
@@ -863,12 +889,8 @@ export function Files({
   useEffect(() => {
     if (connected) void navigate(initialLocation.current, false);
   }, [session?.id, sourceKey, connected]);
-  async function open(entry: FileEntry) {
-    if (!connected || relocatingRef.current) return;
-    if (entry.kind === "directory") {
-      void navigate(entry.path);
-      return;
-    }
+  async function previewEntry(entry: FileEntry, options: PreviewActivation) {
+    if (options.linkFallback) setLoading(false);
     const current = ++previewRequest.current;
     previewPending.current = true;
     setError("");
@@ -892,11 +914,23 @@ export function Files({
       if (current === previewRequest.current) {
         view.current.document = null;
         setDocument(null);
-        setError(String(e));
+        setError(
+          !options.linkFallback
+            ? String(e)
+            : fileLinkOpenError(options.directoryError, e),
+        );
       }
     } finally {
       if (current === previewRequest.current) previewPending.current = false;
     }
+  }
+  async function open(entry: FileEntry) {
+    if (!connected || relocatingRef.current) return;
+    await activateFileEntry(
+      entry,
+      (path, options) => navigate(path, true, options),
+      previewEntry,
+    );
   }
   const entries = useMemo(
     () => visibleFiles(directory.entries, query, preferences),
@@ -1123,7 +1157,11 @@ export function Files({
             {
               id: "open",
               label:
-                entry.kind === "directory" ? "Open folder" : "Preview file",
+                entry.kind === "directory"
+                  ? "Open folder"
+                  : entry.kind === "symlink"
+                    ? "Open link"
+                    : "Preview file",
               shortcut: "Enter",
               disabled: !connected,
               run: () => void open(entry),
