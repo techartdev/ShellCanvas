@@ -23,6 +23,7 @@ import { clientPlatformLabels } from "../../packages/app-sdk/src/client-platform
 import { AppIcon } from "../components/AppIcon";
 import { appSummary, byTitle, matchesSearch } from "./app-listing";
 import {
+  FirstPartyCatalogLoader,
   firstPartyCatalog,
   firstPartyRecommendations,
 } from "./first-party-catalog";
@@ -132,6 +133,11 @@ export function ExtensionManager({
   const [repository, setRepository] = useState("");
   const [reference, setReference] = useState("main");
   const [fetching, setFetching] = useState(false);
+  const [recommendationCatalog, setRecommendationCatalog] =
+    useState(firstPartyCatalog);
+  const recommendationLoader = useRef<FirstPartyCatalogLoader | null>(null);
+  if (!recommendationLoader.current)
+    recommendationLoader.current = new FirstPartyCatalogLoader();
   const show = (next: ManagerPage) => (navigate ?? setOwnPage)(next);
   const leave = () => {
     sequence.current++;
@@ -148,6 +154,7 @@ export function ExtensionManager({
     setError("");
   };
   const refresh = async () => {
+    void recommendationLoader.current?.refresh(setRecommendationCatalog);
     setLoading(true);
     try {
       await catalog.load();
@@ -163,8 +170,9 @@ export function ExtensionManager({
     return () => {
       sequence.current++;
       download.current?.abort();
+      recommendationLoader.current?.cancel();
     };
-  }, [catalog]);
+  }, [catalog, visit]);
   useEffect(leave, [visit]);
   const run = async (action: () => Promise<unknown>, expected?: number) => {
     const current = () =>
@@ -279,7 +287,11 @@ export function ExtensionManager({
       item.source && `${item.source.owner}/${item.source.repository}`,
     ]),
   );
-  const recommendations = firstPartyRecommendations(apps, query);
+  const recommendations = firstPartyRecommendations(
+    apps,
+    query,
+    recommendationCatalog,
+  );
 
   const reviewPage = review && (
     <section
@@ -683,9 +695,9 @@ export function ExtensionManager({
       {!!recommendations.length && (
         <>
           <h3 className="app-section-title">
-            {firstPartyCatalog.title} <span>{recommendations.length}</span>
+            {recommendationCatalog.title} <span>{recommendations.length}</span>
           </h3>
-          <div className="app-grid" aria-label={firstPartyCatalog.title}>
+          <div className="app-grid" aria-label={recommendationCatalog.title}>
             {recommendations.map((app) => (
               <article className="app-tile" key={app.id}>
                 <div className="app-tile-main app-recommendation-main">

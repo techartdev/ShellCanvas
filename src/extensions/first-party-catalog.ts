@@ -2,7 +2,12 @@
 import manifest from "../../shellcanvas.catalog.json";
 import type { InstalledApp } from "./catalog";
 import { matchesSearch } from "./app-listing";
-import { parseRepositoryLocation, type RepositoryLocation } from "./repository";
+import {
+  parseRepositoryLocation,
+  readRepositoryFile,
+  type RepositoryLocation,
+  type RepositoryReader,
+} from "./repository";
 
 const CURATOR = Object.freeze({
   name: "ShellCanvas",
@@ -22,6 +27,13 @@ const CATALOG_KEYS = [
 const CURATOR_KEYS = ["name", "owner", "repository"] as const;
 const APP_KEYS = ["id", "title", "description", "source"] as const;
 const SOURCE_KEYS = ["owner", "repository", "ref"] as const;
+export const FIRST_PARTY_CATALOG_LOCATION = Object.freeze({
+  owner: CURATOR.owner,
+  repository: CURATOR.repository,
+  ref: "main",
+});
+export const FIRST_PARTY_CATALOG_PATH = "shellcanvas.catalog.json";
+export const FIRST_PARTY_CATALOG_LIMIT = 65536;
 
 export interface FirstPartyApp {
   readonly id: string;
@@ -123,6 +135,60 @@ export function parseFirstPartyCatalog(value: unknown): FirstPartyCatalog {
 }
 
 export const firstPartyCatalog = parseFirstPartyCatalog(manifest);
+
+export async function readFirstPartyCatalog(
+  signal: AbortSignal,
+  read: RepositoryReader = readRepositoryFile,
+) {
+  const raw = await read(
+    FIRST_PARTY_CATALOG_LOCATION,
+    FIRST_PARTY_CATALOG_PATH,
+    FIRST_PARTY_CATALOG_LIMIT,
+    signal,
+  );
+  if (signal.aborted)
+    throw new DOMException("Catalog read cancelled.", "AbortError");
+  if (new TextEncoder().encode(raw).length > FIRST_PARTY_CATALOG_LIMIT)
+    throw new Error("ShellCanvas first-party app catalog is too large.");
+  let value: unknown;
+  try {
+    value = JSON.parse(raw);
+  } catch {
+    throw new Error("Invalid ShellCanvas first-party app catalog.");
+  }
+  return parseFirstPartyCatalog(value);
+}
+
+/** Owns one live read at a time and never applies failed, cancelled or stale data. */
+export class FirstPartyCatalogLoader {
+  private request = 0;
+  private controller?: AbortController;
+
+  constructor(private readonly read: RepositoryReader = readRepositoryFile) {}
+
+  async refresh(accept: (catalog: FirstPartyCatalog) => void) {
+    const request = ++this.request;
+    this.controller?.abort();
+    const controller = new AbortController();
+    this.controller = controller;
+    try {
+      const catalog = await readFirstPartyCatalog(controller.signal, this.read);
+      if (controller.signal.aborted || request !== this.request) return false;
+      accept(catalog);
+      return true;
+    } catch {
+      return false;
+    } finally {
+      if (this.controller === controller) this.controller = undefined;
+    }
+  }
+
+  cancel() {
+    this.request++;
+    this.controller?.abort();
+    this.controller = undefined;
+  }
+}
 
 export function firstPartyRecommendations(
   installed: readonly Pick<InstalledApp, "package">[],

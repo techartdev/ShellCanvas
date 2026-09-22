@@ -20,10 +20,13 @@ private builds. The assistant's public repository is
 
 The App Manager's default **Installed** page also shows apps curated by
 ShellCanvas. These suggestions come from the repository-root
-[`shellcanvas.catalog.json`](../shellcanvas.catalog.json), which is bundled into
-the desktop build. Catalog additions and edits therefore ship with a
-ShellCanvas desktop release; opening the store does not silently replace the
-curated list from the network.
+[`shellcanvas.catalog.json`](../shellcanvas.catalog.json). A copy is bundled
+into the desktop so suggestions appear immediately and remain available
+offline. On opening or refreshing App Manager, the desktop checks the fixed
+`techartdev/ShellCanvas` repository at `main` for the current manifest and uses
+it only after full validation. Once a client with live catalog support is
+released, catalog additions and edits on `main` do not require another desktop
+release.
 
 A catalog entry supplies display text and an explicit GitHub
 `owner/repository/ref`, and pins the expected app identifier. Choosing
@@ -35,11 +38,11 @@ this repository; it is not a cryptographic publisher identity.
 
 To add another first-party app, publish its prebuilt package and root descriptor
 as described below, then add its canonical source and app ID to
-`shellcanvas.catalog.json`. Sources must remain under the `techartdev` GitHub
-owner, IDs must be unique, and the catalog must match
+`shellcanvas.catalog.json` on `main`. Sources must remain under the `techartdev`
+GitHub owner, IDs must be unique, and the catalog must match
 [`docs/schemas/app-catalog.schema.json`](schemas/app-catalog.schema.json). Test
 the catalog parser, the live repository review, and the permission screen before
-shipping the next desktop release.
+merging the catalog change into `main`.
 
 ## Root descriptor
 
