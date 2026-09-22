@@ -1,15 +1,23 @@
 {
   "name": "@techartdev/shellcanvas-app-sdk",
-  "version": "0.1.10",
+  "version": "0.1.11",
   "description": "Typed runtime app API and app packaging tools for ShellCanvas",
-  "keywords": ["shellcanvas", "desktop", "remote", "sdk", "extensions"],
+  "keywords": [
+    "shellcanvas",
+    "desktop",
+    "remote",
+    "sdk",
+    "extensions"
+  ],
   "homepage": "https://shellcanvas.com/docs/app-sdk/quickstart.html",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/techartdev/ShellCanvas.git",
     "directory": "packages/app-sdk"
   },
-  "bugs": { "url": "https://github.com/techartdev/ShellCanvas/issues" },
+  "bugs": {
+    "url": "https://github.com/techartdev/ShellCanvas/issues"
+  },
   "type": "module",
   "license": "MPL-2.0",
   "publishConfig": {

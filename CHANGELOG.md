@@ -2,6 +2,20 @@
 
 Notable changes to ShellCanvas, newest first. Published SDK packages follow [semantic versioning](https://semver.org/), and desktop releases use the same version where practical. The project is pre-1.0, so a minor release may include breaking changes; those come with migration notes.
 
+## [0.1.11] - 2026-09-22
+
+### Added
+
+- Show first-party apps on App Manager's default page, starting with Canvas Assistant. Recommendations come from the strictly validated `techartdev/ShellCanvas@main` catalog, with a bundled offline fallback; choosing one still requires repository integrity checks and explicit permission review before installation.
+
+### Fixed
+
+- Open directory symlinks from Files on double-click or Enter while preserving file-symlink preview. Canonical navigation keeps Back history intuitive, and broken, looping or inaccessible links report an error without changing delete, move, copy or transfer behavior.
+
+### Known limitations
+
+- Live catalog refresh requires access to the public GitHub raw-content host. Offline or invalid responses retain the last valid catalog or bundled fallback. “Recommended by ShellCanvas” identifies repository curation, not cryptographic publisher authentication.
+
 ## [0.1.10] - 2026-09-21
 
 ### Added
