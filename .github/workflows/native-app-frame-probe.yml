@@ -43,7 +43,7 @@ jobs:
           PLATFORM: ${{ matrix.platform }}
         run: |
           if [ "$PLATFORM" = linux ]; then
-            dbus-run-session -- xvfb-run -a node scripts/run-extension-probe.mjs
+            xvfb-run -a dbus-run-session -- node scripts/run-extension-probe.mjs
           else
             node scripts/run-extension-probe.mjs
           fi

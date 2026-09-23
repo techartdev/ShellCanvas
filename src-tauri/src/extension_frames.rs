@@ -74,7 +74,11 @@ impl FrameDocuments {
         }
         documents.insert(id.clone(), document);
         Ok(FrameLocation {
-            url: format!("http://{SCHEME}.localhost/{id}/index.html"),
+            url: if cfg!(windows) {
+                format!("http://{SCHEME}.localhost/{id}/index.html")
+            } else {
+                format!("{SCHEME}://localhost/{id}/index.html")
+            },
             id,
         })
     }
@@ -191,6 +195,11 @@ mod tests {
                 "body{color:red}".into(),
             )
             .unwrap();
+        assert!(one.url.starts_with(if cfg!(windows) {
+            "http://shellcanvas-app.localhost/"
+        } else {
+            "shellcanvas-app://localhost/"
+        }));
         let other = documents
             .publish(
                 "main",
