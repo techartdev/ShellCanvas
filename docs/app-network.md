@@ -60,9 +60,9 @@ Credentials are optionally stored using the platform credential store (Windows
 Credential Manager, macOS Keychain, or Linux Secret Service through `keyring`).
 Session-only mode removes a previously remembered credential and keeps the new
 connection in process memory. Locked/unavailable stores report an error; they
-never silently save plaintext. Installed app loading on macOS/Linux remains
-subject to the existing isolation gates; cross-platform source is not runtime
-verification on those systems.
+never silently save plaintext. Native app-frame isolation probes pass on Linux
+and Apple Silicon; real model-provider and credential-store acceptance on those
+clients remains to be tested.
 
 HTTP is allowed for explicitly configured local/network model servers, with a
 visible unencrypted-connection notice. HTTPS uses platform certificate validation.

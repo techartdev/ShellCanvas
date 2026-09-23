@@ -56,7 +56,7 @@ exact configured endpoint through the bounded network broker.
 
 ## Current limits
 
-The installed-app proof currently targets Windows. Native app isolation on macOS
-and Linux, provider OAuth, automatic context compaction, unattended background
-work, and multi-host agent runs require separate validation before support is
-claimed.
+Native app isolation probes pass on Windows, Linux and Apple Silicon. Real
+assistant sessions on the Linux and macOS clients, provider OAuth, automatic
+context compaction, unattended background work, and multi-host agent runs
+require separate validation before support is claimed.
