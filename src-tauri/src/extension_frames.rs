@@ -142,9 +142,6 @@ pub fn publish_app_frame(
     style: String,
     instance_token: String,
 ) -> Result<FrameLocation, String> {
-    if !cfg!(windows) {
-        return Err("Native runtime app frames are not yet verified on this platform.".into());
-    }
     if webview.label() != "main" {
         return Err("Only the desktop can create app frames.".into());
     }
@@ -161,8 +158,9 @@ pub fn release_app_frame(
 
 pub fn plugin<R: Runtime>() -> TauriPlugin<R> {
     tauri::plugin::Builder::new("runtime-app-documents")
-        // Wry's Windows navigation callback handles the top-level WebView. Never promote an
-        // app resource into that privileged document. Other platforms remain gated above.
+        // Wry's Windows navigation callback handles the top-level WebView. The
+        // IPC transport also checks the trusted desktop origin before creating
+        // its invocation key on every platform.
         .on_navigation(|_, url| {
             !cfg!(windows)
                 || (url.scheme() != SCHEME && url.host_str() != Some("shellcanvas-app.localhost"))

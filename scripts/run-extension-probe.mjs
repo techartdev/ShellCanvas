@@ -7,7 +7,8 @@ import { resolve } from "node:path";
 const root = fileURLToPath(new URL("../", import.meta.url));
 const result = resolve(root, ".local/native-extension-probe/result.json");
 await rm(result, { force: true });
-const child = spawn(resolve(root, "target/debug/shellcanvas.exe"), [], {
+const binary = resolve(root, `target/debug/shellcanvas${process.platform === "win32" ? ".exe" : ""}`);
+const child = spawn(binary, [], {
   cwd: root,
   windowsHide: true,
   env: { ...process.env, SHELLCANVAS_EXTENSION_PROBE: "1" },
@@ -21,7 +22,7 @@ try {
   });
   const report = JSON.parse(await readFile(result, "utf8"));
   console.log(JSON.stringify(report, null, 2));
-  // The structured report is authoritative; Windows GUI exit codes are insufficient.
+  // The structured report is authoritative; GUI exit codes are insufficient.
   if (report.success !== true) {
     console.error(
       await readFile(
