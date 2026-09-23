@@ -52,7 +52,11 @@ jobs:
           else
             npm run tauri -- build --bundles app,dmg
           fi
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ github.ref }}
+          path: .local/release-tools
       - name: Add artifacts, then publish the expanded updater manifest
         env:
           GH_TOKEN: ${{ github.token }}
-        run: node scripts/publish-platform-update.mjs "$RELEASE_TAG" "$PLATFORM"
+        run: node .local/release-tools/scripts/publish-platform-update.mjs "$RELEASE_TAG" "$PLATFORM"

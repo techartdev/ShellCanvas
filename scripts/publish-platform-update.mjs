@@ -29,6 +29,11 @@ const gh = (...args) =>
     encoding: "utf8",
     stdio: ["ignore", "pipe", "inherit"],
   });
+const api = (path, ...args) =>
+  execFileSync("gh", ["api", path, ...args], {
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "inherit"],
+  });
 const bundle = resolve("target/release/bundle");
 const scratch = resolve(".local/platform-release");
 const directory = resolve(scratch, "artifacts");
@@ -44,9 +49,19 @@ for (const name of bundledNames.filter((name) =>
     resolve(directory, `${platform}-${basename(name)}`),
   );
 }
-gh("release", "download", tag, "--pattern", "latest.json", "--dir", scratch);
+// `gh release download` can use a stale asset ID from GitHub's tag summary
+// after another platform has replaced latest.json. The dedicated assets list
+// gives the current ID, avoiding a 404 and preventing a lost platform entry.
+const release = JSON.parse(
+  api(`repos/techartdev/ShellCanvas/releases/tags/${tag}`),
+);
+const assets = JSON.parse(
+  api(`repos/techartdev/ShellCanvas/releases/${release.id}/assets?per_page=100`),
+);
+const current = assets.filter((asset) => asset.name === "latest.json");
+if (current.length !== 1) throw new Error("Expected one current updater manifest");
 const previous = JSON.parse(
-  await readFile(resolve(scratch, "latest.json"), "utf8"),
+  api(`repos/techartdev/ShellCanvas/releases/assets/${current[0].id}`, "-H", "Accept: application/octet-stream"),
 );
 const update = await manifest({
   version: tag.slice(1),
