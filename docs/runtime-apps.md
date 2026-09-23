@@ -1,6 +1,6 @@
 # Runtime apps and development workbenches
 
-The Windows desktop now installs and runs self-contained app packages without rebuilding or restarting ShellCanvas. The browser preview uses the same catalog/window lifecycle with sandboxed browser documents. Native loading on other platforms remains gated until their isolation checks are completed. The full kernel objective is tracked in [kernel-roadmap.md](kernel-roadmap.md).
+The Windows, Linux and macOS desktops install and run self-contained app packages without rebuilding or restarting ShellCanvas. The browser preview uses the same catalog/window lifecycle with sandboxed browser documents. Native frame isolation probes pass on Windows, Linux and Apple Silicon; broader user acceptance on Linux and macOS remains open. The full kernel objective is tracked in [kernel-roadmap.md](kernel-roadmap.md).
 
 ## Install an app in the desktop
 
@@ -107,9 +107,9 @@ The initial walkthrough loaded and reloaded the separately compiled Field Notes 
 
 The catalog walkthrough installed 0.1.0, entered an unsaved draft, installed 0.2.0 with `files.read` withheld, and opened both versions. The old window retained its exact draft and old grants; the new window's file picker request was denied. Switching focus initially exposed an iframe DOM-move reload; after the stable-mount fix, repeated focus changes and disabling retained the draft. **Keep working** preserved it, **Discard and close** retired its old instance, and removal was refused while windows were running. Reopening the workbench retained installed version 0.2.0, its two approved grants and disabled state. Removing it after the test windows closed persisted across a subsequent reload.
 
-## Packaged Windows isolation probe
+## Packaged native isolation probe
 
-The native loader serves ephemeral, owner-bound HTML, JavaScript and CSS through `shellcanvas-app`. Package text is served as separate resources, never interpolated into native HTML script/style tags. Responses carry a sandbox policy, nonce-based script/style policy, correct MIME types and no-store headers. Closing a frame releases its resources, including publications that complete after their owner closes. Native publication is currently Windows-only; other platforms return an explicit unavailable error pending their own verification.
+The native loader serves ephemeral, owner-bound HTML, JavaScript and CSS through `shellcanvas-app`. Package text is served as separate resources, never interpolated into native HTML script/style tags. Responses carry a sandbox policy, nonce-based script/style policy, correct MIME types and no-store headers. Closing a frame releases its resources, including publications that complete after their owner closes. Windows uses `http://shellcanvas-app.localhost`; Linux and macOS use `shellcanvas-app://localhost` as required by Tauri's platform protocol mapping.
 
 Build and run the separate native probe from the repository root:
 
@@ -118,9 +118,9 @@ npm run tauri -- build --debug --no-bundle --config src-tauri/tauri.extension-pr
 node scripts/run-extension-probe.mjs
 ```
 
-The hidden WebView2 probe has its own application identity and touches only fake app resources. It reports to `.local/native-extension-probe/result.json`; the runner fails unless the structured result succeeds. Progress is saved in `progress.jsonl`. It tests approved and denied broker calls, stale handshakes, parent DOM and local-storage denial, CSS loading, blocked top navigation and IPC fetches, direct native-call attempts against a canary resource, and small/large native channel round trips. The debug-only channel command refuses calls outside the probe identity and environment. A watchdog makes incomplete runs fail rather than count as passes.
+The hidden native probe has its own application identity and touches only fake app resources. It reports to `.local/native-extension-probe/result.json`; the runner fails unless the structured result succeeds. Progress is saved in `progress.jsonl`. It tests approved and denied broker calls, stale handshakes, parent DOM and local-storage denial, CSS loading, blocked top navigation and IPC fetches, direct native-call attempts against a canary resource, and small/large native channel round trips. The debug-only channel command refuses calls outside the probe identity and environment. A watchdog makes incomplete runs fail rather than count as passes. Windows ran locally; Linux and Apple Silicon passed in CI.
 
-Wry 0.55.1 [documents that Windows ignores its main-frame-only initialization flag](https://docs.rs/wry/0.55.1/wry/struct.WebViewBuilder.html#method.with_initialization_script_for_main_only). The first native probe confirmed that Tauri's key-bearing transport was present in the child. ShellCanvas now uses `Builder::invoke_system` with Tauri's original transport templates enclosed in an early `window === window.top` guard. The small vendored templates retain their upstream license and serializer; see `src-tauri/vendor/tauri-ipc/README.md` for upgrade requirements. Child API wrappers can still exist, but the closure containing the invocation key must be absent. The guarded canary probe verifies this directly; merely hiding a global or relying on CSP was insufficient.
+Wry 0.55.1 [documents that Windows ignores its main-frame-only initialization flag](https://docs.rs/wry/0.55.1/wry/struct.WebViewBuilder.html#method.with_initialization_script_for_main_only). The first native probe confirmed that Tauri's key-bearing transport was present in the child. ShellCanvas uses `Builder::invoke_system` with Tauri's original transport templates enclosed behind checks for the top frame and the exact desktop origin. The small vendored templates retain their upstream license and serializer; see `src-tauri/vendor/tauri-ipc/README.md` for upgrade requirements. Child API wrappers can still exist, but the closure containing the invocation key must be absent. The guarded canary probe verifies this directly; merely hiding a global or relying on CSP was insufficient.
 
 The probe build temporarily replaces `target/debug/shellcanvas.exe`. Restore the normal desktop afterwards:
 
@@ -128,7 +128,7 @@ The probe build temporarily replaces `target/debug/shellcanvas.exe`. Restore the
 npm run tauri -- build --debug --no-bundle
 ```
 
-The normal desktop now permits only the host-managed app resource origin for native frames. This is not a claim of CPU/memory containment, arbitrary network-exfiltration prevention, or cross-platform isolation.
+The native frame sandbox blocks top navigation and direct native IPC in the probe on Windows, Linux and Apple Silicon. The Windows navigation callback also rejects promotion of app resources to a top-level page. These checks do not establish CPU/memory containment or arbitrary network-exfiltration prevention.
 
 ## Native desktop integration probe
 

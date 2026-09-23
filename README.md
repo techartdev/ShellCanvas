@@ -121,13 +121,13 @@ ShellCanvas is young and says so. Support claims come from tests on real systems
 | Area | Status |
 | --- | --- |
 | **Windows client** | Released as NSIS and MSI installers (x64, not yet code-signed). |
-| **macOS client** | Builds from source. Launch, layout and Settings are confirmed on an Intel Mac running Catalina; SSH workflows on the Mac client are not validated yet. |
-| **Linux client** | Not validated yet. |
+| **macOS client** | Intel and Apple Silicon builds are attached to releases. Native installed-app isolation passed CI; SSH and app workflows on a user's Mac still need manual validation. |
+| **Linux client** | x86_64 AppImage, DEB and RPM builds are attached to releases. Native installed-app isolation passed CI; SSH and app workflows on a user's Linux desktop still need manual validation. |
 | **Linux servers** | Files, terminal, editing and transfers are verified on an Ubuntu test server. Other distributions use the same SSH and SFTP path but have not been tested. |
 | **macOS servers** | Browsing files and a live shell are confirmed; writes and transfers are not validated yet. |
 | **Windows OpenSSH servers** | Not validated yet. |
 
-Also on the way: signed installers, validated macOS and Linux clients, and [Drive Bridge](https://github.com/techartdev/ShellCanvas-DriveBridge), a separate free app in preview that attaches a remote folder as a local drive. The connection model is ready for more than SSH (for example serial, Telnet, FTP or a device API per workspace), but those adapters are not built yet. See the [roadmap](ROADMAP.md).
+Also on the way: validated macOS and Linux client workflows and [Drive Bridge](https://github.com/techartdev/ShellCanvas-DriveBridge), a separate free app in preview that attaches a remote folder as a local drive. The connection model is ready for more than SSH (for example serial, Telnet, FTP or a device API per workspace), but those adapters are not built yet. See the [roadmap](ROADMAP.md).
 
 ## Build for ShellCanvas
 
