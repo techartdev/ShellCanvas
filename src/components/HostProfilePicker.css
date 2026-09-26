@@ -8,9 +8,15 @@
   font-size: 0.769231rem;
   margin-bottom: 0.538462rem;
 }
+.host-picker-row {
+  display: flex;
+  gap: 0.615385rem;
+  align-items: stretch;
+}
 .host-picker-trigger {
   display: flex;
-  width: 100%;
+  flex: 1;
+  min-width: 0;
   align-items: center;
   gap: 0.846154rem;
   padding: 0.846154rem 0.923077rem;
@@ -19,6 +25,25 @@
   background: var(--sc-hover, #101f2b55);
   color: var(--sc-accent, #a2cbbc);
   text-align: left;
+}
+.host-picker-new {
+  display: grid;
+  place-items: center;
+  width: 4rem;
+  flex: 0 0 4rem;
+  color: var(--sc-accent, #a2cbbc);
+  background: var(--sc-hover, #101f2b55);
+  border: 1px solid var(--sc-border, #aac5cd35);
+  border-radius: 0.615385rem;
+}
+.host-picker-new:hover,
+.host-picker-trigger:hover {
+  background: var(--sc-selection, #a2cbbc16);
+}
+.host-picker-new:focus-visible,
+.host-picker-trigger:focus-visible {
+  outline: 0.153846rem solid var(--sc-accent, #a2cbbc);
+  outline-offset: 0.153846rem;
 }
 .host-picker-trigger > span,
 .host-picker-list button > span {
@@ -54,7 +79,7 @@
   border: 1px solid var(--sc-border, #9fbec644);
   border-radius: 0.769231rem;
   background: var(--sc-surface, #1a2d38);
-  box-shadow: 0 1.076923rem 2.923077rem rgba(var(--sc-shadow-rgb), 0.400);
+  box-shadow: 0 1.076923rem 2.923077rem rgba(var(--sc-shadow-rgb), 0.4);
   overflow: hidden;
 }
 .host-picker-search {
@@ -76,7 +101,7 @@
   outline: none;
 }
 .host-picker-search:focus-within {
-  box-shadow: inset 0 -0.153846rem rgba(var(--sc-shadow-rgb), 0.400);
+  box-shadow: inset 0 -0.153846rem rgba(var(--sc-shadow-rgb), 0.4);
 }
 .host-picker-list {
   max-height: 16rem;
@@ -113,21 +138,10 @@
   color: var(--sc-accent, #a2cbbc);
 }
 .host-picker-bottom {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
   border-top: 1px solid var(--sc-border, #94b4bf22);
   padding: 0.692308rem 0.923077rem;
   color: var(--sc-muted, #8eaab8);
   font-size: 0.692308rem;
-}
-.host-picker-bottom button {
-  display: flex;
-  gap: 0.384615rem;
-  align-items: center;
-  color: var(--sc-accent, #bbdecf);
-  font-size: 0.769231rem;
-  padding: 0.307692rem;
 }
 .host-picker-empty {
   color: var(--sc-muted, #9fb9c5);
