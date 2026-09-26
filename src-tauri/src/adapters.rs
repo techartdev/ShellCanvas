@@ -71,6 +71,8 @@ impl AdapterConnectionOptions {
 #[tauri::command]
 pub async fn connect_adapters(
     options: AdapterConnectionOptions,
+    saved_profile_id: Option<String>,
+    saved_profile_revision: Option<String>,
     request_id: u64,
     on_host_key: tauri::ipc::Channel<crate::connection_attempts::HostKeyChallenge>,
     app: tauri::AppHandle,
@@ -78,9 +80,17 @@ pub async fn connect_adapters(
     window: WebviewWindow,
 ) -> Result<crate::SessionInfo, String> {
     options.validate()?;
+    if saved_profile_id.is_some() != saved_profile_revision.is_some() {
+        return Err("Saved workspace identity requires its revision".into());
+    }
     let canceled = state.attempts.lock().await.claim(request_id)?;
-    let result = crate::connection_attempts::cancellable(
-        canceled,
+    let result = crate::connection_attempts::cancellable(canceled, async {
+        let options = if let (Some(id), Some(revision)) = (saved_profile_id, saved_profile_revision)
+        {
+            crate::workspace_profiles::resolve_credentials(&app, options, id, revision).await?
+        } else {
+            options
+        };
         connect_workspace(
             options,
             request_id,
@@ -88,8 +98,9 @@ pub async fn connect_adapters(
             app,
             &state,
             window.label(),
-        ),
-    )
+        )
+        .await
+    })
     .await;
     state.attempts.lock().await.finish(request_id);
     result

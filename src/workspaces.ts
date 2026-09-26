@@ -19,8 +19,10 @@ import { capabilityLabels, capabilityStatus, type Capability } from "./sdk";
 export function connectionProfile(
   options: ConnectOptions,
   name: string,
+  id?: string,
 ): HostProfile {
   return {
+    ...(id ? { id } : {}),
     name,
     host: options.host,
     port: options.port,

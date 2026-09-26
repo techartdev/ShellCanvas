@@ -626,9 +626,15 @@ export default function App({
     setConnecting(false);
     setError("Connection canceled. You can try again.");
   }
-  async function connect(options: ConnectOptions, name: string) {
-    return establish(connectionProfile(options, name), (signal, review) =>
-      services.connect(options, signal, review),
+  async function connect(
+    options: ConnectOptions,
+    name: string,
+    savedHostId?: string,
+  ) {
+    return establish(
+      connectionProfile(options, name, savedHostId),
+      (signal, review) =>
+        services.connect(options, signal, review, savedHostId),
     );
   }
   async function establish(
@@ -873,8 +879,7 @@ export default function App({
       actions: launcherMenuActions({
         app,
         unavailable:
-          !!unavailableReason(app, session) ||
-          !!runtime.disabledReason(app.id),
+          !!unavailableReason(app, session) || !!runtime.disabledReason(app.id),
         canPin: !!desktopId && !desktopIcons.blocked,
         windows: ids.map((id) => ({
           id,
@@ -1462,8 +1467,13 @@ export default function App({
             await services.removeProfile(id);
             await reloadProfiles();
           }}
+          credentialStatus={services.hostCredentialStatus}
+          saveCredential={services.saveHostCredential}
+          forgetCredential={services.forgetHostCredential}
           close={() => setConnectOpen(false)}
-          submit={(options, name) => void connect(options, name)}
+          submit={(options, name, savedHostId) =>
+            void connect(options, name, savedHostId)
+          }
           openAdapters={
             adapterServices
               ? () => {
@@ -1494,9 +1504,11 @@ export default function App({
             setAdapterConnectOpen(false);
             openApp("apps");
           }}
-          submit={(options, profile) =>
-            establish(profile, (signal, review) =>
-              adapterServices.connect(options, signal, review),
+          submit={(options, profile, saved) =>
+            establish(
+              saved ? { ...profile, savedCredentials: saved } : profile,
+              (signal, review) =>
+                adapterServices.connect(options, signal, review, saved),
             )
           }
         />

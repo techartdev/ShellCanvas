@@ -54,6 +54,7 @@ export function ConnectAdapterDialog({
   submit(
     options: AdapterConnectionOptions,
     profile: AdapterProfile,
+    saved?: { id: string; revision: string },
   ): Promise<void>;
 }) {
   const [installed, setInstalled] = useState<AdapterInfo[]>([]),
@@ -65,8 +66,32 @@ export function ConnectAdapterDialog({
     [saved, setSaved] = useState<SavedWorkspaceProfile>(),
     [saving, setSaving] = useState(false),
     [profileMessage, setProfileMessage] = useState(""),
-    [confirmRemove, setConfirmRemove] = useState(false);
+    [confirmRemove, setConfirmRemove] = useState(false),
+    [credentialStored, setCredentialStored] = useState(
+      !!initial?.savedCredentials,
+    ),
+    [useStored, setUseStored] = useState(!!initial?.savedCredentials),
+    [rememberEntered, setRememberEntered] = useState(false);
   const dialog = useRef<HTMLDialogElement>(null);
+  const selectionVersion = useRef(0);
+  useEffect(() => {
+    const credentials = initial?.savedCredentials;
+    if (!credentials || !services.profiles) return;
+    let active = true;
+    void services.profiles
+      .credentialStatus(credentials.id, credentials.revision)
+      .then((stored) => {
+        if (!active) return;
+        setCredentialStored(stored);
+        setUseStored(stored);
+      })
+      .catch((error) => {
+        if (active) setFailure(String(error));
+      });
+    return () => {
+      active = false;
+    };
+  }, [initial?.savedCredentials, services.profiles]);
   function defaults(item: AdapterInfo) {
     return Object.fromEntries(
       item.configuration
@@ -77,6 +102,9 @@ export function ConnectAdapterDialog({
         )
         .map((field) => [field.id, field.default ?? false]),
     ) as Configuration;
+  }
+  function defaultRoles(item: AdapterInfo) {
+    return item.id === "dev.shellcanvas.ftp" ? ["files"] : ["files", "console"];
   }
   useEffect(() => {
     let active = true;
@@ -109,7 +137,7 @@ export function ConnectAdapterDialog({
                     configuration: defaults(
                       items.find((item) => item.enabled)!,
                     ),
-                    roles: ["files", "console"],
+                    roles: defaultRoles(items.find((item) => item.enabled)!),
                   },
                 ]
               : [],
@@ -130,18 +158,36 @@ export function ConnectAdapterDialog({
     dialog.current?.querySelector<HTMLElement>("input,button")?.focus();
     return () => previous?.focus();
   }, []);
-  const change = (key: string, patch: Partial<SourceForm>) =>
+  const change = (key: string, patch: Partial<SourceForm>) => {
+    setUseStored(false);
     setSources((sources) =>
       sources.map((source) =>
         source.key === key ? { ...source, ...patch } : source,
       ),
     );
+  };
   const locked = busy || loading || saving;
   function chooseSaved(id: string) {
+    const version = ++selectionVersion.current;
     const selected = savedProfiles.find((item) => item.id === id);
     setSaved(selected);
     setConfirmRemove(false);
     setFailure("");
+    setCredentialStored(false);
+    setUseStored(false);
+    setRememberEntered(false);
+    if (selected && services.profiles) {
+      void services.profiles
+        .credentialStatus(selected.id, selected.revision)
+        .then((stored) => {
+          if (selectionVersion.current !== version) return;
+          setCredentialStored(stored);
+          setUseStored(stored);
+        })
+        .catch((error) => {
+          if (selectionVersion.current === version) setFailure(String(error));
+        });
+    }
     setName(selected?.profile.name ?? "");
     if (!selected) {
       const adapter = installed.find((item) => item.enabled);
@@ -152,7 +198,7 @@ export function ConnectAdapterDialog({
                 key: crypto.randomUUID(),
                 id: adapter.id,
                 configuration: defaults(adapter),
-                roles: ["files", "console"],
+                roles: defaultRoles(adapter),
               },
             ]
           : [],
@@ -185,7 +231,7 @@ export function ConnectAdapterDialog({
     setProfileMessage(
       changed
         ? "An adapter changed, is disabled, or is missing. Review each connection and its settings before opening this workspace."
-        : "Saved connections loaded. Enter any required passwords before connecting.",
+        : "Saved connections loaded. Stored credentials, if available, will be used from this PC.",
     );
   }
   function connectionOptions(): AdapterConnectionOptions {
@@ -227,13 +273,48 @@ export function ConnectAdapterDialog({
     setProfileMessage("");
     setConfirmRemove(false);
     try {
-      const result = await services.profiles.save(connectionOptions(), saved);
+      const options = connectionOptions();
+      const result = await services.profiles.save(options, saved);
       setSaved(result);
       setSavedProfiles((profiles) => [
         ...profiles.filter((item) => item.id !== result.id),
         result,
       ]);
-      setProfileMessage("Workspace profile saved. Passwords were not stored.");
+      setCredentialStored(false);
+      setUseStored(false);
+      if (rememberEntered) {
+        await services.profiles.saveCredentials(
+          result.id,
+          result.revision,
+          options,
+        );
+        setCredentialStored(true);
+        setUseStored(true);
+        setRememberEntered(false);
+        setSources((current) =>
+          current.map((source) => {
+            const secretFields = new Set(
+              installed
+                .find((item) => item.id === source.id)
+                ?.configuration.filter((field) => field.kind === "password")
+                .map((field) => field.id) ?? [],
+            );
+            return {
+              ...source,
+              configuration: Object.fromEntries(
+                Object.entries(source.configuration).filter(
+                  ([field]) => !secretFields.has(field),
+                ),
+              ),
+            };
+          }),
+        );
+      }
+      setProfileMessage(
+        rememberEntered
+          ? "Workspace and credentials saved on this PC."
+          : "Workspace saved without credentials. Enter passwords or save them in the system store.",
+      );
     } catch (error) {
       setFailure(String(error));
     } finally {
@@ -254,10 +335,27 @@ export function ConnectAdapterDialog({
         profiles.filter((item) => item.id !== saved.id),
       );
       setSaved(undefined);
+      setCredentialStored(false);
+      setUseStored(false);
       setConfirmRemove(false);
       setProfileMessage(
         "Saved profile removed. The current connection form is still available.",
       );
+    } catch (error) {
+      setFailure(String(error));
+    } finally {
+      setSaving(false);
+    }
+  }
+  async function forgetSavedCredentials() {
+    if (!services.profiles || !saved || locked) return;
+    setSaving(true);
+    setFailure("");
+    try {
+      await services.profiles.forgetCredentials(saved.id, saved.revision);
+      setCredentialStored(false);
+      setUseStored(false);
+      setProfileMessage("Saved credentials removed from the system store.");
     } catch (error) {
       setFailure(String(error));
     } finally {
@@ -342,7 +440,16 @@ export function ConnectAdapterDialog({
             void (async () => {
               try {
                 const options = connectionOptions();
-                await submit(options, adapterProfile(options, installed));
+                const savedCredentials = useStored
+                  ? saved
+                    ? { id: saved.id, revision: saved.revision }
+                    : initial?.savedCredentials
+                  : undefined;
+                await submit(
+                  options,
+                  adapterProfile(options, installed),
+                  savedCredentials,
+                );
               } catch (error) {
                 setFailure(String(error));
               }
@@ -393,6 +500,15 @@ export function ConnectAdapterDialog({
                         : "Remove saved profile"}
                     </button>
                   )}
+                  {saved && (
+                    <button
+                      type="button"
+                      className="adapter-add"
+                      onClick={() => void forgetSavedCredentials()}
+                    >
+                      Forget saved credentials
+                    </button>
+                  )}
                   {confirmRemove && (
                     <button
                       type="button"
@@ -403,12 +519,54 @@ export function ConnectAdapterDialog({
                     </button>
                   )}
                 </div>
+                {saved && credentialStored && (
+                  <label className="form-field">
+                    <span>
+                      <input
+                        type="checkbox"
+                        checked={useStored}
+                        onChange={(event) => setUseStored(event.target.checked)}
+                      />{" "}
+                      Use saved credentials from this PC
+                    </span>
+                  </label>
+                )}
+                {sources.some((source) =>
+                  installed
+                    .find((item) => item.id === source.id)
+                    ?.configuration.some((field) => field.kind === "password"),
+                ) && (
+                  <label className="form-field">
+                    <span>
+                      <input
+                        type="checkbox"
+                        checked={rememberEntered}
+                        onChange={(event) =>
+                          setRememberEntered(event.target.checked)
+                        }
+                      />{" "}
+                      Remember entered passwords when saving this workspace
+                    </span>
+                  </label>
+                )}
                 {profileMessage && (
                   <p className="workspace-profile-message" role="status">
                     {profileMessage}
                   </p>
                 )}
               </div>
+            )}
+            {initial?.savedCredentials && credentialStored && (
+              <label className="form-field">
+                <span>
+                  <input
+                    type="checkbox"
+                    checked={useStored}
+                    onChange={(event) => setUseStored(event.target.checked)}
+                  />{" "}
+                  Use saved credentials from this PC
+                </span>
+              </label>
             )}
             {!replacing && (
               <label className="form-field">
@@ -418,7 +576,10 @@ export function ConnectAdapterDialog({
                   maxLength={200}
                   value={name}
                   readOnly={replacing}
-                  onChange={(event) => setName(event.target.value)}
+                  onChange={(event) => {
+                    setName(event.target.value);
+                    setUseStored(false);
+                  }}
                   placeholder="My device workspace"
                 />
               </label>
@@ -570,7 +731,10 @@ export function ConnectAdapterDialog({
                                 ? "number"
                                 : "text"
                           }
-                          required={field.required}
+                          required={
+                            field.required &&
+                            !(field.kind === "password" && useStored)
+                          }
                           value={String(source.configuration[field.id] ?? "")}
                           onChange={(event) => {
                             const configuration = { ...source.configuration };

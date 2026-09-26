@@ -4,7 +4,7 @@ use crate::adapters::AdapterConnectionOptions;
 use serde::{Deserialize, Serialize};
 use shellcanvas_adapter_runtime::catalog::{AdapterInfo, FieldKind};
 use std::{
-    collections::HashSet,
+    collections::{HashMap, HashSet},
     fs::{self, File, OpenOptions},
     io::{Read, Write},
     path::Path,
@@ -194,6 +194,35 @@ fn remove(dir: &Path, id: &str, revision: &str) -> Result<(), String> {
         write(path, &store)
     })
 }
+
+fn get(dir: &Path, id: &str, revision: &str) -> Result<SavedWorkspace, String> {
+    uuid::Uuid::parse_str(id).map_err(|_| "Invalid saved workspace ID")?;
+    locked(dir, |path| {
+        load(path)?
+            .profiles
+            .into_iter()
+            .find(|item| item.id == id && item.revision == revision)
+            .ok_or("Saved workspace changed or was removed".into())
+    })
+}
+
+fn matching_public_options(
+    dir: &Path,
+    id: &str,
+    revision: &str,
+    options: AdapterConnectionOptions,
+    installed: &[AdapterInfo],
+) -> Result<(), String> {
+    let WorkspaceProfile::Adapters(saved) = get(dir, id, revision)?.profile;
+    let public = sanitized(options, installed)?;
+    if serde_json::to_value(&public).ok() != serde_json::to_value(&saved).ok() {
+        return Err(
+            "Workspace settings changed. Save the profile again or enter credentials manually"
+                .into(),
+        );
+    }
+    Ok(())
+}
 #[tauri::command]
 pub async fn list_workspace_profiles(app: tauri::AppHandle) -> Result<Vec<SavedWorkspace>, String> {
     let dir = crate::profile_store::storage_dir(&app)?;
@@ -225,9 +254,145 @@ pub async fn remove_workspace_profile(
     app: tauri::AppHandle,
 ) -> Result<(), String> {
     let dir = crate::profile_store::storage_dir(&app)?;
-    tauri::async_runtime::spawn_blocking(move || remove(&dir, &id, &revision))
-        .await
-        .map_err(|e| e.to_string())?
+    tauri::async_runtime::spawn_blocking(move || {
+        get(&dir, &id, &revision)?;
+        crate::saved_credentials::remove_workspace(&id)?;
+        remove(&dir, &id, &revision)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+pub async fn workspace_credential_status(id: String, revision: String) -> Result<bool, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        Ok(crate::saved_credentials::workspace(&id)?
+            .is_some_and(|secret| secret.revision == revision && !secret.fields.is_empty()))
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+pub async fn save_workspace_credentials(
+    app: tauri::AppHandle,
+    id: String,
+    revision: String,
+    options: AdapterConnectionOptions,
+) -> Result<(), String> {
+    let dir = crate::profile_store::storage_dir(&app)?;
+    let catalog = crate::adapters::catalog(&app)?;
+    tauri::async_runtime::spawn_blocking(move || {
+        let mut installed = catalog.list().map_err(|e| e.to_string())?;
+        installed.push(crate::builtin_ssh::info());
+        matching_public_options(&dir, &id, &revision, options.clone(), &installed)?;
+        let mut fields: HashMap<String, HashMap<String, String>> = HashMap::new();
+        for source in &options.sources {
+            let adapter = installed
+                .iter()
+                .find(|item| item.id == source.id && item.revision == source.revision)
+                .ok_or("Adapter changed before credentials could be saved")?;
+            let mut secrets = HashMap::new();
+            for field in &adapter.configuration {
+                if matches!(field.kind, FieldKind::Password) {
+                    if let Some(value) = source
+                        .configuration
+                        .get(&field.id)
+                        .and_then(|v| v.as_str())
+                        .filter(|v| !v.is_empty())
+                    {
+                        secrets.insert(field.id.clone(), value.to_owned());
+                    }
+                }
+            }
+            if !secrets.is_empty() {
+                fields.insert(source.key.clone(), secrets);
+            }
+        }
+        if fields.is_empty() {
+            return Err(
+                "Enter at least one password or passphrase before remembering credentials".into(),
+            );
+        }
+        crate::saved_credentials::save_workspace(
+            &id,
+            &crate::saved_credentials::WorkspaceSecrets { revision, fields },
+        )
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+pub async fn forget_workspace_credentials(
+    app: tauri::AppHandle,
+    id: String,
+    revision: String,
+) -> Result<(), String> {
+    let dir = crate::profile_store::storage_dir(&app)?;
+    tauri::async_runtime::spawn_blocking(move || {
+        get(&dir, &id, &revision)?;
+        crate::saved_credentials::remove_workspace(&id)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+pub async fn resolve_credentials(
+    app: &tauri::AppHandle,
+    mut options: AdapterConnectionOptions,
+    id: String,
+    revision: String,
+) -> Result<AdapterConnectionOptions, String> {
+    let dir = crate::profile_store::storage_dir(app)?;
+    let catalog = crate::adapters::catalog(app)?;
+    tauri::async_runtime::spawn_blocking(move || {
+        let mut installed = catalog.list().map_err(|e| e.to_string())?;
+        installed.push(crate::builtin_ssh::info());
+        matching_public_options(&dir, &id, &revision, options.clone(), &installed)?;
+        let stored = crate::saved_credentials::workspace(&id)?
+            .ok_or("No credentials are saved for this workspace")?;
+        if stored.revision != revision {
+            return Err(
+                "Saved credentials belong to an older workspace revision. Enter them again".into(),
+            );
+        }
+        for source in &mut options.sources {
+            let adapter = installed
+                .iter()
+                .find(|item| item.id == source.id && item.revision == source.revision)
+                .ok_or("Adapter changed before credentials could be used")?;
+            let Some(secrets) = stored.fields.get(&source.key) else {
+                continue;
+            };
+            let config = source
+                .configuration
+                .as_object_mut()
+                .ok_or("Invalid adapter configuration")?;
+            for (field, value) in secrets {
+                if !adapter
+                    .configuration
+                    .iter()
+                    .any(|item| item.id == *field && matches!(item.kind, FieldKind::Password))
+                {
+                    return Err(
+                        "Saved credential field is no longer declared by this adapter".into(),
+                    );
+                }
+                if config
+                    .get(field)
+                    .and_then(|value| value.as_str())
+                    .unwrap_or_default()
+                    .is_empty()
+                {
+                    config.insert(field.clone(), serde_json::Value::String(value.clone()));
+                }
+            }
+        }
+        Ok(options)
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 #[cfg(test)]
@@ -235,7 +400,7 @@ mod tests {
     use super::*;
     use serde_json::json;
     fn installed() -> Vec<AdapterInfo> {
-        vec![serde_json::from_value(json!({"id":"dev.fixture","name":"Fixture","version":"1.0.0","description":"","platform":"windows-x86_64","entrypoint":"fixture.exe","configuration":[{"id":"endpoint","label":"Endpoint","kind":"text","required":true},{"id":"token","label":"Token","kind":"password","required":true}],"generation":"one","revision":"one","enabled":true,"fileCount":1,"bytes":1})).unwrap()]
+        vec![serde_json::from_value(json!({"id":"dev.fixture","name":"Fixture","version":"1.0.0","description":"","platform":"windows-x86_64","entrypoint":"fixture.exe","configuration":[{"id":"endpoint","label":"Endpoint","kind":"text","required":true},{"id":"token","label":"Token","kind":"password","required":true}],"generation":"one","revision":"one","enabled":true,"fileCount":1,"bytes":1,"digest":"fixture"})).unwrap()]
     }
     fn options() -> AdapterConnectionOptions {
         serde_json::from_value(json!({"name":"Mixed workspace","sources":[{"key":"one","id":"dev.fixture","revision":"one","configuration":{"endpoint":"opaque:device","token":"never-persist"}},{"key":"two","id":"dev.fixture","revision":"one","configuration":{"endpoint":"opaque:console","token":"never-persist"}}],"bindings":{"files":"one","console":"two"}})).unwrap()
@@ -279,6 +444,39 @@ mod tests {
         assert!(locked(dir.path(), |p| Ok(load(p)?.profiles))
             .unwrap()
             .is_empty());
+    }
+    #[test]
+    fn stored_credentials_cannot_be_reused_for_changed_workspace_settings() {
+        let dir = tempfile::tempdir().unwrap();
+        let saved = save(dir.path(), options(), None, None, &installed()).unwrap();
+        assert!(matching_public_options(
+            dir.path(),
+            &saved.id,
+            &saved.revision,
+            options(),
+            &installed()
+        )
+        .is_ok());
+        let mut changed = options();
+        changed.sources[0].configuration["endpoint"] = json!("opaque:other-device");
+        assert!(matching_public_options(
+            dir.path(),
+            &saved.id,
+            &saved.revision,
+            changed,
+            &installed()
+        )
+        .is_err());
+        let mut changed = options();
+        changed.bindings.insert("files".into(), "two".into());
+        assert!(matching_public_options(
+            dir.path(),
+            &saved.id,
+            &saved.revision,
+            changed,
+            &installed()
+        )
+        .is_err());
     }
     #[test]
     fn unknown_fields_missing_adapters_and_invalid_roles_cannot_be_saved() {

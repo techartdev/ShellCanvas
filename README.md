@@ -46,7 +46,7 @@ SSH gives you a shell. ShellCanvas gives you the rest of a computer: a file mana
 
 - **A desktop, not a dashboard.** Move, resize, tile and minimize real windows between a top bar and a dock. Open several Files and Terminal windows per host.
 - **Nothing to install on the server.** ShellCanvas uses the SSH server your machine already runs, with SFTP for files. No agent, no daemon, only SSH.
-- **Trust you can see.** A new host's key is shown for review before you sign in, and a changed key is refused. Passwords and passphrases are never saved.
+- **Trust you can see.** A new host's key is shown for review before you sign in, and a changed key is refused. Passwords and passphrases stay out of profile files; you can explicitly remember them in this PC's system credential store.
 - **Room to grow.** Install apps straight from GitHub, switch themes, or build your own apps and connection adapters with the public SDKs.
 
 <picture>

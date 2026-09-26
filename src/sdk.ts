@@ -374,10 +374,14 @@ export interface HostServices {
   profiles(): Promise<HostProfile[]>;
   saveProfile(profile: HostProfile): Promise<HostProfile>;
   removeProfile(id: string): Promise<void>;
+  hostCredentialStatus?(id: string): Promise<boolean>;
+  saveHostCredential?(id: string, options: ConnectOptions): Promise<void>;
+  forgetHostCredential?(id: string): Promise<void>;
   connect(
     options: ConnectOptions,
     signal?: AbortSignal,
     reviewHostKey?: HostKeyReviewer,
+    savedHostId?: string,
   ): Promise<Session>;
   disconnect(sessionId: number): Promise<void>;
   alive(sessionId: number): Promise<boolean>;

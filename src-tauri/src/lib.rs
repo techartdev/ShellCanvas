@@ -40,6 +40,7 @@ mod remote_clock;
 mod repository_install;
 #[cfg(test)]
 mod request_source_tests;
+mod saved_credentials;
 mod session_registry;
 mod terminals;
 mod transfers;
@@ -110,9 +111,111 @@ async fn save_profile(app: tauri::AppHandle, profile: HostProfile) -> Result<Hos
 async fn remove_profile(app: tauri::AppHandle, id: String) -> Result<(), String> {
     let _update_operation = crate::update_gate::operation()?;
     let dir = profile_store::storage_dir(&app)?;
-    tauri::async_runtime::spawn_blocking(move || profile_store::remove(&dir, &id))
-        .await
-        .map_err(error)?
+    tauri::async_runtime::spawn_blocking(move || {
+        profile_store::get(&dir, &id)?;
+        saved_credentials::remove_host(&id)?;
+        profile_store::remove(&dir, &id)
+    })
+    .await
+    .map_err(error)?
+}
+
+fn same_saved_host(profile: &HostProfile, options: &ConnectOptions) -> bool {
+    profile.host == options.host
+        && profile.port == options.port
+        && profile.username == options.username
+        && profile.key_path == options.key_path
+        && profile.allow_legacy_mac == options.allow_legacy_mac
+}
+
+#[tauri::command]
+async fn host_credential_status(app: tauri::AppHandle, id: String) -> Result<bool, String> {
+    let dir = profile_store::storage_dir(&app)?;
+    tauri::async_runtime::spawn_blocking(move || {
+        let profile = profile_store::get(&dir, &id)?;
+        Ok(saved_credentials::host(&id)?.is_some_and(|secret| secret.matches_profile(&profile)))
+    })
+    .await
+    .map_err(error)?
+}
+
+#[tauri::command]
+async fn save_host_credential(
+    app: tauri::AppHandle,
+    id: String,
+    options: ConnectOptions,
+) -> Result<(), String> {
+    let dir = profile_store::storage_dir(&app)?;
+    tauri::async_runtime::spawn_blocking(move || {
+        let profile = profile_store::get(&dir, &id)?;
+        if !same_saved_host(&profile, &options) {
+            return Err("Saved host settings changed. Save the host before its credential".into());
+        }
+        let (kind, value) = if options.key_path.is_empty() {
+            ("password", options.password.unwrap_or_default())
+        } else {
+            ("passphrase", options.passphrase.unwrap_or_default())
+        };
+        if value.is_empty() || value.len() > 2048 {
+            return Err("Enter a password or key passphrase before remembering it".into());
+        }
+        saved_credentials::save_host(
+            &id,
+            &saved_credentials::HostSecret {
+                host: profile.host,
+                port: profile.port,
+                username: profile.username,
+                key_path: profile.key_path,
+                allow_legacy_mac: profile.allow_legacy_mac,
+                kind: kind.into(),
+                value,
+            },
+        )
+    })
+    .await
+    .map_err(error)?
+}
+
+#[tauri::command]
+async fn forget_host_credential(app: tauri::AppHandle, id: String) -> Result<(), String> {
+    let dir = profile_store::storage_dir(&app)?;
+    tauri::async_runtime::spawn_blocking(move || {
+        profile_store::get(&dir, &id)?;
+        saved_credentials::remove_host(&id)
+    })
+    .await
+    .map_err(error)?
+}
+
+fn resolve_host_credential(
+    dir: &std::path::Path,
+    id: &str,
+    options: &mut ConnectOptions,
+) -> Result<(), String> {
+    let profile = profile_store::get(dir, id)?;
+    if !same_saved_host(&profile, options) {
+        return Err(
+            "Saved host settings changed. Re-enter the credential or restore the saved host".into(),
+        );
+    }
+    let secret = saved_credentials::host(id)?.ok_or("No credential is saved for this host")?;
+    if !secret.matches_profile(&profile) {
+        return Err("Saved credential belongs to different host settings".into());
+    }
+    match secret.kind.as_str() {
+        "password" if options.key_path.is_empty() => {
+            if options.password.as_deref().unwrap_or_default().is_empty() {
+                options.password = Some(secret.value);
+            }
+        }
+        "passphrase" if !options.key_path.is_empty() => {
+            if options.passphrase.as_deref().unwrap_or_default().is_empty() {
+                options.passphrase = Some(secret.value);
+            }
+        }
+        _ => return Err("Saved credential uses a different SSH authentication method".into()),
+    }
+    Ok(())
 }
 
 #[tauri::command]
@@ -129,6 +232,7 @@ async fn cancel_connect(request_id: u64, state: State<'_, DesktopState>) -> Resu
 #[tauri::command]
 async fn connect(
     options: ConnectOptions,
+    saved_host_id: Option<String>,
     request_id: u64,
     on_host_key: Channel<connection_attempts::HostKeyChallenge>,
     app: tauri::AppHandle,
@@ -137,19 +241,29 @@ async fn connect(
     let canceled = state.attempts.lock().await.claim(request_id)?;
     let result = connection_attempts::cancellable(
         canceled,
-        connect_session(options, request_id, on_host_key, app, &state),
+        connect_session(options, saved_host_id, request_id, on_host_key, app, &state),
     )
     .await;
     state.attempts.lock().await.finish(request_id);
     result
 }
 async fn connect_session(
-    options: ConnectOptions,
+    mut options: ConnectOptions,
+    saved_host_id: Option<String>,
     request_id: u64,
     on_host_key: Channel<connection_attempts::HostKeyChallenge>,
     app: tauri::AppHandle,
     state: &DesktopState,
 ) -> Result<SessionInfo, String> {
+    if let Some(id) = saved_host_id {
+        let dir = profile_store::storage_dir(&app)?;
+        options = tauri::async_runtime::spawn_blocking(move || {
+            resolve_host_credential(&dir, &id, &mut options)?;
+            Ok::<_, String>(options)
+        })
+        .await
+        .map_err(error)??;
+    }
     let source = prepare_ssh(options, request_id, on_host_key, app, state).await?;
     let info = source.info.clone();
     let bindings = [
@@ -967,6 +1081,9 @@ pub fn run() {
                 workspace_profiles::list_workspace_profiles,
                 workspace_profiles::save_workspace_profile,
                 workspace_profiles::remove_workspace_profile,
+                workspace_profiles::workspace_credential_status,
+                workspace_profiles::save_workspace_credentials,
+                workspace_profiles::forget_workspace_credentials,
                 custom_services::list_custom_services,
                 custom_services::begin_custom_call,
                 custom_services::cancel_custom_call,
@@ -987,6 +1104,9 @@ pub fn run() {
                 apply_host_setting,
                 save_profile,
                 remove_profile,
+                host_credential_status,
+                save_host_credential,
+                forget_host_credential,
                 session_alive,
                 session_status,
                 connect,

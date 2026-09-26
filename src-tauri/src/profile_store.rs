@@ -161,6 +161,17 @@ pub fn list(dir: &Path) -> Result<Vec<HostProfile>, String> {
             .collect())
     })
 }
+pub fn get(dir: &Path, id: &str) -> Result<HostProfile, String> {
+    uuid::Uuid::parse_str(id).map_err(|_| "Invalid saved host ID")?;
+    locked(dir, |path| {
+        load(path)?
+            .profiles
+            .iter()
+            .find(|profile| profile.id == id)
+            .map(SavedProfile::public)
+            .ok_or("Saved host no longer exists".into())
+    })
+}
 pub fn save(dir: &Path, mut profile: HostProfile) -> Result<HostProfile, String> {
     profile.name = profile.name.trim().into();
     profile.host = profile.host.trim().into();

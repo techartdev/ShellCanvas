@@ -22,7 +22,7 @@ The connection dialog offers Cancel connection while connecting. Escape or closi
 - Workspace tests cover endpoint checks, unchanged app-instance state, rejected stale callbacks and exclusion of credentials from reconnect snapshots.
 - Native tests cover attempt isolation and cancellation before/during work. A local TCP fixture holds an SSH handshake open and verifies socket closure after cancellation.
 - Windows debug build, 29 frontend tests, 14 Rust tests and Clippy passed for this slice.
-- Health reporting still depends on SSH closure/keepalives and can take roughly a minute for a silently unreachable peer. There is no automatic retry or credential vault. Cancellation during every authentication/provider phase and physical-network interruption still need native walkthroughs.
+- Health reporting still depends on SSH closure/keepalives and can take roughly a minute for a silently unreachable peer. There is no automatic retry. Saved hosts and adapter workspaces can optionally use the OS credential store for reconnect; cancellation during every authentication/provider phase and physical-network interruption still need native walkthroughs.
 - Drafts and layout remain in memory. A crash or forced quit can lose them. Interrupted remote writes can have uncertain outcomes; verify the destination before retrying.
 
 ## Deliberate disconnect verification (2026-09-08)

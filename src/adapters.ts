@@ -44,6 +44,7 @@ export interface AdapterConnectionOptions {
 }
 export interface AdapterProfile extends AdapterConnectionOptions {
   kind: "adapters";
+  savedCredentials?: { id: string; revision: string };
 }
 export interface SavedWorkspaceProfile {
   id: string;
@@ -57,6 +58,13 @@ export interface WorkspaceProfileStore {
     previous?: Pick<SavedWorkspaceProfile, "id" | "revision">,
   ): Promise<SavedWorkspaceProfile>;
   remove(id: string, revision: string): Promise<void>;
+  credentialStatus(id: string, revision: string): Promise<boolean>;
+  saveCredentials(
+    id: string,
+    revision: string,
+    options: AdapterConnectionOptions,
+  ): Promise<void>;
+  forgetCredentials(id: string, revision: string): Promise<void>;
 }
 /** Reopening uses only current public fields; a field reclassified as a password is never prefilled. */
 export function restoredConfiguration(
@@ -109,6 +117,7 @@ export interface AdapterServices {
     options: AdapterConnectionOptions,
     signal?: AbortSignal,
     reviewHostKey?: HostKeyReviewer,
+    saved?: { id: string; revision: string },
   ): Promise<Session>;
 }
 export interface RepositoryAdapterSource {
@@ -214,6 +223,12 @@ export const nativeAdapterServices: AdapterServices = {
       }),
     remove: (id, revision) =>
       invoke("remove_workspace_profile", { id, revision }),
+    credentialStatus: (id, revision) =>
+      invoke("workspace_credential_status", { id, revision }),
+    saveCredentials: (id, revision, options) =>
+      invoke("save_workspace_credentials", { id, revision, options }),
+    forgetCredentials: (id, revision) =>
+      invoke("forget_workspace_credentials", { id, revision }),
   },
   async replaceSource(sessionId, expected, options, signal, reviewHostKey) {
     if (signal?.aborted) throw new Error("Connection canceled");
@@ -259,7 +274,7 @@ export const nativeAdapterServices: AdapterServices = {
   setEnabled: (id, revision, enabled) =>
     invoke("set_adapter_enabled", { id, revision, enabled }),
   remove: (id, revision) => invoke("remove_adapter", { id, revision }),
-  async connect(options, signal, reviewHostKey) {
+  async connect(options, signal, reviewHostKey, saved) {
     if (signal?.aborted) throw new Error("Connection canceled");
     const requestId = await invoke<number>("begin_connect");
     const cancel = () => {
@@ -277,6 +292,8 @@ export const nativeAdapterServices: AdapterServices = {
       if (signal?.aborted) throw new Error("Connection canceled");
       const result = await invoke<Session>("connect_adapters", {
         options,
+        savedProfileId: saved?.id,
+        savedProfileRevision: saved?.revision,
         requestId,
         onHostKey: review.channel,
       });
