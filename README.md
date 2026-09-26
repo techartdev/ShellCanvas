@@ -26,6 +26,11 @@
   <img alt="Built with Tauri 2, Rust and React" src="https://img.shields.io/badge/built_with-Tauri_2_%C2%B7_Rust_%C2%B7_React-2f6fe0?style=flat-square">
 </p>
 
+<p align="center">
+  <a href="https://discord.gg/3brUndnRnQ"><img alt="Join the ShellCanvas Discord server" src="https://img.shields.io/badge/Join_our_Discord-5865F2?style=for-the-badge&logo=discord&logoColor=white"></a><br>
+  <sub>Ask questions, share feedback and help shape ShellCanvas.</sub>
+</p>
+
 <br>
 
 <picture>
