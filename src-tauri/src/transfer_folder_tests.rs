@@ -19,6 +19,7 @@ struct Folders {
     data: Arc<super::tests::Memory>,
     created: Mutex<HashSet<String>>,
     bad_child: Option<FileEntry>,
+    merge_destination: bool,
 }
 struct Page(Vec<FileEntry>);
 #[async_trait]
@@ -45,6 +46,31 @@ async fn scanned(
 }
 #[async_trait]
 impl FileTransferService for Folders {
+    async fn destination_entry(&self, parent: &str, name: &str) -> Result<Option<FileEntry>> {
+        if !self.merge_destination {
+            return Ok(None);
+        }
+        Ok(match (parent, name) {
+            ("destination@opaque", "Root") => Some(entry("existing-root@opaque", "Root", true, 0)),
+            ("existing-root@opaque", "binary.bin") => {
+                Some(entry("existing-file@opaque", "binary.bin", false, 3))
+            }
+            _ => None,
+        })
+    }
+    fn supports_atomic_replace(&self) -> bool {
+        self.merge_destination
+    }
+    async fn upload_replace(
+        self: Arc<Self>,
+        parent: &str,
+        name: &str,
+        size: u64,
+        expected_revision: &str,
+    ) -> Result<Box<dyn shellcanvas_core::TransferWriter>> {
+        assert_eq!(expected_revision, "v1");
+        self.data.clone().upload(parent, name, size).await
+    }
     fn supports_folders(&self) -> bool {
         true
     }
@@ -103,7 +129,55 @@ fn provider(bad_child: Option<FileEntry>) -> Arc<dyn FileTransferService> {
         data: super::tests::Memory::new(false),
         created: Mutex::new(HashSet::new()),
         bad_child,
+        merge_destination: false,
     })
+}
+#[tokio::test]
+async fn reviewed_folder_conflict_merges_and_replaces_only_matching_file() {
+    let memory = super::tests::Memory::new(false);
+    let service: Arc<dyn FileTransferService> = Arc::new(Folders {
+        data: memory.clone(),
+        created: Mutex::new(HashSet::new()),
+        bad_child: None,
+        merge_destination: true,
+    });
+    let (_, cancel) = watch::channel(false);
+    let plan = || Job::Tree {
+        tree: tree::Tree {
+            root: catalog::Node {
+                id: 0,
+                parent: 0,
+                display: "Root".into(),
+                entry: entry("root@opaque", "Root", true, 0),
+                local: None,
+            },
+        },
+        target: tree::Target::Remote("destination@opaque".into()),
+    };
+    assert!(execute_with_policy(
+        plan(),
+        service.clone(),
+        &cancel,
+        &mut |_| {},
+        &TransferPolicy::default()
+    )
+    .await
+    .unwrap_err()
+    .to_string()
+    .contains("already exists"));
+    assert_eq!(memory.commits.load(std::sync::atomic::Ordering::SeqCst), 0);
+    let policy = TransferPolicy {
+        replace: vec![ReviewedConflict {
+            path: "existing-root@opaque".into(),
+            revision: "v1".into(),
+        }],
+        skip: Vec::new(),
+    };
+    execute_with_policy(plan(), service, &cancel, &mut |_| {}, &policy)
+        .await
+        .unwrap();
+    assert_eq!(memory.commits.load(std::sync::atomic::Ordering::SeqCst), 1);
+    assert_eq!(*memory.writes.lock().unwrap(), memory.data);
 }
 fn download_plan(plan: tree::Tree, folder: &Path) -> Job {
     let catalog = Arc::new(catalog::Catalog::new(true).unwrap());

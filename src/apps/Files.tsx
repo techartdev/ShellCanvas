@@ -37,6 +37,7 @@ import type {
   ClipboardPreparation,
   Directory,
   FileEntry,
+  TransferConflictReview,
 } from "../sdk";
 import { ContextMenu, type MenuAction } from "../components/ContextMenu";
 import { clipboard } from "../clipboard";
@@ -56,8 +57,13 @@ import { AttachDriveDialog } from "../components/AttachDriveDialog";
 import { MoveFileDialog } from "../components/MoveFileDialog";
 import { watchFileChanges, watchFileLocations } from "../file-events";
 import { relocateNavigation, trackedNavigation } from "../file-navigation";
-import { TransferQueue, pendingTransfer } from "../transfer-queue";
+import {
+  TransferQueue,
+  pendingTransfer,
+  type ConflictDecision,
+} from "../transfer-queue";
 import { TransferPanel } from "../components/TransferPanel";
+import { TransferConflictDialog } from "../components/TransferConflictDialog";
 import { selectFiles } from "../file-selection";
 import { DeleteFilesDialog } from "../components/DeleteFilesDialog";
 import { fileSourceKey } from "../workspace-bindings";
@@ -127,6 +133,7 @@ export function Files({
   const selectionAnchor = useRef<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<{
     entries: Readonly<FileEntry>[];
+    parent: string;
     services: AppContext["services"];
     sessionId: number;
   } | null>(null);
@@ -136,8 +143,37 @@ export function Files({
   const relocatingRef = useRef(false);
   const loading = reading || relocating;
   const [busy, setBusy] = useState(false);
+  const conflictSequence = useRef(0);
+  const [conflictPrompt, setConflictPrompt] = useState<{
+    key: number;
+    conflict: TransferConflictReview["conflicts"][number];
+    remaining: number;
+    decide(decision: ConflictDecision): void;
+  } | null>(null);
   const queue = useMemo(
-    () => new TransferQueue(services, reportError),
+    () =>
+      new TransferQueue(
+        services,
+        reportError,
+        (conflict, remaining, signal) =>
+          new Promise<ConflictDecision>((resolve) => {
+            if (signal.aborted) return resolve("cancel");
+            const key = ++conflictSequence.current;
+            let settled = false;
+            const decide = (decision: ConflictDecision) => {
+              if (settled) return;
+              settled = true;
+              signal.removeEventListener("abort", abort);
+              setConflictPrompt((current) =>
+                current?.key === key ? null : current,
+              );
+              resolve(decision);
+            };
+            const abort = () => decide("cancel");
+            signal.addEventListener("abort", abort, { once: true });
+            setConflictPrompt({ key, conflict, remaining, decide });
+          }),
+      ),
     [services],
   );
   const transfers = useSyncExternalStore(queue.subscribe, queue.snapshot);
@@ -295,7 +331,7 @@ export function Files({
     }
   }
   const [operation, setOperation] = useState<{
-    kind: "mkdir" | "rename" | "delete";
+    kind: "mkdir" | "rename";
     parent: string;
     entry?: FileEntry;
   } | null>(null);
@@ -976,6 +1012,7 @@ export function Files({
     }
     setDeleteTarget({
       entries: items.map((entry) => Object.freeze({ ...entry })),
+      parent: directory.path,
       services,
       sessionId: session.id,
     });
@@ -1225,12 +1262,10 @@ export function Files({
             },
             {
               id: "delete",
-              label:
-                entry.kind === "directory" ? "Delete empty folder…" : "Delete…",
+              label: entry.kind === "directory" ? "Delete folder…" : "Delete…",
               shortcut: "Delete",
               disabled: !canManage || !entry.revision,
-              run: () =>
-                setOperation({ kind: "delete", parent: directory.path, entry }),
+              run: () => reviewDelete([entry]),
             },
           ]
         : [
@@ -1456,11 +1491,9 @@ export function Files({
           const entry = singleEntry;
           if (entry?.revision) {
             event.preventDefault();
-            setOperation({
-              kind: event.key === "F2" ? "rename" : "delete",
-              parent: directory.path,
-              entry,
-            });
+            if (event.key === "Delete") reviewDelete([entry]);
+            else
+              setOperation({ kind: "rename", parent: directory.path, entry });
           }
         } else if (event.key === "F5") {
           event.preventDefault();
@@ -2059,47 +2092,20 @@ export function Files({
       )}
       {operation && (
         <FileActionDialog
-          title={
-            operation.kind === "mkdir"
-              ? "New folder"
-              : operation.kind === "rename"
-                ? "Rename item"
-                : "Delete remote item?"
-          }
-          description={
-            operation.kind === "delete"
-              ? `Delete this ${operation.entry?.kind === "directory" ? "empty folder" : operation.entry?.kind === "symlink" ? "link (its target is kept)" : "file"} permanently? There is no remote trash or undo.`
-              : `In ${operation.parent}. Existing items are never replaced.`
-          }
-          initialName={
-            operation.kind === "delete"
-              ? operation.entry!.path
-              : (operation.entry?.name ?? "New folder")
-          }
-          readOnlyName={operation.kind === "delete"}
-          destructive={operation.kind === "delete"}
-          confirmLabel={
-            operation.kind === "mkdir"
-              ? "Create folder"
-              : operation.kind === "rename"
-                ? "Rename"
-                : "Delete permanently"
-          }
+          title={operation.kind === "mkdir" ? "New folder" : "Rename item"}
+          description={`In ${operation.parent}. Existing items are never replaced.`}
+          initialName={operation.entry?.name ?? "New folder"}
+          confirmLabel={operation.kind === "mkdir" ? "Create folder" : "Rename"}
           close={() => setOperation(null)}
           setBusy={setBusy}
           disabled={!connected}
           execute={async (name) => {
             if (operation.kind === "mkdir")
               await services.makeDirectory(operation.parent, name);
-            else if (operation.kind === "rename")
+            else
               await services.renameEntry(
                 operation.entry!.path,
                 name,
-                operation.entry!.revision!,
-              );
-            else
-              await services.removeEntry(
-                operation.entry!.path,
                 operation.entry!.revision!,
               );
             setError("");
@@ -2109,6 +2115,7 @@ export function Files({
       {deleteTarget && (
         <DeleteFilesDialog
           entries={deleteTarget.entries}
+          parent={deleteTarget.parent}
           services={deleteTarget.services}
           available={
             connected &&
@@ -2121,6 +2128,14 @@ export function Files({
             refresh.current();
           }}
           setBusy={setBusy}
+        />
+      )}
+      {conflictPrompt && (
+        <TransferConflictDialog
+          key={conflictPrompt.key}
+          conflict={conflictPrompt.conflict}
+          remaining={conflictPrompt.remaining}
+          decide={conflictPrompt.decide}
         />
       )}
     </div>

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 use crate::{
-    entry_revision, provider::sftp_location, text::validate_path, FileLocation,
+    entry_revision, provider::sftp_location, text::validate_path, FileEntry, FileLocation,
     FileTransferService, SftpTextFiles, TransferFile, TransferReader, TransferWriter,
     TRANSFER_CHUNK,
 };
@@ -100,6 +100,7 @@ struct Writer {
     handle: Option<String>,
     temporary: Option<String>,
     destination: String,
+    expected_revision: Option<String>,
     size: u64,
     offset: u64,
 }
@@ -157,6 +158,29 @@ impl TransferWriter for Writer {
         if self.offset != self.size {
             bail!("The local file changed size during upload.");
         }
+        let _lock = self.service.save_lock.lock().await;
+        if let Some(expected) = &self.expected_revision {
+            let existing = self
+                .service
+                .checked_entry(&self.destination, expected)
+                .await?;
+            if !regular_file(&existing) {
+                bail!("Only an existing regular file can be replaced.");
+            }
+            self.service
+                .raw
+                .fsetstat(
+                    self.handle.as_ref().context("Upload handle is closed")?,
+                    FileAttributes {
+                        uid: existing.uid,
+                        gid: existing.gid,
+                        permissions: existing.permissions,
+                        ..FileAttributes::empty()
+                    },
+                )
+                .await
+                .context("Cannot preserve the original file owner and permissions")?;
+        }
         if self.service.fsync {
             self.service
                 .extension(
@@ -168,9 +192,24 @@ impl TransferWriter for Writer {
         if let Some(handle) = self.handle.take() {
             self.service.raw.close(handle).await?;
         }
-        let _lock = self.service.save_lock.lock().await;
-        self.service.require_absent(&self.destination).await?;
-        self.service.raw.rename(self.temporary.as_ref().context("Upload already finished")?, &self.destination).await.context("Upload publication was not confirmed. Check the remote destination before retrying; it may already exist")?;
+        if let Some(expected) = &self.expected_revision {
+            self.service
+                .checked_entry(&self.destination, expected)
+                .await?;
+            self.service
+                .extension(
+                    "posix-rename@openssh.com",
+                    &[
+                        self.temporary.as_ref().context("Upload already finished")?,
+                        &self.destination,
+                    ],
+                )
+                .await
+                .context("Replacement was not confirmed. Check the remote file before retrying")?;
+        } else {
+            self.service.require_absent(&self.destination).await?;
+            self.service.raw.rename(self.temporary.as_ref().context("Upload already finished")?, &self.destination).await.context("Upload publication was not confirmed. Check the remote destination before retrying; it may already exist")?;
+        }
         self.temporary = None;
         Ok(sftp_location(self.destination.clone()))
     }
@@ -198,6 +237,49 @@ impl TransferWriter for Writer {
 
 #[async_trait]
 impl FileTransferService for SftpTextFiles {
+    async fn destination_entry(&self, parent: &str, name: &str) -> Result<Option<FileEntry>> {
+        let path = self.child_path(parent, name).await?;
+        let attrs = match self.raw.lstat(&path).await {
+            Ok(result) => result.attrs,
+            Err(SftpError::Status(status)) if status.status_code == StatusCode::NoSuchFile => {
+                return Ok(None)
+            }
+            Err(error) => return Err(error.into()),
+        };
+        Ok(Some(FileEntry {
+            name: name.into(),
+            path,
+            kind: if attrs.is_dir() {
+                "directory"
+            } else if attrs.is_symlink() {
+                "symlink"
+            } else if regular_file(&attrs) {
+                "file"
+            } else {
+                "special"
+            }
+            .into(),
+            size: attrs.size.unwrap_or(0),
+            modified: attrs.mtime,
+            revision: entry_revision(&attrs),
+        }))
+    }
+    fn supports_atomic_replace(&self) -> bool {
+        self.can_replace_atomically() && !self.windows
+    }
+    async fn upload_replace(
+        self: Arc<Self>,
+        parent: &str,
+        name: &str,
+        size: u64,
+        expected_revision: &str,
+    ) -> Result<Box<dyn TransferWriter>> {
+        if !self.supports_atomic_replace() {
+            bail!("Safe file replacement is unavailable on this host");
+        }
+        self.prepare_upload(parent, name, size, Some(expected_revision))
+            .await
+    }
     async fn transfer_entry(
         self: Arc<Self>,
         path: &str,
@@ -305,8 +387,27 @@ impl FileTransferService for SftpTextFiles {
         name: &str,
         size: u64,
     ) -> Result<Box<dyn TransferWriter>> {
+        self.prepare_upload(parent, name, size, None).await
+    }
+}
+
+impl SftpTextFiles {
+    async fn prepare_upload(
+        self: Arc<Self>,
+        parent: &str,
+        name: &str,
+        size: u64,
+        expected_revision: Option<&str>,
+    ) -> Result<Box<dyn TransferWriter>> {
         let destination = self.child_path(parent, name).await?;
-        self.require_absent(&destination).await?;
+        if let Some(expected) = expected_revision {
+            let existing = self.checked_entry(&destination, expected).await?;
+            if !regular_file(&existing) {
+                bail!("Only an existing regular file can be replaced.");
+            }
+        } else {
+            self.require_absent(&destination).await?;
+        }
         let canonical_parent = sftp_location(destination.clone())
             .parent
             .context("Upload destination has no parent")?;
@@ -324,6 +425,7 @@ impl FileTransferService for SftpTextFiles {
             handle: Some(handle),
             temporary: Some(temporary),
             destination,
+            expected_revision: expected_revision.map(str::to_owned),
             size,
             offset: 0,
         }))

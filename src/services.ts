@@ -161,7 +161,9 @@ function createNativeServices(pins?: SourcePins): HostServices {
       invoke("choose_upload_files", { sessionId, parent, folder }),
     chooseDownload: (sessionId, path, revision) =>
       invoke("choose_download_file", { sessionId, path, revision }),
-    runTransfer: (sessionId, transferId, onProgress, tracked) => {
+    transferConflicts: (sessionId, transferId) =>
+      invoke("transfer_conflicts", { sessionId, transferId }),
+    runTransfer: (sessionId, transferId, onProgress, tracked, policy) => {
       const onEvent = new Channel<TransferProgress>();
       onEvent.onmessage = onProgress;
       return invoke("run_transfer", {
@@ -169,6 +171,7 @@ function createNativeServices(pins?: SourcePins): HostServices {
         transferId,
         onEvent,
         tracked,
+        policy,
       });
     },
     cancelTransfer: (sessionId, transferId) =>

@@ -828,6 +828,36 @@ impl TransferWriter for Upload {
 }
 #[async_trait]
 impl FileTransferService for Bound<dyn FileTransferService> {
+    async fn destination_entry(&self, parent: &str, name: &str) -> Result<Option<FileEntry>> {
+        self.binding
+            .run(false, self.service.destination_entry(parent, name))
+            .await
+    }
+    fn supports_atomic_replace(&self) -> bool {
+        self.service.supports_atomic_replace()
+    }
+    async fn upload_replace(
+        self: Arc<Self>,
+        parent: &str,
+        name: &str,
+        size: u64,
+        expected_revision: &str,
+    ) -> Result<Box<dyn TransferWriter>> {
+        self.binding.check()?;
+        let mut inner = self
+            .service
+            .clone()
+            .upload_replace(parent, name, size, expected_revision)
+            .await?;
+        if let Err(error) = self.binding.after(true) {
+            let _ = tokio::time::timeout(Duration::from_secs(3), inner.abort()).await;
+            return Err(error);
+        }
+        Ok(Box::new(Upload {
+            binding: self.binding.clone(),
+            inner,
+        }))
+    }
     async fn transfer_entry(self: Arc<Self>, path: &str, revision: &str) -> Result<FileEntry> {
         self.binding
             .run(false, self.service.clone().transfer_entry(path, revision))

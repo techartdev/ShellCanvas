@@ -235,6 +235,53 @@ pub struct Ticket {
 }
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct TransferConflict {
+    pub destination: shellcanvas_services::FileEntry,
+    pub source_kind: String,
+}
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TransferConflictReview {
+    pub conflicts: Vec<TransferConflict>,
+    pub can_replace: bool,
+}
+#[derive(Clone, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReviewedConflict {
+    path: String,
+    revision: String,
+}
+#[derive(Clone, Default, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TransferPolicy {
+    replace: Vec<ReviewedConflict>,
+    skip: Vec<ReviewedConflict>,
+}
+impl TransferPolicy {
+    fn replacement<'a>(
+        &'a self,
+        entry: &shellcanvas_services::FileEntry,
+    ) -> Result<Option<&'a str>> {
+        let reviewed = self.replace.iter().find(|item| item.path == entry.path);
+        if let Some(reviewed) = reviewed {
+            if reviewed.revision != entry.revision {
+                bail!("The destination changed after replacement was confirmed. Refresh and try again.");
+            }
+        }
+        Ok(reviewed.map(|item| item.revision.as_str()))
+    }
+    fn skip(&self, entry: &shellcanvas_services::FileEntry) -> Result<bool> {
+        let reviewed = self.skip.iter().find(|item| item.path == entry.path);
+        if let Some(reviewed) = reviewed {
+            if reviewed.revision != entry.revision {
+                bail!("The destination changed after it was reviewed. Refresh and try again.");
+            }
+        }
+        Ok(reviewed.is_some())
+    }
+}
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Progress {
     pub bytes: u64,
     pub total: u64,
@@ -285,6 +332,32 @@ enum Job {
         revision: String,
     },
 }
+impl Job {
+    fn destination_roots(&self) -> Result<Option<(String, Vec<(String, String)>)>> {
+        match self {
+            Job::Selection { catalog, parent } => {
+                let mut roots = Vec::new();
+                let mut after = 0;
+                while let Some(root) = catalog.root_after(after)? {
+                    after = root.id;
+                    roots.push((root.entry.name, root.entry.kind));
+                }
+                Ok(Some((parent.clone(), roots)))
+            }
+            Job::Tree {
+                tree,
+                target: tree::Target::Remote(parent),
+            } => Ok(Some((
+                parent.clone(),
+                vec![(tree.root.entry.name.clone(), tree.root.entry.kind.clone())],
+            ))),
+            Job::Copy { parent, name, .. } | Job::Upload { parent, name, .. } => {
+                Ok(Some((parent.clone(), vec![(name.clone(), "file".into())])))
+            }
+            _ => Ok(None),
+        }
+    }
+}
 enum Work {
     Transfer {
         job: Box<Job>,
@@ -320,6 +393,24 @@ impl Default for TransferRegistry {
     }
 }
 impl TransferRegistry {
+    fn conflict_candidates(
+        &self,
+        owner: u64,
+        id: u64,
+    ) -> Result<Option<(Arc<dyn FileTransferService>, String, Vec<(String, String)>)>, String> {
+        let pending = self
+            .jobs
+            .get(&id)
+            .filter(|pending| pending.owner == owner)
+            .ok_or("Transfer is closed or belongs to another host")?;
+        match pending.work.as_ref() {
+            Some(Work::Transfer { job, service }) => Ok(job
+                .destination_roots()
+                .map_err(error)?
+                .map(|(parent, roots)| (service.clone(), parent, roots))),
+            _ => Ok(None),
+        }
+    }
     pub fn has_pending(&self) -> bool {
         !self.jobs.is_empty() || !self.preparations.is_empty()
     }
@@ -1162,11 +1253,37 @@ fn cleanup_error(original: anyhow::Error, cleanup: Result<()>) -> anyhow::Error 
         Err(error) => anyhow::anyhow!("{original:#}; cleanup failed: {error:#}"),
     }
 }
-async fn execute(
+enum DestinationAction {
+    New,
+    Replace(String),
+    Skip(String),
+}
+async fn destination_action(
+    service: &Arc<dyn FileTransferService>,
+    parent: &str,
+    name: &str,
+    policy: &TransferPolicy,
+) -> Result<DestinationAction> {
+    let Some(existing) = service.destination_entry(parent, name).await? else {
+        return Ok(DestinationAction::New);
+    };
+    if policy.skip(&existing)? {
+        return Ok(DestinationAction::Skip(existing.path));
+    }
+    if let Some(revision) = policy.replacement(&existing)? {
+        if existing.kind != "file" || !service.supports_atomic_replace() {
+            bail!("Safe replacement is unavailable for this destination item");
+        }
+        return Ok(DestinationAction::Replace(revision.into()));
+    }
+    bail!("An item already exists at this destination. Nothing was replaced.")
+}
+async fn execute_with_policy(
     job: Job,
     service: Arc<dyn FileTransferService>,
     cancel: &watch::Receiver<bool>,
     progress: &mut (dyn FnMut(Progress) + Send),
+    policy: &TransferPolicy,
 ) -> Result<String> {
     checkpoint(cancel)?;
     match job {
@@ -1174,38 +1291,48 @@ async fn execute(
             tree::execute_download_selection(catalog, folder, service, cancel, progress).await
         }
         Job::Selection { catalog, parent } => {
-            tree::execute_selection(catalog, parent, service, cancel, progress).await
+            tree::execute_selection(catalog, parent, service, cancel, progress, policy).await
         }
         Job::Tree { tree, target } => {
-            tree::execute_tree(tree, target, service, cancel, progress).await
+            tree::execute_tree(tree, target, service, cancel, progress, policy).await
         }
         Job::Copy {
             path,
             revision,
             parent,
             name,
-        } => shellcanvas_services::copy_regular_file(
-            service,
-            &path,
-            &revision,
-            &parent,
-            &name,
-            || *cancel.borrow(),
-            &mut |event| {
-                progress(Progress {
-                    items: None,
-                    bytes: event.bytes,
-                    total: event.total,
-                    phase: if event.finishing {
-                        "finishing"
-                    } else {
-                        "running"
-                    },
-                });
-            },
-        )
-        .await
-        .map(|location| location.path),
+        } => {
+            let action = destination_action(&service, &parent, &name, policy).await?;
+            if let DestinationAction::Skip(path) = action {
+                return Ok(path);
+            }
+            shellcanvas_services::copy_regular_file_with_replace(
+                service,
+                &path,
+                &revision,
+                &parent,
+                &name,
+                match &action {
+                    DestinationAction::Replace(revision) => Some(revision.as_str()),
+                    _ => None,
+                },
+                || *cancel.borrow(),
+                &mut |event| {
+                    progress(Progress {
+                        items: None,
+                        bytes: event.bytes,
+                        total: event.total,
+                        phase: if event.finishing {
+                            "finishing"
+                        } else {
+                            "running"
+                        },
+                    });
+                },
+            )
+            .await
+            .map(|location| location.path)
+        }
         Job::Upload {
             file,
             parent,
@@ -1213,12 +1340,24 @@ async fn execute(
             size,
             modified,
         } => {
+            let action = destination_action(&service, &parent, &name, policy).await?;
+            if let DestinationAction::Skip(path) = action {
+                return Ok(path);
+            }
             let mut file = tokio::fs::File::from_std(file);
             let current = file.metadata().await?;
             if current.len() != size || current.modified().ok() != modified {
                 bail!("The local file changed after selection. Choose it again.");
             }
-            let mut remote = service.upload(&parent, &name, size).await?;
+            let mut remote = match action {
+                DestinationAction::Replace(revision) => {
+                    service
+                        .clone()
+                        .upload_replace(&parent, &name, size, &revision)
+                        .await?
+                }
+                _ => service.clone().upload(&parent, &name, size).await?,
+            };
             let work = async {
                 let mut bytes = vec![0; TRANSFER_CHUNK];
                 let mut offset = 0;
@@ -1333,12 +1472,58 @@ async fn execute(
         }
     }
 }
+#[cfg(test)]
+async fn execute(
+    job: Job,
+    service: Arc<dyn FileTransferService>,
+    cancel: &watch::Receiver<bool>,
+    progress: &mut (dyn FnMut(Progress) + Send),
+) -> Result<String> {
+    execute_with_policy(job, service, cancel, progress, &TransferPolicy::default()).await
+}
+#[tauri::command]
+pub async fn transfer_conflicts(
+    session_id: u64,
+    transfer_id: u64,
+    state: State<'_, DesktopState>,
+) -> Result<TransferConflictReview, String> {
+    let candidates = state
+        .transfers
+        .lock()
+        .await
+        .conflict_candidates(session_id, transfer_id)?;
+    let Some((service, parent, roots)) = candidates else {
+        return Ok(TransferConflictReview {
+            conflicts: Vec::new(),
+            can_replace: false,
+        });
+    };
+    let mut conflicts = Vec::new();
+    for (name, source_kind) in roots {
+        if let Some(destination) = service
+            .destination_entry(&parent, &name)
+            .await
+            .map_err(error)?
+        {
+            conflicts.push(TransferConflict {
+                destination,
+                source_kind,
+            });
+        }
+    }
+    Ok(TransferConflictReview {
+        conflicts,
+        can_replace: service.supports_atomic_replace(),
+    })
+}
+
 #[tauri::command]
 pub async fn run_transfer(
     session_id: u64,
     transfer_id: u64,
     on_event: Channel<Progress>,
     tracked: Option<Vec<String>>,
+    policy: Option<TransferPolicy>,
     state: State<'_, DesktopState>,
 ) -> Result<Outcome, String> {
     let _update_operation = crate::update_gate::operation()?;
@@ -1360,6 +1545,7 @@ pub async fn run_transfer(
         phase: "preparing",
     };
     let mut sent = Instant::now();
+    let policy = policy.unwrap_or_default();
     let result = async {
         checkpoint(&cancel)?;
         let _permit = tokio::select! {
@@ -1372,16 +1558,22 @@ pub async fn run_transfer(
                 let relocation = claim.run(&cancel, &tracked.unwrap_or_default()).await?;
                 Ok((relocation.path.clone(), Some(relocation)))
             }
-            Work::Transfer { job, service } => execute(*job, service, &cancel, &mut |event| {
-                if event.phase != last.phase
-                    || sent.elapsed().as_millis() >= 100
-                    || event.bytes == event.total
-                {
-                    let _ = on_event.send(event.clone());
-                    sent = Instant::now();
-                }
-                last = event;
-            })
+            Work::Transfer { job, service } => execute_with_policy(
+                *job,
+                service,
+                &cancel,
+                &mut |event| {
+                    if event.phase != last.phase
+                        || sent.elapsed().as_millis() >= 100
+                        || event.bytes == event.total
+                    {
+                        let _ = on_event.send(event.clone());
+                        sent = Instant::now();
+                    }
+                    last = event;
+                },
+                &policy,
+            )
             .await
             .map(|path| (path, None)),
         }

@@ -3,7 +3,13 @@ import { expect, it, vi } from "vitest";
 import { pendingTransfer, TransferQueue } from "./transfer-queue";
 import { bindSession } from "./session-services";
 import { previewServices, previewSession } from "./preview";
-import type { TransferOutcome, TransferTicket } from "./sdk";
+import type {
+  SessionServices,
+  TransferConflictReview,
+  TransferOutcome,
+  TransferPolicy,
+  TransferTicket,
+} from "./sdk";
 const ticket = (id: number): TransferTicket => ({
   id,
   name: `file${id}`,
@@ -165,4 +171,115 @@ it("does not replace a confirmed completion with a late cancellation error", asy
   rejectCancel(new Error("late cancellation failure"));
   await cancellation;
   expect(queue.snapshot()[0].status).toBe("completed");
+});
+it("asks once per conflict and passes reviewed replacements to the backend", async () => {
+  const conflicts = ["one", "two"].map((name) => ({
+    sourceKind: "file",
+    destination: {
+      name,
+      path: `remote@${name}`,
+      revision: `rev-${name}`,
+      kind: "file" as const,
+      size: 1,
+      modified: null,
+    },
+  }));
+  const runTransfer = vi.fn(
+    async (
+      _ticket: TransferTicket,
+      _progress: (event: never) => void,
+      _policy?: TransferPolicy,
+    ) => ({
+      status: "completed" as const,
+      bytes: 64,
+      total: 64,
+    }),
+  );
+  const services = {
+    transferConflicts: async () => ({ conflicts, canReplace: true }),
+    runTransfer,
+    cancelTransfer: vi.fn(async () => {}),
+  } as unknown as SessionServices;
+  const choices = vi.fn(async () => "replace-all" as const);
+  const queue = new TransferQueue(services, undefined, choices);
+  queue.enqueue([ticket(1)]);
+  await vi.waitFor(() => expect(queue.snapshot()[0].status).toBe("completed"));
+  expect(choices).toHaveBeenCalledTimes(1);
+  expect(runTransfer.mock.calls[0][2]).toEqual({
+    replace: [
+      { path: "remote@one", revision: "rev-one" },
+      { path: "remote@two", revision: "rev-two" },
+    ],
+    skip: [],
+  });
+});
+it("cancels a reviewed conflict without starting a transfer", async () => {
+  const runTransfer = vi.fn();
+  const cancelTransfer = vi.fn(async () => {});
+  const services = {
+    transferConflicts: async () => ({
+      canReplace: true,
+      conflicts: [
+        {
+          sourceKind: "file",
+          destination: {
+            name: "one",
+            path: "remote@one",
+            revision: "rev-one",
+            kind: "file",
+            size: 1,
+            modified: null,
+          },
+        },
+      ],
+    }),
+    runTransfer,
+    cancelTransfer,
+  } as unknown as SessionServices;
+  const queue = new TransferQueue(services, undefined, async () => "cancel");
+  queue.enqueue([ticket(1)]);
+  await vi.waitFor(() => expect(queue.snapshot()[0].status).toBe("canceled"));
+  expect(cancelTransfer).toHaveBeenCalledWith(1);
+  expect(runTransfer).not.toHaveBeenCalled();
+});
+it("does not open a conflict prompt after cancellation during inspection", async () => {
+  let finishReview!: (value: TransferConflictReview) => void;
+  const transferConflicts = vi.fn(
+    () =>
+      new Promise<TransferConflictReview>((resolve) => {
+        finishReview = resolve;
+      }),
+  );
+  const runTransfer = vi.fn();
+  const cancelTransfer = vi.fn(async () => {});
+  const resolveConflict = vi.fn(async () => "replace" as const);
+  const services = {
+    transferConflicts,
+    runTransfer,
+    cancelTransfer,
+  } as unknown as SessionServices;
+  const queue = new TransferQueue(services, undefined, resolveConflict);
+  queue.enqueue([ticket(1)]);
+  await vi.waitFor(() => expect(transferConflicts).toHaveBeenCalledOnce());
+  await queue.cancel(1);
+  finishReview({
+    canReplace: true,
+    conflicts: [
+      {
+        sourceKind: "file",
+        destination: {
+          name: "one",
+          path: "remote@one",
+          revision: "rev-one",
+          kind: "file",
+          size: 1,
+          modified: null,
+        },
+      },
+    ],
+  });
+  await vi.waitFor(() => expect(queue.snapshot()[0].status).toBe("canceled"));
+  expect(resolveConflict).not.toHaveBeenCalled();
+  expect(runTransfer).not.toHaveBeenCalled();
+  expect(cancelTransfer).toHaveBeenCalledWith(1);
 });

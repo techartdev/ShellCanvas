@@ -99,6 +99,21 @@
   overflow: auto;
   overflow-wrap: anywhere;
 }
+.file-action-dialog .delete-folder-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.615385rem;
+  font-size: 0.923077rem;
+  line-height: 1.5;
+}
+.file-action-dialog .delete-folder-option input {
+  display: inline-block;
+  width: auto;
+  flex: none;
+  margin: 0.230769rem 0 0;
+  padding: 0;
+  accent-color: var(--sc-danger, #dfb0ac);
+}
 .move-file-dialog {
   width: min(40.769231rem, calc(100vw - 2.461538rem));
   padding: 1.846154rem;

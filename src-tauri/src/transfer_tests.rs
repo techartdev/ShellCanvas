@@ -193,9 +193,9 @@ use std::sync::{
 };
 pub(super) struct Memory {
     pub(super) data: Vec<u8>,
-    writes: Mutex<Vec<u8>>,
+    pub(super) writes: Mutex<Vec<u8>>,
     aborts: AtomicUsize,
-    commits: AtomicUsize,
+    pub(super) commits: AtomicUsize,
     fail_verify: bool,
     readers: AtomicUsize,
     max_readers: AtomicUsize,
@@ -660,6 +660,104 @@ fn upload_job(path: &Path) -> Job {
         parent: "volume@1".into(),
         name: "binary.bin".into(),
     }
+}
+struct ExistingDestination(Arc<Memory>);
+#[async_trait::async_trait]
+impl FileTransferService for ExistingDestination {
+    async fn destination_entry(
+        &self,
+        _: &str,
+        _: &str,
+    ) -> Result<Option<shellcanvas_services::FileEntry>> {
+        Ok(Some(shellcanvas_services::FileEntry {
+            name: "binary.bin".into(),
+            path: "existing@1".into(),
+            kind: "file".into(),
+            size: 3,
+            modified: None,
+            revision: "old-revision".into(),
+        }))
+    }
+    fn supports_atomic_replace(&self) -> bool {
+        true
+    }
+    async fn upload_replace(
+        self: Arc<Self>,
+        parent: &str,
+        name: &str,
+        size: u64,
+        expected_revision: &str,
+    ) -> Result<Box<dyn shellcanvas_services::TransferWriter>> {
+        assert_eq!(expected_revision, "old-revision");
+        self.0.clone().upload(parent, name, size).await
+    }
+    async fn upload(
+        self: Arc<Self>,
+        _: &str,
+        _: &str,
+        _: u64,
+    ) -> Result<Box<dyn shellcanvas_services::TransferWriter>> {
+        bail!("Unreviewed upload must not start")
+    }
+    async fn download(
+        self: Arc<Self>,
+        path: &str,
+        revision: &str,
+    ) -> Result<Box<dyn shellcanvas_services::TransferReader>> {
+        self.0.clone().download(path, revision).await
+    }
+}
+#[tokio::test]
+async fn existing_upload_needs_matching_review_before_replacement() {
+    let dir = tempfile::tempdir().unwrap();
+    let input = dir.path().join("input.bin");
+    let memory = Memory::new(false);
+    std::fs::write(&input, &memory.data).unwrap();
+    let service: Arc<dyn FileTransferService> = Arc::new(ExistingDestination(memory.clone()));
+    let (_, cancel) = watch::channel(false);
+    assert!(execute_with_policy(
+        upload_job(&input),
+        service.clone(),
+        &cancel,
+        &mut |_| {},
+        &TransferPolicy::default(),
+    )
+    .await
+    .unwrap_err()
+    .to_string()
+    .contains("already exists"));
+    assert_eq!(memory.commits.load(Ordering::SeqCst), 0);
+    let stale = TransferPolicy {
+        replace: vec![ReviewedConflict {
+            path: "existing@1".into(),
+            revision: "stale".into(),
+        }],
+        skip: vec![],
+    };
+    assert!(execute_with_policy(
+        upload_job(&input),
+        service.clone(),
+        &cancel,
+        &mut |_| {},
+        &stale,
+    )
+    .await
+    .unwrap_err()
+    .to_string()
+    .contains("changed"));
+    assert_eq!(memory.commits.load(Ordering::SeqCst), 0);
+    let accepted = TransferPolicy {
+        replace: vec![ReviewedConflict {
+            path: "existing@1".into(),
+            revision: "old-revision".into(),
+        }],
+        skip: vec![],
+    };
+    execute_with_policy(upload_job(&input), service, &cancel, &mut |_| {}, &accepted)
+        .await
+        .unwrap();
+    assert_eq!(memory.commits.load(Ordering::SeqCst), 1);
+    assert_eq!(*memory.writes.lock().unwrap(), memory.data);
 }
 #[tokio::test]
 async fn streams_binary_files_and_refuses_local_overwrite() {
