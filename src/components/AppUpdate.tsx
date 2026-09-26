@@ -6,6 +6,7 @@ import { showModal } from "../dialog-compat";
 import {
   nativeUpdates,
   UpdateController,
+  startAutomaticUpdateChecks,
   updateBlocker,
   type UpdateService,
 } from "../app-update";
@@ -33,24 +34,7 @@ export function AppUpdate({
   const installing = state.stage === "installing";
   const working = downloading || installing;
   const available = !!state.release;
-  useEffect(() => {
-    let lastCheck = 0;
-    const check = () => {
-      lastCheck = Date.now();
-      void controller.check();
-    };
-    const initial = window.setTimeout(check, 20_000);
-    const interval = window.setInterval(check, 6 * 60 * 60 * 1000);
-    const focus = () => {
-      if (Date.now() - lastCheck > 6 * 60 * 60 * 1000) check();
-    };
-    window.addEventListener("focus", focus);
-    return () => {
-      clearTimeout(initial);
-      clearInterval(interval);
-      window.removeEventListener("focus", focus);
-    };
-  }, [controller]);
+  useEffect(() => startAutomaticUpdateChecks(controller), [controller]);
   useEffect(() => {
     if (open) showModal(ref.current);
   }, [open]);
@@ -81,7 +65,7 @@ export function AppUpdate({
         ) : (
           <ArrowDownToLine size={16} />
         )}
-        {available && <span className="update-dot" />}
+        {available && <span className="update-badge">Update</span>}
       </button>
       {open &&
         createPortal(
@@ -109,6 +93,20 @@ export function AppUpdate({
                 ? `ShellCanvas ${state.release!.version}`
                 : "Keep ShellCanvas up to date"}
             </h2>
+            <p className="app-update-schedule">
+              Checks automatically at launch and every 30 minutes while open.
+              {state.checkedAt !== undefined && (
+                <>
+                  {" "}
+                  Last check:{" "}
+                  {new Date(state.checkedAt).toLocaleTimeString(undefined, {
+                    hour: "2-digit",
+                    minute: "2-digit",
+                  })}
+                  .
+                </>
+              )}
+            </p>
             {state.stage === "checking" && (
               <p role="status">Checking for a signed update for this system…</p>
             )}

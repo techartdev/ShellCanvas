@@ -18,6 +18,7 @@ export type UpdateState = {
   release?: UpdateRelease;
   progress?: UpdateProgress;
   error?: string;
+  checkedAt?: number;
 };
 export interface UpdateService {
   check(): Promise<UpdateRelease | null>;
@@ -54,14 +55,19 @@ export class UpdateController {
     };
   };
   private set(state: UpdateState) {
-    this.state = state;
+    this.state = { checkedAt: this.state.checkedAt, ...state };
     this.listeners.forEach((listener) => listener());
   }
   async check() {
     if (this.busy) return;
     this.busy = true;
     const generation = ++this.generation;
-    this.set({ stage: "checking" });
+    const previousRelease = this.state.release;
+    this.set({
+      stage: "checking",
+      release: previousRelease,
+      checkedAt: Date.now(),
+    });
     try {
       const release = await this.service.check();
       if (generation === this.generation)
@@ -70,7 +76,11 @@ export class UpdateController {
         );
     } catch (error) {
       if (generation === this.generation)
-        this.set({ stage: "idle", error: String(error) });
+        this.set({
+          stage: previousRelease ? "available" : "idle",
+          release: previousRelease,
+          error: String(error),
+        });
     } finally {
       if (generation === this.generation) this.busy = false;
     }
@@ -120,6 +130,44 @@ export class UpdateController {
       this.set({ stage: "available", release, error });
     }
   }
+}
+
+export const UPDATE_CHECK_INTERVAL = 30 * 60 * 1000;
+export const UPDATE_RETRY_INTERVAL = 5 * 60 * 1000;
+
+/** Check at startup, while the app stays open, and after sleep/network recovery. */
+export function startAutomaticUpdateChecks(controller: UpdateController) {
+  const check = (networkRecovered = false) => {
+    // The webview's online flag is only a hint (VPNs can report false).
+    // Let the native updater determine whether the release server is reachable.
+    const state = controller.snapshot();
+    const interval = state.error
+      ? networkRecovered
+        ? 60_000
+        : UPDATE_RETRY_INTERVAL
+      : UPDATE_CHECK_INTERVAL;
+    if (
+      state.checkedAt === undefined ||
+      Date.now() - state.checkedAt >= interval
+    )
+      void controller.check();
+  };
+  const resume = () => check();
+  const online = () => check(true);
+  const visible = () => {
+    if (document.visibilityState === "visible") check();
+  };
+  check();
+  const timer = window.setInterval(resume, 60_000);
+  window.addEventListener("focus", resume);
+  window.addEventListener("online", online);
+  document.addEventListener("visibilitychange", visible);
+  return () => {
+    window.clearInterval(timer);
+    window.removeEventListener("focus", resume);
+    window.removeEventListener("online", online);
+    document.removeEventListener("visibilitychange", visible);
+  };
 }
 
 export function updateBlocker(

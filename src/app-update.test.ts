@@ -17,6 +17,26 @@ function fixture() {
   return { service, controller: new UpdateController(service) };
 }
 describe("desktop updates", () => {
+  it("keeps a known update visible while checking and after a failed recheck", async () => {
+    const { controller, service } = fixture();
+    await controller.check();
+    let reject!: (reason: string) => void;
+    service.check = vi.fn(
+      () =>
+        new Promise<typeof release | null>((_, fail) => {
+          reject = fail;
+        }),
+    );
+    const checking = controller.check();
+    expect(controller.snapshot()).toMatchObject({ stage: "checking", release });
+    reject("Offline");
+    await checking;
+    expect(controller.snapshot()).toMatchObject({
+      stage: "available",
+      release,
+      error: "Offline",
+    });
+  });
   it("detects without downloading or installing automatically", async () => {
     const { controller, service } = fixture();
     await controller.check();
