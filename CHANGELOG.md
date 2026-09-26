@@ -2,6 +2,18 @@
 
 Notable changes to ShellCanvas, newest first. Published SDK packages follow [semantic versioning](https://semver.org/), and desktop releases use the same version where practical. The project is pre-1.0, so a minor release may include breaking changes; those come with migration notes.
 
+## [0.1.14] - 2026-09-26
+
+### Added
+
+- Check for desktop updates at launch and periodically while the app stays open, with an indicator on the update icon when a release is available.
+- Show the local PC's network availability and current SSH host connection from the network status icon.
+
+### Fixed
+
+- Restore native window decorations on GNOME Wayland.
+- Read the current updater manifest asset when publishing additional platform builds, so later builds can extend the same release.
+
 ## [0.1.12] - 2026-09-23
 
 ### Added
