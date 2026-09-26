@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: MPL-2.0
 import { useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { Check } from "lucide-react";
+import { Check, type LucideIcon } from "lucide-react";
 
 export interface MenuAction {
   id: string;
   label: string;
+  icon?: LucideIcon;
   shortcut?: string;
   disabled?: boolean;
   separatorBefore?: boolean;
@@ -103,37 +104,47 @@ export function ContextMenu({
           role={group.name ? "group" : undefined}
           aria-label={group.name}
         >
-          {group.actions.map((action) => (
-            <button
-              role={
-                action.checked === undefined
-                  ? "menuitem"
-                  : action.checkType === "radio"
-                    ? "menuitemradio"
-                    : "menuitemcheckbox"
-              }
-              aria-checked={action.checked}
-              key={action.id}
-              disabled={action.disabled}
-              className={
-                action.separatorBefore ? "menu-group-start" : undefined
-              }
-              onClick={() => {
-                close();
-                action.run();
-              }}
-            >
-              <span className="context-menu-label">
-                {action.checked !== undefined && (
-                  <span className="menu-check" aria-hidden="true">
-                    {action.checked && <Check size={13} />}
-                  </span>
-                )}
-                {action.label}
-              </span>
-              <kbd>{action.shortcut}</kbd>
-            </button>
-          ))}
+          {group.actions.map((action) => {
+            const Icon = action.icon;
+            return (
+              <button
+                role={
+                  action.checked === undefined
+                    ? "menuitem"
+                    : action.checkType === "radio"
+                      ? "menuitemradio"
+                      : "menuitemcheckbox"
+                }
+                aria-checked={action.checked}
+                key={action.id}
+                disabled={action.disabled}
+                className={
+                  action.separatorBefore ? "menu-group-start" : undefined
+                }
+                onClick={() => {
+                  close();
+                  action.run();
+                }}
+              >
+                <span className="context-menu-label">
+                  {action.checked !== undefined && (
+                    <span className="menu-check" aria-hidden="true">
+                      {action.checked && <Check size={13} />}
+                    </span>
+                  )}
+                  {Icon && (
+                    <Icon
+                      className="menu-action-icon"
+                      size={16}
+                      aria-hidden="true"
+                    />
+                  )}
+                  {action.label}
+                </span>
+                <kbd>{action.shortcut}</kbd>
+              </button>
+            );
+          })}
         </div>
       ))}
     </div>,

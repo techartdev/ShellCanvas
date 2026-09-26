@@ -2,7 +2,35 @@
 import type { AppContext, Capability } from "../sdk";
 import { capabilityLabels, capabilityStatus } from "../sdk";
 import { useState } from "react";
+import {
+  ArrowDownToLine,
+  ArrowUpFromLine,
+  FilePenLine,
+  FilePlus2,
+  Files,
+  Folder,
+  FolderOpen,
+  FolderPlus,
+  Move,
+  Settings2,
+  SquareTerminal,
+  type LucideIcon,
+} from "lucide-react";
 import { RemoteSettings } from "../components/RemoteSettings";
+
+const toolIcons: Record<Capability, LucideIcon> = {
+  terminal: SquareTerminal,
+  "files.read": FolderOpen,
+  "files.edit": FilePenLine,
+  "files.create": FilePlus2,
+  "files.manage": Folder,
+  "files.move": Move,
+  "files.copy": Files,
+  "files.folders": FolderPlus,
+  "files.upload": ArrowUpFromLine,
+  "files.download": ArrowDownToLine,
+  "host.settings": Settings2,
+};
 
 export function HostDetails(context: AppContext) {
   const [tab, setTab] = useState<"overview" | "settings">("overview");
@@ -76,6 +104,7 @@ function HostOverview({ session, preview, connected = true }: AppContext) {
         aria-label="Workspace service availability"
       >
         {(Object.keys(capabilityLabels) as Capability[]).map((capability) => {
+          const Icon = toolIcons[capability];
           const status = capabilityStatus(session, capability);
           const state =
             !connected && status.state === "available"
@@ -83,6 +112,9 @@ function HostOverview({ session, preview, connected = true }: AppContext) {
               : status.state;
           return (
             <li key={capability} data-state={state}>
+              <span className="host-tool-icon" aria-hidden="true">
+                <Icon size={17} />
+              </span>
               <div>
                 <strong>{capabilityLabels[capability]}</strong>
                 <small>
@@ -95,7 +127,7 @@ function HostOverview({ session, preview, connected = true }: AppContext) {
                         : state)}
                 </small>
               </div>
-              <span>{state}</span>
+              <span className="host-tool-state">{state}</span>
             </li>
           );
         })}
