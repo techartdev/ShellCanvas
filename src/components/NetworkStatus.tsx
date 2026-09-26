@@ -90,10 +90,6 @@ export function NetworkStatus({
               <span>{hostStatus}</span>
             </dd>
           </dl>
-          <p>
-            Network availability is reported by this PC. It does not confirm
-            Internet access or Wi-Fi signal strength.
-          </p>
           {preview && <p>Host status uses sample data in design preview.</p>}
         </section>
       )}
