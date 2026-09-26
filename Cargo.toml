@@ -3,7 +3,7 @@ members = ["crates/filesystem-sdk", "crates/service-contracts", "crates/adapter-
 resolver = "2"
 
 # Released Tauri still requires Tao 0.35. Pin the upstream Windows keyboard
-# refactor, which removes the reentrant KEY_EVENT_BUILDERS lock (tao#1238).
-# Remove when Tauri accepts a Tao release containing this change.
+# refactor (tao#1238) and Wayland decoration fix (tao#1218).
+# Remove when Tauri accepts a Tao release containing both changes.
 [patch.crates-io]
-tao = { git = "https://github.com/tauri-apps/tao", rev = "87c46b52b4fc580cd79183f325cb6572ab689945" }
+tao = { git = "https://github.com/tauri-apps/tao", rev = "07f3742b1833b64be27b1ef991e38d557d4276c9" }
