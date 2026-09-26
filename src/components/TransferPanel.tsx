@@ -88,6 +88,7 @@ export function TransferPanel({
                       : "Transferring…"
               : {
                   queued: "Queued",
+                  reviewing: "Waiting for replacement choice",
                   canceling: "Canceling…",
                   "cancel-failed": "Cancel failed",
                   completed: "Completed",

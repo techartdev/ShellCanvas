@@ -22,6 +22,22 @@ pub async fn copy_regular_file(
     canceled: impl Fn() -> bool + Send,
     progress: &mut (dyn FnMut(CopyProgress) + Send),
 ) -> Result<FileLocation> {
+    copy_regular_file_with_replace(
+        service, path, revision, parent, name, None, canceled, progress,
+    )
+    .await
+}
+
+pub async fn copy_regular_file_with_replace(
+    service: Arc<dyn FileTransferService>,
+    path: &str,
+    revision: &str,
+    parent: &str,
+    name: &str,
+    replace_revision: Option<&str>,
+    canceled: impl Fn() -> bool + Send,
+    progress: &mut (dyn FnMut(CopyProgress) + Send),
+) -> Result<FileLocation> {
     let checkpoint = || -> Result<()> {
         if canceled() {
             bail!("Transfer canceled");
@@ -33,7 +49,10 @@ pub async fn copy_regular_file(
     let total = reader.file().size;
     let writer = async {
         checkpoint()?;
-        service.upload(parent, name, total).await
+        match replace_revision {
+            Some(expected) => service.upload_replace(parent, name, total, expected).await,
+            None => service.upload(parent, name, total).await,
+        }
     }
     .await;
     let mut writer = match writer {

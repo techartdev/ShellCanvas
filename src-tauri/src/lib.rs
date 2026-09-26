@@ -1022,6 +1022,7 @@ pub fn run() {
                 transfers::prepare_file_copy_selection,
                 transfers::system_clipboard_sequence,
                 transfers::prepare_file_copy,
+                transfers::transfer_conflicts,
                 transfers::run_transfer,
                 transfers::cancel_transfer,
                 open_terminal,

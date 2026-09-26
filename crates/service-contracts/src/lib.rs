@@ -58,6 +58,23 @@ pub trait TransferWriter: Send {
 }
 #[async_trait]
 pub trait FileTransferService: Send + Sync {
+    /// Optional destination inspection for explicit conflict review.
+    async fn destination_entry(&self, _parent: &str, _name: &str) -> Result<Option<FileEntry>> {
+        Ok(None)
+    }
+    /// A provider may offer revision-checked, atomic replacement of regular files.
+    fn supports_atomic_replace(&self) -> bool {
+        false
+    }
+    async fn upload_replace(
+        self: Arc<Self>,
+        _parent: &str,
+        _name: &str,
+        _size: u64,
+        _expected_revision: &str,
+    ) -> Result<Box<dyn TransferWriter>> {
+        anyhow::bail!("Safe file replacement is unavailable on this host")
+    }
     /// Inspect one selected entry without materializing its parent directory.
     async fn transfer_entry(self: Arc<Self>, path: &str, revision: &str) -> Result<FileEntry> {
         let mut reader = self.download(path, revision).await?;

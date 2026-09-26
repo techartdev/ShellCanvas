@@ -44,6 +44,14 @@ export interface TransferTicket {
   size: number;
   direction: "upload" | "download" | "copy" | "move";
 }
+export interface TransferConflictReview {
+  conflicts: { destination: FileEntry; sourceKind: string }[];
+  canReplace: boolean;
+}
+export interface TransferPolicy {
+  replace: { path: string; revision: string }[];
+  skip: { path: string; revision: string }[];
+}
 export function transferCapability(
   direction: TransferTicket["direction"],
 ): Capability {
@@ -330,7 +338,12 @@ export interface HostServices {
     id: number,
     onProgress: (event: TransferProgress) => void,
     tracked?: string[],
+    policy?: TransferPolicy,
   ): Promise<TransferOutcome>;
+  transferConflicts?(
+    sessionId: number,
+    id: number,
+  ): Promise<TransferConflictReview>;
   cancelTransfer(sessionId: number, id: number): Promise<void>;
   createText(
     sessionId: number,
@@ -456,7 +469,9 @@ export interface SessionServices {
   runTransfer(
     ticket: TransferTicket,
     onProgress: (event: TransferProgress) => void,
+    policy?: TransferPolicy,
   ): Promise<TransferOutcome>;
+  transferConflicts?(ticket: TransferTicket): Promise<TransferConflictReview>;
   cancelTransfer(id: number): Promise<void>;
   createText(parent: string, name: string, text: string): Promise<TextDocument>;
   makeDirectory(parent: string, name: string): Promise<string>;

@@ -4,6 +4,7 @@ import type {
   HostServices,
   Session,
   SessionServices,
+  TransferProgress,
   TransferTicket,
 } from "./sdk";
 import {
@@ -403,7 +404,21 @@ export function bindSession(
         null
       );
     },
-    runTransfer: async (ticket, onProgress) => {
+    transferConflicts: backend.transferConflicts
+      ? async (ticket) => {
+          const owned = tickets.get(ticket.id);
+          if (!owned)
+            throw new Error("Transfer does not belong to this workspace");
+          const expected = generation;
+          const result = await backend.transferConflicts!(
+            check(transferCapability(owned.direction)),
+            ticket.id,
+          );
+          check(transferCapability(owned.direction), expected);
+          return result;
+        }
+      : undefined,
+    runTransfer: async (ticket, onProgress, policy) => {
       const owned = tickets.get(ticket.id);
       if (!owned) throw new Error("Transfer does not belong to this workspace");
       if (cleanupTickets.has(ticket.id))
@@ -422,15 +437,19 @@ export function bindSession(
             fileClipboard(services).trackedPaths(),
           );
         dispatched = true;
-        const result = await backend.runTransfer(
-          id,
-          ticket.id,
-          (event) => {
-            if (valid(transferCapability(owned.direction), expected))
-              onProgress(event);
-          },
-          follow?.tracked,
-        );
+        const progress = (event: TransferProgress) => {
+          if (valid(transferCapability(owned.direction), expected))
+            onProgress(event);
+        };
+        const result = policy
+          ? await backend.runTransfer(
+              id,
+              ticket.id,
+              progress,
+              follow?.tracked,
+              policy,
+            )
+          : await backend.runTransfer(id, ticket.id, progress, follow?.tracked);
         // Interrupted folders can contain successfully completed children.
         if (owned.direction !== "download")
           mutationCompleted(

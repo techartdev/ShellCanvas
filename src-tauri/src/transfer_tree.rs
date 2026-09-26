@@ -261,6 +261,7 @@ pub(super) async fn execute_tree(
     service: Arc<dyn FileTransferService>,
     cancel: &watch::Receiver<bool>,
     progress: &mut (dyn FnMut(Progress) + Send),
+    policy: &TransferPolicy,
 ) -> Result<String> {
     let catalog = scan(
         tree,
@@ -270,7 +271,7 @@ pub(super) async fn execute_tree(
         progress,
     )
     .await?;
-    execute_catalog(catalog, target, service, cancel, progress, None).await
+    execute_catalog(catalog, target, service, cancel, progress, None, policy).await
 }
 
 pub(super) async fn execute_selection(
@@ -279,6 +280,7 @@ pub(super) async fn execute_selection(
     service: Arc<dyn FileTransferService>,
     cancel: &watch::Receiver<bool>,
     progress: &mut (dyn FnMut(Progress) + Send),
+    policy: &TransferPolicy,
 ) -> Result<String> {
     if catalog.has_directories()? && !service.supports_folders() {
         bail!("Folder transfers are unavailable on this device");
@@ -292,6 +294,7 @@ pub(super) async fn execute_selection(
         cancel,
         progress,
         destination,
+        policy,
     )
     .await
 }
@@ -348,6 +351,7 @@ pub(super) async fn execute_download_selection(
         cancel,
         progress,
         destination,
+        &TransferPolicy::default(),
     )
     .await
 }
@@ -359,6 +363,7 @@ async fn execute_catalog(
     cancel: &watch::Receiver<bool>,
     progress: &mut (dyn FnMut(Progress) + Send),
     selection_destination: Option<String>,
+    policy: &TransferPolicy,
 ) -> Result<String> {
     if let Target::Remote(parent) = &target {
         if catalog.has_directories()? && !service.supports_folders() {
@@ -370,11 +375,17 @@ async fn execute_catalog(
     }
     let mut root = None;
     let mut completed = 0;
+    let mut approved = std::collections::HashSet::new();
+    let mut skipped = std::collections::HashSet::new();
     let total = catalog.size();
     let work: Result<String> = async {
         for id in 1..=catalog.len() {
             checkpoint(cancel)?;
             let node = catalog.get(id)?;
+            if skipped.contains(&node.parent) {
+                skipped.insert(id);
+                continue;
+            }
             let parent = if node.parent == 0 {
                 match &target {
                     Target::Remote(parent) => parent.clone(),
@@ -391,10 +402,38 @@ async fn execute_catalog(
                 }
                 Target::Remote(_) => None,
             };
+            let existing = if destination.is_none() {
+                service.destination_entry(&parent, &node.entry.name).await?
+            } else {
+                None
+            };
+            if let Some(existing) = &existing {
+                if node.parent == 0 && policy.skip(existing)? {
+                    skipped.insert(id);
+                    continue;
+                }
+                if node.parent == 0 {
+                    if policy.replacement(existing)?.is_none() {
+                        bail!("An item already exists at this destination. Nothing was replaced.");
+                    }
+                    approved.insert(id);
+                } else if !approved.contains(&node.parent) {
+                    bail!("A new destination conflict appeared during transfer. Nothing was replaced.");
+                }
+                if existing.kind != node.entry.kind ||
+                    (existing.kind == "file" && !service.supports_atomic_replace()) {
+                    bail!("Safe replacement is unavailable for this destination item");
+                }
+            }
+            if node.parent != 0 && approved.contains(&node.parent) {
+                approved.insert(id);
+            }
             let path = if node.entry.kind == "directory" {
                 if let Some(destination) = destination {
                     std::fs::create_dir(&destination)?;
                     destination.canonicalize()?.to_string_lossy().into_owned()
+                } else if let Some(existing) = &existing {
+                    existing.path.clone()
                 } else {
                     service
                         .transfer_mkdir(&parent, &node.entry.name)
@@ -426,14 +465,20 @@ async fn execute_catalog(
                         name: node.entry.name.clone(),
                     }
                 };
-                let path = Box::pin(super::execute(job, service.clone(), cancel, &mut |event| {
+                let node_policy = TransferPolicy {
+                    replace: existing.iter().map(|entry| ReviewedConflict {
+                        path: entry.path.clone(), revision: entry.revision.clone(),
+                    }).collect(),
+                    skip: Vec::new(),
+                };
+                let path = Box::pin(super::execute_with_policy(job, service.clone(), cancel, &mut |event| {
                     progress(Progress {
                         items: None,
                         bytes: completed + event.bytes,
                         total,
                         phase: "running",
                     })
-                }))
+                }, &node_policy))
                 .await?;
                 completed += node.entry.size;
                 path

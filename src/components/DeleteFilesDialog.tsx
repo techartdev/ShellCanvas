@@ -8,12 +8,14 @@ import { deleteFiles, type DeleteResult } from "../file-delete";
 import "./FileActionDialog.css";
 export function DeleteFilesDialog({
   entries,
+  parent,
   services,
   available,
   close,
   setBusy,
 }: {
   entries: readonly Readonly<FileEntry>[];
+  parent: string;
   services: SessionServices;
   available: boolean;
   close(): void;
@@ -30,6 +32,8 @@ export function DeleteFilesDialog({
   const [finished, setFinished] = useState(false);
   const [results, setResults] = useState<DeleteResult[]>([]);
   const [error, setError] = useState("");
+  const [recursive, setRecursive] = useState(false);
+  const hasFolders = entries.some((entry) => entry.kind === "directory");
   if (started.current && !available) stop.current = true;
   useEffect(() => {
     live.current = true;
@@ -55,6 +59,7 @@ export function DeleteFilesDialog({
         (result) => {
           if (live.current) setResults((old) => [...old, result]);
         },
+        { recursive, parent },
       );
     } catch (error) {
       if (live.current) setError(String(error));
@@ -70,6 +75,7 @@ export function DeleteFilesDialog({
     (result) => result.status === "deleted",
   ).length;
   const failed = results.find((result) => result.status === "failed");
+  const partial = results.find((result) => result.status === "partial");
   return createPortal(
     <dialog
       className="file-action-dialog batch-delete-dialog"
@@ -88,9 +94,22 @@ export function DeleteFilesDialog({
         {finished ? "Deletion results" : `Delete ${entries.length} items?`}
       </h2>
       <p className="file-action-description">
-        Files, links and empty folders are deleted permanently. Link targets are
-        kept. There is no trash or undo. Processing stops at the first failure.
+        Files and links are deleted permanently. Link targets are kept. There is
+        no trash or undo. Processing stops at the first failure.
       </p>
+      {hasFolders && !finished && (
+        <label className="delete-folder-option">
+          <input
+            type="checkbox"
+            checked={recursive}
+            disabled={working}
+            onChange={(event) => setRecursive(event.target.checked)}
+          />
+          <span>
+            Delete folder contents too, including nested files and folders
+          </span>
+        </label>
+      )}
       <ul className="batch-delete-list" aria-label="Items to delete">
         {entries.map((entry, index) => {
           const result = results[index];
@@ -103,24 +122,28 @@ export function DeleteFilesDialog({
               <em>
                 {result?.status === "deleted"
                   ? "Deleted"
-                  : result?.status === "failed"
-                    ? "Not confirmed"
-                    : working && index === results.length
-                      ? "Deleting…"
-                      : finished
-                        ? "Not attempted"
-                        : entry.kind === "directory"
-                          ? "Empty folder only"
-                          : entry.kind}
+                  : result?.status === "partial"
+                    ? "Partially deleted"
+                    : result?.status === "failed"
+                      ? "Not confirmed"
+                      : working && index === results.length
+                        ? "Deleting…"
+                        : finished
+                          ? "Not attempted"
+                          : entry.kind === "directory"
+                            ? recursive
+                              ? "Folder and contents"
+                              : "Empty folder only"
+                            : entry.kind}
               </em>
             </li>
           );
         })}
       </ul>
-      {(error || failed) && (
+      {(error || failed || partial?.error) && (
         <div className="inline-error" role="alert">
           {error ||
-            `${failed!.entry.name}: ${failed!.error} Verify this item's remote state before retrying.`}
+            `${(failed || partial)!.entry.name}: ${(failed || partial)!.error} Verify this item's remote state before retrying.`}
         </div>
       )}
       {!available && (
@@ -131,7 +154,7 @@ export function DeleteFilesDialog({
       )}
       <p role="status" className="file-action-description">
         {finished
-          ? `${deleted} deleted${failed ? " · 1 not confirmed" : ""} · ${entries.length - results.length} not attempted`
+          ? `${deleted} deleted${failed ? " · 1 not confirmed" : ""}${partial ? " · 1 partially deleted" : ""} · ${entries.length - results.length} not attempted`
           : working
             ? `${deleted} of ${entries.length} deleted${stopping ? " · Stopping after the current item…" : ""}`
             : "Review the selected names and locations before deleting."}
