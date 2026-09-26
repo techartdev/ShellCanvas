@@ -1,0 +1,68 @@
+.network-status {
+  position: relative;
+}
+.network-status-button,
+.network-status-heading button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  color: inherit;
+  cursor: pointer;
+}
+.network-status-button:hover,
+.network-status-button[aria-expanded="true"],
+.network-status-heading button:hover {
+  background: var(--sc-raised, #303136);
+}
+.network-status-button.offline {
+  color: var(--sc-muted, #a3a3ad);
+}
+.network-status-panel {
+  position: absolute;
+  z-index: 100;
+  top: calc(100% + 10px);
+  right: 0;
+  width: min(300px, calc(100vw - 32px));
+  padding: 16px;
+  border: 1px solid var(--sc-border, #45464d);
+  border-radius: 12px;
+  background: var(--sc-surface, #242426);
+  color: var(--sc-text, #eeeef0);
+  box-shadow: 0 12px 32px #0004;
+  font-size: 13px;
+}
+.network-status-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.network-status-panel dl {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 12px;
+  margin: 14px 0;
+}
+.network-status-panel dt,
+.network-status-panel p {
+  color: var(--sc-muted, #a3a3ad);
+}
+.network-status-panel dd {
+  margin: 0;
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+.network-host-name {
+  display: block;
+  margin-bottom: 3px;
+}
+.network-status-panel p {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.5;
+}

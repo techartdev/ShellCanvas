@@ -19,7 +19,6 @@ import {
   Server,
   Settings2,
   ShieldCheck,
-  Wifi,
   X,
 } from "lucide-react";
 import { apps as bundledApps } from "./apps/registry";
@@ -80,6 +79,7 @@ import { SystemDialogHost } from "./components/SystemDialogHost";
 import { AppLauncher } from "./components/AppLauncher";
 import { AppIcon } from "./components/AppIcon";
 import { AppUpdate } from "./components/AppUpdate";
+import { NetworkStatus } from "./components/NetworkStatus";
 const defaultServices = native ? nativeServices : previewServices;
 export default function App({
   services = defaultServices,
@@ -1109,7 +1109,11 @@ export default function App({
                   ? "Disconnected workspace"
                   : "Local workspace"}
           </span>
-          <Wifi size={15} />
+          <NetworkStatus
+            hostName={session ? label : undefined}
+            connected={connected}
+            preview={!isNative}
+          />
           {isNative && (
             <AppUpdate
               dirty={hasUnsaved}
