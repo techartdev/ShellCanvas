@@ -19,13 +19,14 @@ Notable changes to ShellCanvas, newest first. Published SDK packages follow [sem
 
 ### Fixed
 
+- Give stock Adwaita's native title bar on GNOME Wayland a flat header and round window buttons, with light/dark tracking. Keep GTK's native window controls and leave custom themes, high contrast and X11 decorations unchanged.
 - Prompt before replacing existing files during clipboard uploads and copies, with per-item decisions and an apply-to-all option. Merge folders while preserving unrelated contents.
 - Allow deleting non-empty folders after explicit confirmation.
 - Forward conflict reviews and replacement decisions through app-scoped file services, fixing clipboard transfers that still failed when destinations existed.
 
 ### Release validation pending
 
-- The Fedora 44 / GNOME 50 reporter's Follow system comparison shows the ShellCanvas toolbar using light mode. The outer Wayland title bar still differs from the expected appearance; issue #27 remains open and this release does not claim to resolve that styling difference.
+- The GNOME Wayland title-bar compatibility fix for issue #27 still needs visual confirmation on the reporter's Fedora 44 / GNOME 50 setup before the issue is closed.
 - The FTP adapter currently supports browsing, text preview and downloads; uploads and file changes are not supported by that adapter.
 - Database and Assistant package icons are separate companion-app updates and require their own reviewed package releases.
 
