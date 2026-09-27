@@ -69,6 +69,7 @@ impl AdapterConnectionOptions {
     }
 }
 #[tauri::command]
+#[allow(clippy::too_many_arguments)] // Tauri injects app/state/window beside the connection request.
 pub async fn connect_adapters(
     options: AdapterConnectionOptions,
     saved_profile_id: Option<String>,

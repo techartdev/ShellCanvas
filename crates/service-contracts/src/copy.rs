@@ -28,6 +28,8 @@ pub async fn copy_regular_file(
     .await
 }
 
+// Keep the original helper's call shape while adding the destination revision guard.
+#[allow(clippy::too_many_arguments)]
 pub async fn copy_regular_file_with_replace(
     service: Arc<dyn FileTransferService>,
     path: &str,
