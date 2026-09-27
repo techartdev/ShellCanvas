@@ -32,6 +32,8 @@ mod extension_frames;
 #[cfg(debug_assertions)]
 mod extension_probe;
 mod host_trust;
+#[cfg(any(target_os = "linux", test))]
+mod linux_decorations;
 mod local_mounts;
 mod native_ipc;
 mod prepared_source;
@@ -1006,6 +1008,16 @@ pub fn run() {
         .plugin(extension_frames::plugin())
         .manage(extension_frames::FrameDocuments::default())
         .setup(|app| {
+            #[cfg(target_os = "linux")]
+            if let Some(window) = app.get_webview_window("main") {
+                use gtk::prelude::Cast;
+                // Cosmetic compatibility must never prevent the desktop from opening.
+                if let Ok(native) = window.gtk_window() {
+                    if let Err(error) = linux_decorations::install(native.upcast_ref()) {
+                        eprintln!("Could not style the native title bar: {error}");
+                    }
+                }
+            }
             #[cfg(desktop)]
             {
                 app.handle()

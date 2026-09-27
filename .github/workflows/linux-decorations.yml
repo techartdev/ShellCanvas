@@ -1,0 +1,61 @@
+name: Verify GNOME Wayland decorations
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'src-tauri/src/linux_decorations*'
+      - 'src-tauri/src/lib.rs'
+      - 'src-tauri/Cargo.toml'
+      - '.github/workflows/linux-decorations.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: linux-decorations-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  native-decorations:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      CARGO_PROFILE_DEV_DEBUG: 0
+      CARGO_PROFILE_TEST_DEBUG: 0
+      CARGO_INCREMENTAL: 0
+      CARGO_BUILD_JOBS: 2
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - name: Linux dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev libssl-dev libsecret-1-dev weston dbus-x11
+      - name: Build native regression tests
+        run: cargo test -p shellcanvas --lib linux_decorations --locked --no-run
+      - name: Exercise GTK's actual Wayland decorations
+        run: |
+          export XDG_RUNTIME_DIR="$(mktemp -d)"
+          chmod 700 "$XDG_RUNTIME_DIR"
+          export WAYLAND_DISPLAY=wayland-shellcanvas
+          export GDK_BACKEND=wayland
+          export XDG_CURRENT_DESKTOP=GNOME
+          export SC_DECORATION_SNAPSHOTS="$PWD/decoration-snapshots"
+          unset GTK_THEME
+          weston --backend=headless-backend.so --socket="$WAYLAND_DISPLAY" --idle-time=0 --width=1280 --height=720 > weston.log 2>&1 &
+          weston_pid=$!
+          trap 'kill "$weston_pid" || true' EXIT
+          for attempt in $(seq 1 50); do
+            test -S "$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY" && break
+            sleep 0.1
+          done
+          test -S "$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY"
+          dbus-run-session -- cargo test -p shellcanvas --lib linux_decorations --locked -- --include-ignored --test-threads=1 --nocapture
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: wayland-decoration-comparison
+          path: |
+            decoration-snapshots/
+            weston.log

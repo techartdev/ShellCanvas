@@ -1,0 +1,52 @@
+/* SPDX-License-Identifier: MPL-2.0
+ * GTK 3 CSS, scoped to ShellCanvas on GNOME Wayland with stock Adwaita.
+ * Keep native geometry and behavior, with the flat header and round controls
+ * used by GNOME's modern frames. User CSS has higher priority than this sheet.
+ */
+window.sc-gnome-frame headerbar.titlebar {
+    background-image: none;
+    background-color: #ffffff;
+    color: #2e3436;
+    border-bottom-color: rgba(0, 0, 0, 0.12);
+    box-shadow: none;
+    text-shadow: none;
+    -gtk-icon-shadow: none;
+}
+window.sc-gnome-frame headerbar.titlebar:backdrop {
+    background-color: #fafafa;
+    color: #929595;
+}
+window.sc-gnome-frame headerbar.titlebar button.titlebutton {
+    border-radius: 999px;
+    border-color: transparent;
+    background-image: none;
+    background-color: rgba(0, 0, 0, 0.06);
+    box-shadow: none;
+    text-shadow: none;
+    -gtk-icon-shadow: none;
+    color: inherit;
+}
+window.sc-gnome-frame headerbar.titlebar button.titlebutton:hover {
+    background-color: rgba(0, 0, 0, 0.12);
+}
+window.sc-gnome-frame headerbar.titlebar button.titlebutton:active {
+    background-color: rgba(0, 0, 0, 0.18);
+}
+window.sc-gnome-frame-dark headerbar.titlebar {
+    background-color: #303030;
+    color: #ffffff;
+    border-bottom-color: rgba(0, 0, 0, 0.36);
+}
+window.sc-gnome-frame-dark headerbar.titlebar:backdrop {
+    background-color: #242424;
+    color: #999999;
+}
+window.sc-gnome-frame-dark headerbar.titlebar button.titlebutton {
+    background-color: rgba(255, 255, 255, 0.1);
+}
+window.sc-gnome-frame-dark headerbar.titlebar button.titlebutton:hover {
+    background-color: rgba(255, 255, 255, 0.16);
+}
+window.sc-gnome-frame-dark headerbar.titlebar button.titlebutton:active {
+    background-color: rgba(255, 255, 255, 0.22);
+}
