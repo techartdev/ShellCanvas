@@ -597,6 +597,12 @@ button:active:not(:disabled) {
   width: min(52.307692rem, var(--initial-window-width));
   height: min(38.461538rem, var(--initial-window-height));
 }
+.app-window[data-app-id="host-details"].window-standard:not(.maximized):not(
+    .tiled
+  ) {
+  width: min(44rem, var(--initial-window-width));
+  height: min(34rem, var(--initial-window-height));
+}
 .app-surface {
   display: flex;
   flex-direction: column;
@@ -604,26 +610,26 @@ button:active:not(:disabled) {
   min-height: 0;
 }
 .host-details-app {
-  padding: 2.153846rem;
+  padding: 1.538462rem;
   overflow: auto;
 }
 .host-details-app h2 {
-  margin: 0.615385rem 0;
+  margin: 0.461538rem 0;
   font-weight: 500;
-  font-size: 1.923077rem;
+  font-size: 1.615385rem;
 }
 .host-details-app > p {
   color: var(--sc-muted, #9eb6c3);
   line-height: 1.6;
 }
 .host-details-app dl {
-  margin: 1.846154rem 0;
+  margin: 1.076923rem 0 1.461538rem;
 }
 .host-details-app dl > div {
   display: grid;
-  grid-template-columns: 8.461538rem minmax(0, 1fr);
+  grid-template-columns: 7.307692rem minmax(0, 1fr);
   gap: 1.230769rem;
-  padding: 1rem 0;
+  padding: 0.692308rem 0;
   border-bottom: 1px solid var(--sc-border, #9ab9c01c);
 }
 .host-details-app dt {
@@ -637,23 +643,32 @@ button:active:not(:disabled) {
   padding: 0;
   margin: 0.923077rem 0 1.538462rem;
   list-style: none;
-  border: 1px solid var(--sc-border, #a1c5d218);
-  border-radius: 0.769231rem;
-  overflow: hidden;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 15rem), 1fr));
+  gap: 0.692308rem;
 }
 .bottom-status.partial-status {
   color: var(--sc-warning, #e7c993);
 }
 .service-status-list li {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.923077rem;
-  padding: 0.769231rem 0.923077rem;
+  display: grid;
+  grid-template-columns: 2rem minmax(0, 1fr);
+  column-gap: 0.692308rem;
+  align-content: start;
+  min-height: 6rem;
+  padding: 0.923077rem;
   background: var(--sc-hover, #10202a35);
+  border: 1px solid var(--sc-border, #a1c5d228);
+  border-radius: 0.692308rem;
 }
-.service-status-list li + li {
-  border-top: 1px solid var(--sc-border, #a1c5d210);
+.service-status-list .host-tool-icon {
+  display: grid;
+  place-items: center;
+  width: 2rem;
+  height: 2rem;
+  border-radius: 0.538462rem;
+  color: var(--sc-accent, #b4dbca);
+  background: var(--sc-selection, #9bc8b518);
 }
 .service-status-list strong {
   display: block;
@@ -667,17 +682,19 @@ button:active:not(:disabled) {
   margin-top: 0.230769rem;
   overflow-wrap: anywhere;
 }
-.service-status-list li > span {
+.service-status-list .host-tool-state {
+  grid-column: 2;
+  justify-self: start;
+  margin-top: 0.615385rem;
   color: var(--sc-muted, #9caeba);
   font-size: 0.769231rem;
   text-transform: capitalize;
-  flex-shrink: 0;
 }
-.service-status-list li[data-state="available"] > span {
+.service-status-list li[data-state="available"] .host-tool-state {
   color: var(--sc-accent, #a3ddc5);
 }
-.service-status-list li[data-state="disconnected"] > span,
-.service-status-list li[data-state="denied"] > span {
+.service-status-list li[data-state="disconnected"] .host-tool-state,
+.service-status-list li[data-state="denied"] .host-tool-state {
   color: var(--sc-warning, #e7c993);
 }
 .capability-list {
@@ -1342,6 +1359,11 @@ button:active:not(:disabled) {
   font-size: 0.769231rem;
   color: var(--sc-muted, #98adbb);
 }
+.context-menu .menu-action-icon {
+  flex: 0 0 auto;
+  margin-right: 0.538462rem;
+  color: var(--sc-muted, #a9bcc4);
+}
 .app-empty {
   display: flex;
   align-items: center;
@@ -1685,7 +1707,7 @@ button:active:not(:disabled) {
   width: min(35.384615rem, calc(100vw - 3.076923rem));
   min-width: 0;
   max-width: 100%;
-  padding: 2.461538rem 2.769231rem 2.076923rem;
+  padding: 1.846154rem 2.769231rem 2.076923rem;
   background: linear-gradient(
     145deg,
     var(--sc-raised, #283d47),
@@ -1704,8 +1726,8 @@ button:active:not(:disabled) {
   top: 1.076923rem;
 }
 .connection-emblem {
-  width: 4.230769rem;
-  height: 4.230769rem;
+  width: 3.846154rem;
+  height: 3.846154rem;
   border: 1px solid var(--sc-border, #c6e2d322);
   border-radius: 1.153846rem;
   display: grid;
@@ -1718,7 +1740,7 @@ button:active:not(:disabled) {
   color: var(--sc-accent, #bbd6ca);
   position: relative;
   box-shadow: 0 0.461538rem 1.153846rem rgba(var(--sc-shadow-rgb), 0.2);
-  margin-bottom: 1.692308rem;
+  margin-bottom: 1.153846rem;
 }
 .connection-emblem > span {
   position: absolute;
@@ -1749,7 +1771,7 @@ button:active:not(:disabled) {
   color: var(--sc-muted, #96b0bc);
   line-height: 1.7;
   margin-top: 0.692308rem;
-  margin-bottom: 1.923077rem;
+  margin-bottom: 1.307692rem;
 }
 .connect-dialog fieldset {
   padding: 0;

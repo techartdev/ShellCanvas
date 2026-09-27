@@ -11,7 +11,9 @@ import {
 import {
   ArrowLeft,
   ArrowDown,
+  ArrowRight,
   ArrowUp,
+  CheckCheck,
   ChevronRight,
   Eye,
   FileCode2,
@@ -31,6 +33,10 @@ import {
   Scissors,
   ClipboardPaste,
   Copy,
+  ListFilter,
+  Trash2,
+  TerminalSquare,
+  type LucideIcon,
 } from "lucide-react";
 import type {
   AppContext,
@@ -71,6 +77,53 @@ import { terminalDirectoryFor } from "../terminal-directory";
 import { capabilityOperationReason } from "../sdk";
 import { scanDirectory } from "../directory-scan";
 import { useVirtualRows } from "../components/useVirtualRows";
+
+const fileMenuIcons: Record<string, LucideIcon> = {
+  "open-terminal": TerminalSquare,
+  upload: Upload,
+  "attach-drive": HardDrive,
+  "upload-folder": FolderPlus,
+  download: Download,
+  "download-files": Download,
+  "copy-clipboard": Copy,
+  "copy-files": Copy,
+  "copy-file": Copy,
+  mkdir: FolderPlus,
+  "new-file": FileText,
+  edit: FileText,
+  open: Eye,
+  "new-window": Folder,
+  "pin-to-desktop": Home,
+  "copy-name": Copy,
+  "copy-names": Copy,
+  "copy-path": Copy,
+  "copy-paths": Copy,
+  "copy-folder": Copy,
+  cut: Scissors,
+  rename: FileText,
+  move: ArrowRight,
+  delete: Trash2,
+  "delete-selection": Trash2,
+  "paste-move": ClipboardPaste,
+  back: ArrowLeft,
+  parent: ArrowUp,
+  refresh: RefreshCw,
+  "clipboard-path": ClipboardPaste,
+  "sort-view": ListFilter,
+  "select-all": CheckCheck,
+  "clear-selection": X,
+  "hidden-files": Eye,
+  "sort-name": ListFilter,
+  "sort-modified": ListFilter,
+  "sort-size": ListFilter,
+  ascending: ArrowUp,
+  descending: ArrowDown,
+  filesFoldersFirst: Folder,
+  filesShowHidden: Eye,
+  filesCompact: ListFilter,
+};
+const withFileIcons = (actions: MenuAction[]): MenuAction[] =>
+  actions.map((action) => ({ ...action, icon: fileMenuIcons[action.id] }));
 function size(bytes: number) {
   return bytes >= 1024 * 1024
     ? `${(bytes / 1048576).toFixed(1)} MB`
@@ -1049,7 +1102,7 @@ export function Files({
       },
     };
     if (selectedEntries.length > 1)
-      return [
+      return withFileIcons([
         terminalAction,
         {
           id: "copy-files",
@@ -1117,8 +1170,8 @@ export function Files({
             if (menu) setMenu({ x: menu.x, y: menu.y, sort: true });
           },
         },
-      ];
-    return [
+      ]);
+    return withFileIcons([
       terminalAction,
       {
         id: "upload",
@@ -1360,7 +1413,7 @@ export function Files({
         run: () =>
           setPreference("filesShowHidden", !preferences.filesShowHidden),
       },
-    ];
+    ]);
   }
   function sortBy(key: typeof preferences.filesSort) {
     if (key === preferences.filesSort)
@@ -1368,7 +1421,7 @@ export function Files({
     else setPreference("filesSort", key);
   }
   function sortActions(): MenuAction[] {
-    return [
+    return withFileIcons([
       ...(["name", "modified", "size"] as const).map((key) => ({
         id: `sort-${key}`,
         label: { name: "Name", modified: "Modified", size: "Size" }[key],
@@ -1402,7 +1455,7 @@ export function Files({
         disabled: preferencesBlocked,
         run: () => setPreference(key, !preferences[key]),
       })),
-    ];
+    ]);
   }
   return (
     <div

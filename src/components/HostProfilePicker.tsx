@@ -92,31 +92,46 @@ export function HostProfilePicker({
       }}
     >
       <span className="host-picker-label">Your hosts</span>
-      <button
-        ref={trigger}
-        type="button"
-        className="host-picker-trigger"
-        disabled={disabled}
-        aria-label="Choose host profile"
-        aria-expanded={open}
-        aria-controls={open ? id : undefined}
-        onClick={() => {
-          setOpen(!open);
-          setQuery("");
-          setActive(0);
-        }}
-      >
-        <Server size={16} />
-        <span>
-          <strong>{selected?.name || "New host"}</strong>
-          <small>
-            {selected
-              ? `${selected.username}@${selected.host}:${selected.port}`
-              : "Add a connection to your workspace"}
-          </small>
-        </span>
-        <ChevronDown size={15} />
-      </button>
+      <div className="host-picker-row">
+        <button
+          ref={trigger}
+          type="button"
+          className="host-picker-trigger"
+          disabled={disabled}
+          aria-label="Choose host profile"
+          aria-expanded={open}
+          aria-controls={open ? id : undefined}
+          onClick={() => {
+            setOpen(!open);
+            setQuery("");
+            setActive(0);
+          }}
+        >
+          <Server size={16} />
+          <span>
+            <strong>{selected?.name || "New host"}</strong>
+            <small>
+              {selected
+                ? `${selected.username}@${selected.host}:${selected.port}`
+                : "Add a connection to your workspace"}
+            </small>
+          </span>
+          <ChevronDown size={15} />
+        </button>
+        <button
+          type="button"
+          className="host-picker-new"
+          aria-label="New host"
+          title="New host"
+          disabled={disabled}
+          onClick={() => {
+            setOpen(false);
+            onChange("");
+          }}
+        >
+          <Plus size={19} />
+        </button>
+      </div>
       {open && (
         <div id={id} className="host-picker-panel">
           <div className="host-picker-search">
@@ -226,12 +241,7 @@ export function HostProfilePicker({
             </p>
           )}
           <div className="host-picker-bottom">
-            <span>
-              {matches.length} of {profiles.length} hosts
-            </span>
-            <button type="button" onClick={() => choose("")}>
-              <Plus size={14} /> New host
-            </button>
+            {matches.length} of {profiles.length} hosts
           </div>
         </div>
       )}
