@@ -260,7 +260,7 @@ function createNativeServices(pins?: SourcePins): HostServices {
     readText: (sessionId, path) => invoke("read_text", { sessionId, path }),
     saveText: (sessionId, path, text, revision, allowNonAtomic) =>
       invoke("save_text", { sessionId, path, text, revision, allowNonAtomic }),
-    terminal: async (sessionId, cols, rows, onEvent) => {
+    terminal: async (sessionId, cols, rows, onEvent, terminalDirectory) => {
       const channel = new Channel<
         TerminalEvent & { sequence?: number | null }
       >();
@@ -303,6 +303,7 @@ function createNativeServices(pins?: SourcePins): HostServices {
         cols,
         rows,
         onEvent: channel,
+        terminalDirectory,
       });
       const { id: terminalId, resizable } = await opening;
       // Preserve input ordering across IPC calls, including large pasted text.

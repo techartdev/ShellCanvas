@@ -330,6 +330,15 @@ impl Connection {
     }
 
     pub async fn terminal(&self, cols: u32, rows: u32) -> Result<Channel<client::Msg>> {
+        self.terminal_command(cols, rows, None).await
+    }
+
+    pub(crate) async fn terminal_command(
+        &self,
+        cols: u32,
+        rows: u32,
+        command: Option<&str>,
+    ) -> Result<Channel<client::Msg>> {
         timeout(OP_TIMEOUT, async {
             let mut channel = self.handle.channel_open_session().await?;
             channel
@@ -344,7 +353,11 @@ impl Connection {
                 )
                 .await?;
             wait_for_acceptance(&mut channel, "PTY allocation").await?;
-            channel.request_shell(true).await?;
+            if let Some(command) = command {
+                channel.exec(true, command).await?;
+            } else {
+                channel.request_shell(true).await?;
+            }
             wait_for_acceptance(&mut channel, "interactive shell").await?;
             Ok(channel)
         })

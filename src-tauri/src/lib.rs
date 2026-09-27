@@ -449,7 +449,10 @@ async fn prepare_ssh(
         clock,
     );
     let mut source = prepared_source::PreparedSource::new(resource, info)?;
-    source.terminal = Some(connection);
+    source.terminal = Some(Arc::new(shellcanvas_core::terminal::SshTerminal {
+        connection,
+        provider: source.info.provider.clone(),
+    }));
     source.files = files;
     source.text = text;
     source.mutations = mutations;
@@ -819,21 +822,37 @@ async fn open_terminal(
     binding: Option<ConnectionIdentity>,
     cols: u32,
     rows: u32,
+    terminal_directory: Option<TerminalDirectory>,
     on_event: Channel<TerminalDelivery>,
     state: State<'_, DesktopState>,
 ) -> Result<OpenedTerminal, String> {
-    let terminal = session_service(
-        &state,
-        session_id,
-        binding.as_ref(),
-        ServiceRole::Console,
-        |s| s.terminal.clone(),
-    )
-    .await?;
-    let stream = tokio::time::timeout(OP_TIMEOUT, terminal.open(TerminalSize::new(cols, rows)))
-        .await
-        .map_err(error)?
-        .map_err(error)?;
+    let terminal = if let Some(directory) = &terminal_directory {
+        let guard = state.registry.lock().await;
+        let active = guard
+            .sessions
+            .get(&session_id)
+            .ok_or("This host session is no longer connected")?;
+        active.directory_terminal(&directory.source, binding.as_ref())?
+    } else {
+        session_service(
+            &state,
+            session_id,
+            binding.as_ref(),
+            ServiceRole::Console,
+            |s| s.terminal.clone(),
+        )
+        .await?
+    };
+    let stream = tokio::time::timeout(OP_TIMEOUT, async {
+        let size = TerminalSize::new(cols, rows);
+        match terminal_directory {
+            Some(directory) => terminal.open_directory(size, &directory.path).await,
+            None => terminal.open(size).await,
+        }
+    })
+    .await
+    .map_err(error)?
+    .map_err(error)?;
     let (send, recv) = mpsc::channel(128);
     let resizable = stream.resizable;
     let gate = Arc::new(terminals::OutputGate::default());
@@ -864,6 +883,12 @@ async fn open_terminal(
         registry.lock().await.close_terminal(session_id, id);
     });
     Ok(OpenedTerminal { id, resizable })
+}
+
+#[derive(serde::Deserialize)]
+struct TerminalDirectory {
+    path: String,
+    source: ConnectionIdentity,
 }
 
 #[tauri::command]

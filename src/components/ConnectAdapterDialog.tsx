@@ -14,6 +14,7 @@ import {
 import "./ConnectAdapterDialog.css";
 import { AdapterDiagnosticsPanel } from "./AdapterDiagnosticsPanel";
 import { HostKeyReviewPanel } from "./HostKeyReviewPanel";
+import { ConnectionCheckbox } from "./ConnectionCheckbox";
 import type { HostKeyChallenge } from "../sdk";
 const standardRoles: Record<string, string> = {
   files: "Files",
@@ -315,6 +316,7 @@ export function ConnectAdapterDialog({
           ? "Workspace and credentials saved on this PC."
           : "Workspace saved without credentials. Enter passwords or save them in the system store.",
       );
+      return result;
     } catch (error) {
       setFailure(String(error));
     } finally {
@@ -440,11 +442,17 @@ export function ConnectAdapterDialog({
             void (async () => {
               try {
                 const options = connectionOptions();
-                const savedCredentials = useStored
-                  ? saved
-                    ? { id: saved.id, revision: saved.revision }
-                    : initial?.savedCredentials
+                const remembered = rememberEntered
+                  ? await saveProfile()
                   : undefined;
+                if (rememberEntered && !remembered) return;
+                const savedCredentials = remembered
+                  ? { id: remembered.id, revision: remembered.revision }
+                  : useStored
+                    ? saved
+                      ? { id: saved.id, revision: saved.revision }
+                      : initial?.savedCredentials
+                    : undefined;
                 await submit(
                   options,
                   adapterProfile(options, installed),
@@ -520,34 +528,24 @@ export function ConnectAdapterDialog({
                   )}
                 </div>
                 {saved && credentialStored && (
-                  <label className="form-field">
-                    <span>
-                      <input
-                        type="checkbox"
-                        checked={useStored}
-                        onChange={(event) => setUseStored(event.target.checked)}
-                      />{" "}
-                      Use saved credentials from this PC
-                    </span>
-                  </label>
+                  <ConnectionCheckbox
+                    checked={useStored}
+                    onChange={setUseStored}
+                  >
+                    Use saved credentials from this PC
+                  </ConnectionCheckbox>
                 )}
                 {sources.some((source) =>
                   installed
                     .find((item) => item.id === source.id)
                     ?.configuration.some((field) => field.kind === "password"),
                 ) && (
-                  <label className="form-field">
-                    <span>
-                      <input
-                        type="checkbox"
-                        checked={rememberEntered}
-                        onChange={(event) =>
-                          setRememberEntered(event.target.checked)
-                        }
-                      />{" "}
-                      Remember entered passwords when saving this workspace
-                    </span>
-                  </label>
+                  <ConnectionCheckbox
+                    checked={rememberEntered}
+                    onChange={setRememberEntered}
+                  >
+                    Remember passwords on this PC
+                  </ConnectionCheckbox>
                 )}
                 {profileMessage && (
                   <p className="workspace-profile-message" role="status">
@@ -557,16 +555,9 @@ export function ConnectAdapterDialog({
               </div>
             )}
             {initial?.savedCredentials && credentialStored && (
-              <label className="form-field">
-                <span>
-                  <input
-                    type="checkbox"
-                    checked={useStored}
-                    onChange={(event) => setUseStored(event.target.checked)}
-                  />{" "}
-                  Use saved credentials from this PC
-                </span>
-              </label>
+              <ConnectionCheckbox checked={useStored} onChange={setUseStored}>
+                Use saved credentials from this PC
+              </ConnectionCheckbox>
             )}
             {!replacing && (
               <label className="form-field">
@@ -734,6 +725,11 @@ export function ConnectAdapterDialog({
                           required={
                             field.required &&
                             !(field.kind === "password" && useStored)
+                          }
+                          placeholder={
+                            field.kind === "password" && useStored
+                              ? "Saved password - used automatically"
+                              : undefined
                           }
                           value={String(source.configuration[field.id] ?? "")}
                           onChange={(event) => {

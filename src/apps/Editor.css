@@ -144,7 +144,8 @@
   tab-size: 2;
 }
 .editor-buffer textarea::selection {
-  background: var(--sc-raised, #39576c);
+  background: var(--sc-accent, #7bb8ff);
+  color: var(--sc-onAccent, #102033);
 }
 .editor-footer {
   display: flex;

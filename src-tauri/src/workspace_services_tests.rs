@@ -12,6 +12,40 @@ fn file_workspace(resource: &Arc<ConnectionResource>) -> WorkspaceServices {
 }
 
 #[tokio::test]
+async fn directory_terminals_reject_mixed_and_stale_sources() {
+    let (ssh, _) = source(191, "ssh");
+    let (ftp, _) = source(192, "ftp");
+    let mut workspace = WorkspaceServices::new(vec![ssh.clone(), ftp.clone()]).unwrap();
+    workspace
+        .bind_files(&ftp, Arc::new(Files::default()))
+        .unwrap();
+    workspace
+        .bind_terminal(&ssh, Arc::new(Console::default()))
+        .unwrap();
+    assert!(workspace
+        .directory_terminal(ftp.identity(), Some(ssh.identity()))
+        .is_err());
+    assert!(workspace
+        .directory_terminal(ssh.identity(), Some(ssh.identity()))
+        .is_err());
+
+    let mut same = file_workspace(&ssh);
+    same.bind_terminal(&ssh, Arc::new(Console::default()))
+        .unwrap();
+    assert!(same
+        .directory_terminal(ssh.identity(), Some(ssh.identity()))
+        .is_ok());
+    let mut stale = ssh.identity().clone();
+    stale.generation += 1;
+    assert!(same
+        .directory_terminal(&stale, Some(ssh.identity()))
+        .is_err());
+    assert!(same
+        .directory_terminal(ssh.identity(), Some(&stale))
+        .is_err());
+}
+
+#[tokio::test]
 async fn browsing_and_text_read_support_are_reported_independently_of_write_permission() {
     struct ReadOnlyText;
     #[async_trait]

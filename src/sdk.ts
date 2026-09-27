@@ -121,6 +121,15 @@ export interface ConnectionIdentity {
   generation: number;
   adapter: string;
 }
+export interface TerminalDirectory {
+  path: string;
+  source: ConnectionIdentity;
+}
+export interface AppLaunch {
+  path?: string;
+  directory?: string;
+  terminalDirectory?: TerminalDirectory;
+}
 export interface Session {
   sourceRevision?: number;
   id: number;
@@ -406,6 +415,7 @@ export interface HostServices {
     cols: number,
     rows: number,
     onEvent: (event: TerminalEvent) => void | Promise<void>,
+    terminalDirectory?: TerminalDirectory,
   ): Promise<TerminalSession>;
 }
 /** Apps receive a fixed session handle, never connection administration. */
@@ -496,6 +506,7 @@ export interface SessionServices {
     cols: number,
     rows: number,
     onEvent: (event: TerminalEvent) => void | Promise<void>,
+    terminalDirectory?: TerminalDirectory,
   ): Promise<TerminalSession>;
 }
 export interface AppContext {
@@ -517,8 +528,8 @@ export interface AppContext {
     busy: boolean;
     title?: string;
   }): void;
-  launch?: { path?: string; directory?: string };
-  openApp?(appId: string, launch?: { path?: string; directory?: string }): void;
+  launch?: AppLaunch;
+  openApp?(appId: string, launch?: AppLaunch): void;
   /**
    * Put a folder shortcut on this workspace's desktop. The path is the
    * provider's own token and is stored exactly as given.

@@ -21,6 +21,7 @@ export function Terminal({
   active = true,
   connected = true,
   unavailableReason,
+  launch,
 }: AppContext) {
   const container = useRef<HTMLDivElement>(null);
   const instance = useRef<XTerminal | null>(null);
@@ -35,7 +36,8 @@ export function Terminal({
     background: colors.terminal,
     foreground: colors.terminalText,
     cursor: colors.accent,
-    selectionBackground: colors.selection,
+    selectionBackground: colors.accent,
+    selectionForeground: colors.onAccent,
     black: mode === "light" ? "#23332e" : "#182430",
     red: colors.danger,
     green: colors.success,
@@ -199,22 +201,27 @@ export function Terminal({
       });
     });
     void services
-      .terminal(terminal.cols, terminal.rows, (event) => {
-        if (disposed || !connectionState.current) return;
-        if (event.type === "output")
-          return new Promise<void>((resolve) =>
-            terminal.write(new Uint8Array(event.data), resolve),
-          );
-        else if (event.type === "closed") {
-          closed = true;
-          setReady(false);
-          setStatus("Shell closed");
-        } else {
-          closed = true;
-          setReady(false);
-          setStatus(event.data);
-        }
-      })
+      .terminal(
+        terminal.cols,
+        terminal.rows,
+        (event) => {
+          if (disposed || !connectionState.current) return;
+          if (event.type === "output")
+            return new Promise<void>((resolve) =>
+              terminal.write(new Uint8Array(event.data), resolve),
+            );
+          else if (event.type === "closed") {
+            closed = true;
+            setReady(false);
+            setStatus("Shell closed");
+          } else {
+            closed = true;
+            setReady(false);
+            setStatus(event.data);
+          }
+        },
+        launch?.terminalDirectory,
+      )
       .then(async (handle) => {
         if (disposed || !connectionState.current) {
           await handle.close();
@@ -246,13 +253,22 @@ export function Terminal({
         ?.close()
         .catch((error) => reportErrorRef.current(String(error)));
     };
-  }, [session?.id, services, attempt]);
+  }, [session?.id, services, attempt, launch?.terminalDirectory]);
   return (
     <div className="terminal-app">
       <div className="terminal-tabs">
         <span>
           <Circle size={7} fill="currentColor" /> {session?.info.hostname}{" "}
-          <span className="terminal-tab-path">~</span>
+          <span
+            className="terminal-tab-path"
+            title={
+              launch?.terminalDirectory
+                ? `Starting directory: ${launch.terminalDirectory.path}`
+                : undefined
+            }
+          >
+            {launch?.terminalDirectory?.path ?? "~"}
+          </span>
         </span>
         <span>
           {session

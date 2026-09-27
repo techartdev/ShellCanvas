@@ -67,6 +67,7 @@ import { TransferConflictDialog } from "../components/TransferConflictDialog";
 import { selectFiles } from "../file-selection";
 import { DeleteFilesDialog } from "../components/DeleteFilesDialog";
 import { fileSourceKey } from "../workspace-bindings";
+import { terminalDirectoryFor } from "../terminal-directory";
 import { capabilityOperationReason } from "../sdk";
 import { scanDirectory } from "../directory-scan";
 import { useVirtualRows } from "../components/useVirtualRows";
@@ -1033,8 +1034,23 @@ export function Files({
       setSelected(null);
   }, [selected, directory, query, preferences.filesShowHidden, loading]);
   function menuActions(entry?: FileEntry): MenuAction[] {
+    const terminalDirectory = terminalDirectoryFor(
+      session,
+      selectedEntries.length <= 1 && entry?.kind === "directory"
+        ? entry.path
+        : directory.path,
+    );
+    const terminalAction: MenuAction = {
+      id: "open-terminal",
+      label: "Open terminal here",
+      disabled: !connected || loading || !openApp || !terminalDirectory,
+      run: () => {
+        if (terminalDirectory) openApp?.("terminal", { terminalDirectory });
+      },
+    };
     if (selectedEntries.length > 1)
       return [
+        terminalAction,
         {
           id: "copy-files",
           label: `Copy ${selectedEntries.length} ${selectedEntries.some((item) => item.kind === "directory") ? "items" : "files"}`,
@@ -1103,6 +1119,7 @@ export function Files({
         },
       ];
     return [
+      terminalAction,
       {
         id: "upload",
         label: "Upload files…",

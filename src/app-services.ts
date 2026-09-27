@@ -196,13 +196,21 @@ export function scopeAppServices(
         return ticket ? adopt(ticket) : null;
       },
     ),
-    runTransfer: async (ticket, onProgress) => {
+    transferConflicts: base.transferConflicts
+      ? async (ticket) => {
+          const owned = tickets.get(ticket.id);
+          if (!owned) throw new Error("Transfer does not belong to this app");
+          check(transferCapability(owned.direction));
+          return base.transferConflicts!({ ...owned });
+        }
+      : undefined,
+    runTransfer: async (ticket, onProgress, policy) => {
       const owned = tickets.get(ticket.id);
       if (!owned) throw new Error("Transfer does not belong to this app");
       check(transferCapability(owned.direction));
       let keepForCleanup = false;
       try {
-        return await base.runTransfer({ ...owned }, onProgress);
+        return await base.runTransfer({ ...owned }, onProgress, policy);
       } catch (error) {
         keepForCleanup = error instanceof TransferCleanupError;
         throw error;

@@ -4,6 +4,18 @@ import { bindSession } from "./session-services";
 import { previewServices, previewSession } from "./preview";
 import type { Directory, TerminalSession, FileRelocation } from "./sdk";
 import { watchFileChanges, watchFileLocations } from "./file-events";
+it("forwards the captured terminal directory through the session handle", async () => {
+  const terminal = vi.fn(previewServices.terminal);
+  const binding = bindSession({ ...previewServices, terminal }, previewSession);
+  const directory = {
+    path: "/srv/site",
+    source: { instance: 1, generation: 1, adapter: "ssh" },
+  };
+  const handle = await binding.services.terminal(80, 24, () => {}, directory);
+  expect(terminal.mock.calls[0][4]).toEqual(directory);
+  await handle.close();
+  binding.dispose();
+});
 it("rejects late drive discovery and mount actions after the file source changes", async () => {
   let finish!: (value: import("./sdk").FileVolumes) => void;
   const volumes = vi.fn(
