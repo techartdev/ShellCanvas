@@ -2,7 +2,7 @@
 
 Notable changes to ShellCanvas, newest first. Published SDK packages follow [semantic versioning](https://semver.org/), and desktop releases use the same version where practical. The project is pre-1.0, so a minor release may include breaking changes; those come with migration notes.
 
-## [0.1.15] - Unreleased
+## [0.1.15] - 2026-09-28
 
 ### Added
 
@@ -24,7 +24,7 @@ Notable changes to ShellCanvas, newest first. Published SDK packages follow [sem
 - Allow deleting non-empty folders after explicit confirmation.
 - Forward conflict reviews and replacement decisions through app-scoped file services, fixing clipboard transfers that still failed when destinations existed.
 
-### Release validation pending
+### Known limitations
 
 - The GNOME Wayland title-bar compatibility fix for issue #27 still needs visual confirmation on the reporter's Fedora 44 / GNOME 50 setup before the issue is closed.
 - The FTP adapter currently supports browsing, text preview and downloads; uploads and file changes are not supported by that adapter.
