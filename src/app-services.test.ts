@@ -6,11 +6,118 @@ import {
   type DesktopApp,
   type SessionServices,
   type Capability,
+  type TransferTicket,
+  type TransferConflictReview,
+  type HostServices,
 } from "./sdk";
 import { bindSession } from "./session-services";
 import { scopeAppServices } from "./app-services";
 import { fileClipboard } from "./file-clipboard";
 import { previewServices, previewSession } from "./preview";
+import { TransferQueue, type ConflictDecision } from "./transfer-queue";
+
+it.each(["upload", "copy"] as const)(
+  "reviews mixed clipboard %s conflicts through app and session wrappers",
+  async (direction) => {
+    const ticket: TransferTicket = {
+      id: 71,
+      name: "3 clipboard items",
+      direction,
+      size: 100,
+    };
+    const review: TransferConflictReview = {
+      canReplace: true,
+      conflicts: (["directory", "file", "file"] as const).map((kind, index) => ({
+        sourceKind: kind,
+        destination: {
+          name: `item-${index}`,
+          path: `/site/item-${index}`,
+          kind,
+          revision: `rev-${index}`,
+          size: 10,
+          modified: null,
+        },
+      })),
+    };
+    const transferConflicts = vi.fn(async () => review);
+    const runTransfer = vi.fn<HostServices["runTransfer"]>(async () => ({
+      status: "completed",
+      bytes: 100,
+      total: 100,
+    }));
+    const binding = bindSession(
+      {
+        ...previewServices,
+        pasteSystemFiles: async () => [ticket],
+        pasteCopiedFiles: async () => [ticket],
+        transferConflicts,
+        runTransfer,
+      },
+      {
+        ...capableSession,
+        info: {
+          ...capableSession.info,
+          capabilities: [...capableSession.info.capabilities, "files.copy"],
+        },
+      },
+    );
+    const app = scopeAppServices(
+      binding.services,
+      manifest("files", ["files.upload", "files.copy"]),
+    );
+    const other = scopeAppServices(
+      binding.services,
+      manifest("other", ["files.upload", "files.copy"]),
+    );
+    const tickets =
+      direction === "upload"
+        ? await app.pasteSystemFiles("/site")
+        : await app.pasteCopiedFiles!("/site", 1);
+    await expect(other.transferConflicts!(ticket)).rejects.toThrow(
+      "does not belong",
+    );
+    expect(transferConflicts).not.toHaveBeenCalled();
+    let decide!: (decision: ConflictDecision) => void;
+    const prompt = vi.fn(
+      () =>
+        new Promise<ConflictDecision>((resolve) => {
+          decide = resolve;
+        }),
+    );
+    const queue = new TransferQueue(app, undefined, prompt);
+    try {
+      queue.enqueue(tickets!);
+      await vi.waitFor(() => expect(prompt).toHaveBeenCalledOnce());
+      expect(transferConflicts).toHaveBeenCalledWith(
+        capableSession.id,
+        ticket.id,
+      );
+      expect(prompt.mock.calls[0]).toEqual([
+        review.conflicts[0],
+        3,
+        expect.any(AbortSignal),
+      ]);
+      expect(runTransfer).not.toHaveBeenCalled();
+      decide("replace-all");
+      await vi.waitFor(() =>
+        expect(queue.snapshot()[0].status).toBe("completed"),
+      );
+      expect(runTransfer.mock.calls[0][4]).toEqual({
+        replace: review.conflicts.map(({ destination }) => ({
+          path: destination.path,
+          revision: destination.revision,
+        })),
+        skip: [],
+      });
+      await expect(app.transferConflicts!(ticket)).rejects.toThrow(
+        "does not belong",
+      );
+    } finally {
+      queue.dispose();
+      binding.dispose();
+    }
+  },
+);
 
 const manifest = (
   id: string,

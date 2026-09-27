@@ -127,6 +127,9 @@ const adapters: AdapterServices = {
     list: async () => [{ id: "mixed", revision: "r1", profile }],
     save: unavailable,
     remove: unavailable,
+    credentialStatus: async () => false,
+    saveCredentials: unavailable,
+    forgetCredentials: unavailable,
   },
   connect: async (options, _signal, review) => {
     const attempt = ++attempts;

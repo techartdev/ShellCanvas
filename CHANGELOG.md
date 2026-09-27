@@ -2,6 +2,34 @@
 
 Notable changes to ShellCanvas, newest first. Published SDK packages follow [semantic versioning](https://semver.org/), and desktop releases use the same version where practical. The project is pre-1.0, so a minor release may include breaking changes; those come with migration notes.
 
+## [0.1.15] - 2026-09-28
+
+### Added
+
+- Save SSH host settings and passwords or key passphrases together with **Save and connect**, using the operating system's credential store. Saved hosts reconnect automatically, with a field-level action to forget the stored secret and advanced options for legacy SSH or connecting without saving.
+- Store adapter workspace credentials separately from public profile files, with checks that bind them to the saved connection settings.
+- Offer the hash-pinned FTP adapter from App Manager, including a setup path for combining FTP file browsing with an SSH terminal.
+- Open a terminal at the current or selected folder from Files when the file and terminal services belong to the same supported SSH connection.
+
+### Improved
+
+- Compact the connection dialog and put the new-host action beside the host picker.
+- Use icons in file context menus and present host capabilities as cards in a larger Host details window.
+- Make text selections visible in form fields, the editor and terminal.
+
+### Fixed
+
+- Give stock Adwaita's native title bar on GNOME Wayland a flat header and round window buttons, with light/dark tracking. Keep GTK's native window controls and leave custom themes, high contrast and X11 decorations unchanged.
+- Prompt before replacing existing files during clipboard uploads and copies, with per-item decisions and an apply-to-all option. Merge folders while preserving unrelated contents.
+- Allow deleting non-empty folders after explicit confirmation.
+- Forward conflict reviews and replacement decisions through app-scoped file services, fixing clipboard transfers that still failed when destinations existed.
+
+### Known limitations
+
+- The GNOME Wayland title-bar compatibility fix for issue #27 still needs visual confirmation on the reporter's Fedora 44 / GNOME 50 setup before the issue is closed.
+- The FTP adapter currently supports browsing, text preview and downloads; uploads and file changes are not supported by that adapter.
+- Database and Assistant package icons are separate companion-app updates and require their own reviewed package releases.
+
 ## [0.1.14] - 2026-09-26
 
 ### Added

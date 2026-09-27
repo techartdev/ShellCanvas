@@ -59,4 +59,9 @@ pub struct TerminalStream {
 pub trait TerminalService: Send + Sync {
     /// Open one independently owned console, bounded by the caller's deadline.
     async fn open(&self, size: TerminalSize) -> Result<TerminalStream>;
+
+    /// Open in a directory from this connection's own filesystem namespace.
+    async fn open_directory(&self, _size: TerminalSize, _path: &str) -> Result<TerminalStream> {
+        anyhow::bail!("This console does not support opening in a directory")
+    }
 }

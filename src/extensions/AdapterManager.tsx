@@ -1,8 +1,16 @@
 // SPDX-License-Identifier: MPL-2.0
 import { useEffect, useRef, useState } from "react";
-import { Cable, Plus, RefreshCw, ShieldAlert, X } from "lucide-react";
+import {
+  Cable,
+  FolderDown,
+  Plus,
+  RefreshCw,
+  ShieldAlert,
+  X,
+} from "lucide-react";
 import type { AdapterInfo, AdapterReview, AdapterServices } from "../adapters";
 import { AdapterDiagnosticsPanel } from "../components/AdapterDiagnosticsPanel";
+import { ftpAdapterSource } from "./ftp-adapter";
 export function AdapterManager({ services }: { services: AdapterServices }) {
   const [items, setItems] = useState<AdapterInfo[]>([]),
     [busy, setBusy] = useState(false),
@@ -61,6 +69,27 @@ export function AdapterManager({ services }: { services: AdapterServices }) {
       }
       setReview(result);
       if (!result) pending.current = null;
+    });
+  }
+  async function inspectFtp() {
+    if (!services.reviewRepository) return;
+    const id = crypto.randomUUID();
+    pending.current = id;
+    setTrusted(false);
+    await run(async () => {
+      let result: AdapterReview;
+      try {
+        result = await services.reviewRepository!(id, ftpAdapterSource);
+      } catch (error) {
+        if (pending.current !== id) return;
+        pending.current = null;
+        throw error;
+      }
+      if (!active.current || pending.current !== id) {
+        await services.cancelReview(id);
+        return;
+      }
+      setReview(result);
     });
   }
   async function cancel() {
@@ -252,6 +281,39 @@ export function AdapterManager({ services }: { services: AdapterServices }) {
           </p>
         </div>
       )}
+      {services.reviewRepository &&
+        !items.some(
+          (item) =>
+            item.id === ftpAdapterSource.id &&
+            item.version === ftpAdapterSource.version,
+        ) && (
+          <article
+            className="extension-card"
+            aria-label="Suggested FTP adapter"
+          >
+            <div className="extension-review-heading">
+              <div>
+                <p className="extension-eyebrow">SUGGESTED ADAPTER</p>
+                <h3>
+                  <FolderDown size={17} /> FTP files
+                </h3>
+                <p>
+                  Browse and download files from FTP servers. Uses explicit FTPS
+                  by default, with an option for plain FTP.
+                </p>
+                <p>
+                  Uploads and file changes are not available in this preview.
+                </p>
+              </div>
+              <button
+                disabled={busy || !!review}
+                onClick={() => void inspectFtp()}
+              >
+                Review adapter
+              </button>
+            </div>
+          </article>
+        )}
       <p className="extension-footnote">
         Updates and disabling apply to new connections. Running connections keep
         their installed version.

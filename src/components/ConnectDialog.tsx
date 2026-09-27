@@ -12,6 +12,8 @@ import {
 import type { ConnectOptions, HostProfile, HostKeyChallenge } from "../sdk";
 import { HostProfilePicker } from "./HostProfilePicker";
 import { HostKeyReviewPanel } from "./HostKeyReviewPanel";
+import { ConnectionCheckbox } from "./ConnectionCheckbox";
+import { matchesSavedHost, openHostWorkspace } from "../host-connect";
 export function ConnectDialog({
   profiles,
   profilesError,
@@ -24,6 +26,9 @@ export function ConnectDialog({
   preview,
   save,
   remove,
+  credentialStatus,
+  saveCredential,
+  forgetCredential,
   initialProfile,
   reconnecting = false,
   cancelConnect,
@@ -45,10 +50,13 @@ export function ConnectDialog({
   busy: boolean;
   error: string;
   close(): void;
-  submit(options: ConnectOptions, label: string): void;
+  submit(options: ConnectOptions, label: string, savedHostId?: string): void;
   preview: boolean;
   save(profile: HostProfile): Promise<HostProfile>;
   remove(id: string): Promise<void>;
+  credentialStatus?(id: string): Promise<boolean>;
+  saveCredential?(id: string, options: ConnectOptions): Promise<void>;
+  forgetCredential?(id: string): Promise<void>;
 }) {
   const dialog = useRef<HTMLDialogElement>(null);
   const [options, setOptions] = useState<ConnectOptions>({
@@ -66,9 +74,23 @@ export function ConnectDialog({
   const [saveMessage, setSaveMessage] = useState("");
   const [saveError, setSaveError] = useState("");
   const [confirmRemove, setConfirmRemove] = useState(false);
-  const locked = busy || saving;
+  const [credentialStored, setCredentialStored] = useState(false);
+  const [savedProfile, setSavedProfile] = useState<HostProfile>();
+  const [checkingCredential, setCheckingCredential] = useState(false);
+  const selectionVersion = useRef(0);
+  const locked = busy || saving || checkingCredential;
   const [method, setMethod] = useState("key");
+  const matchingProfile = matchesSavedHost(options, method, savedProfile);
+  const enteredSecret =
+    method === "key" ? options.passphrase : options.password;
+  const useStored = credentialStored && matchingProfile && !enteredSecret;
+  const saveFirst =
+    !savedId ||
+    !matchingProfile ||
+    label !== savedProfile?.name ||
+    !!enteredSecret;
   function select(profile: HostProfile) {
+    const version = ++selectionVersion.current;
     setOptions({
       host: profile.host,
       port: profile.port,
@@ -80,6 +102,23 @@ export function ConnectDialog({
     });
     setLabel(profile.name);
     setSavedId(profile.id);
+    setCredentialStored(false);
+    setSavedProfile(profile);
+    setCheckingCredential(!!profile.id && !!credentialStatus);
+    if (profile.id && credentialStatus) {
+      void credentialStatus(profile.id)
+        .then((stored) => {
+          if (selectionVersion.current !== version) return;
+          setCredentialStored(stored);
+        })
+        .catch((error) => {
+          if (selectionVersion.current === version) setSaveError(String(error));
+        })
+        .finally(() => {
+          if (selectionVersion.current === version)
+            setCheckingCredential(false);
+        });
+    }
     setSaveMessage("");
     setSaveError("");
     setConfirmRemove(false);
@@ -96,6 +135,8 @@ export function ConnectDialog({
     }
   }, []);
   function newProfile() {
+    ++selectionVersion.current;
+    setCheckingCredential(false);
     setSelected("");
     setSavedId(undefined);
     setLabel("");
@@ -111,6 +152,8 @@ export function ConnectDialog({
     setSaveError("");
     setSaveMessage("");
     setConfirmRemove(false);
+    setCredentialStored(false);
+    setSavedProfile(undefined);
   }
   async function saveHost() {
     setSaving(true);
@@ -127,14 +170,61 @@ export function ConnectDialog({
         ...(options.allowLegacyMac ? { allowLegacyMac: true } : {}),
       });
       setSavedId(saved.id);
+      setSavedProfile(saved);
+      setCredentialStored(false);
+      let stored = false;
+      if (enteredSecret && saveCredential && saved.id) {
+        await saveCredential(saved.id, {
+          ...options,
+          host: saved.host,
+          port: saved.port,
+          username: saved.username,
+          keyPath: saved.keyPath,
+          allowLegacyMac: saved.allowLegacyMac,
+          password: method === "password" ? options.password : undefined,
+          passphrase: method === "key" ? options.passphrase : undefined,
+        });
+        stored = true;
+      } else if (
+        credentialStored &&
+        matchingProfile &&
+        saved.id &&
+        credentialStatus
+      ) {
+        stored = await credentialStatus(saved.id);
+      }
+      setCredentialStored(stored);
+      setOptions((current) => ({
+        ...current,
+        host: saved.host,
+        port: saved.port,
+        username: saved.username,
+        keyPath: saved.keyPath,
+        allowLegacyMac: saved.allowLegacyMac,
+        password: stored ? "" : current.password,
+        passphrase: stored ? "" : current.passphrase,
+      }));
       setSelected(saved.id!);
       setLabel(saved.name);
-      setSaveMessage("Host saved on this device.");
+      setSaveMessage(
+        stored
+          ? `Host saved. Your ${method === "key" ? "passphrase" : "password"} will be used automatically.`
+          : "Host saved on this device.",
+      );
+      return { profile: saved, credentialStored: stored };
     } catch (error) {
       setSaveError(String(error));
     } finally {
       setSaving(false);
     }
+  }
+  async function openWorkspace(saveChanges = saveFirst) {
+    if (locked) return;
+    await openHostWorkspace(
+      { options, label, method, saveFirst: saveChanges, useStored, savedId },
+      saveHost,
+      submit,
+    );
   }
   async function removeHost() {
     if (!savedId) return;
@@ -152,14 +242,28 @@ export function ConnectDialog({
       setSaving(false);
     }
   }
+  async function forgetSavedCredential() {
+    if (!savedId || !forgetCredential) return;
+    setSaving(true);
+    setSaveError("");
+    try {
+      await forgetCredential(savedId);
+      setCredentialStored(false);
+      setSaveMessage("Saved credential removed from the system store.");
+    } catch (error) {
+      setSaveError(String(error));
+    } finally {
+      setSaving(false);
+    }
+  }
   useEffect(() => {
     const previous = document.activeElement as HTMLElement | null;
     const controls = () =>
       Array.from(
         dialog.current?.querySelectorAll<HTMLElement>(
-          "button:not(:disabled), input:not(:disabled), select:not(:disabled)",
+          "button:not(:disabled), input:not(:disabled), select:not(:disabled), summary",
         ) || [],
-      );
+      ).filter((element) => element.getClientRects().length > 0);
     controls()[0]?.focus();
     function trap(e: KeyboardEvent) {
       if (e.key !== "Tab") return;
@@ -253,16 +357,7 @@ export function ConnectDialog({
           <form
             onSubmit={(e) => {
               e.preventDefault();
-              submit(
-                {
-                  ...options,
-                  keyPath: method === "key" ? options.keyPath : "",
-                  password:
-                    method === "password" ? options.password : undefined,
-                  passphrase: method === "key" ? options.passphrase : undefined,
-                },
-                label || options.host,
-              );
+              void openWorkspace();
             }}
           >
             {openAdapters && !reconnecting && (
@@ -367,14 +462,18 @@ export function ConnectDialog({
                 <button
                   type="button"
                   className={method === "key" ? "active" : ""}
-                  onClick={() => setMethod("key")}
+                  onClick={() => {
+                    setMethod("key");
+                  }}
                 >
                   <KeyRound size={14} /> SSH key
                 </button>
                 <button
                   type="button"
                   className={method === "password" ? "active" : ""}
-                  onClick={() => setMethod("password")}
+                  onClick={() => {
+                    setMethod("password");
+                  }}
                 >
                   <LockKeyhole size={14} /> Password
                 </button>
@@ -396,6 +495,11 @@ export function ConnectDialog({
                     <input
                       type="password"
                       autoComplete="off"
+                      placeholder={
+                        useStored
+                          ? "Saved passphrase - used automatically"
+                          : undefined
+                      }
                       value={options.passphrase}
                       onChange={(e) => field("passphrase", e.target.value)}
                     />
@@ -406,27 +510,56 @@ export function ConnectDialog({
                   Password
                   <input
                     type="password"
-                    required
+                    required={!useStored}
                     autoComplete="off"
+                    placeholder={
+                      useStored
+                        ? "Saved password - used automatically"
+                        : undefined
+                    }
                     value={options.password}
                     onChange={(e) => field("password", e.target.value)}
                   />
                 </label>
               )}
-              <div className="ssh-compatibility">
-                <label>
-                  <input
-                    type="checkbox"
-                    checked={options.allowLegacyMac ?? false}
-                    onChange={(event) =>
-                      setOptions((current) => ({
-                        ...current,
-                        allowLegacyMac: event.target.checked,
-                      }))
-                    }
-                  />
+              {savedId && credentialStored && forgetCredential && (
+                <div className="saved-password-status">
+                  <span>
+                    {useStored
+                      ? "Saved securely on this PC"
+                      : enteredSecret
+                        ? `The new ${method === "key" ? "passphrase" : "password"} will be saved when you connect`
+                        : "Saved for the original connection"}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => void forgetSavedCredential()}
+                  >
+                    Forget {savedProfile?.keyPath ? "passphrase" : "password"}
+                  </button>
+                </div>
+              )}
+              <details
+                className="ssh-compatibility"
+                open={error.includes("No common Mac algorithm") || undefined}
+              >
+                <summary>
+                  Advanced
+                  {options.allowLegacyMac
+                    ? " - legacy compatibility enabled"
+                    : ""}
+                </summary>
+                <ConnectionCheckbox
+                  checked={options.allowLegacyMac ?? false}
+                  onChange={(checked) => {
+                    setOptions((current) => ({
+                      ...current,
+                      allowLegacyMac: checked,
+                    }));
+                  }}
+                >
                   Allow legacy SSH compatibility
-                </label>
+                </ConnectionCheckbox>
                 {options.allowLegacyMac && (
                   <p role="status">
                     Legacy compatibility enabled for this host. Modern
@@ -443,7 +576,17 @@ export function ConnectDialog({
                       SSH algorithms on the host.
                     </p>
                   )}
-              </div>
+                <button
+                  type="button"
+                  className="adapter-add"
+                  onClick={(event) => {
+                    if (event.currentTarget.form?.reportValidity())
+                      void openWorkspace(false);
+                  }}
+                >
+                  Connect without saving changes
+                </button>
+              </details>
               <div className="profile-actions">
                 <button
                   type="button"
@@ -457,7 +600,7 @@ export function ConnectDialog({
                   }
                   onClick={() => void saveHost()}
                 >
-                  {savedId ? "Update saved host" : "Save host"}
+                  Save {savedId ? "changes" : "host"}
                 </button>
                 {savedId && (
                   <button
@@ -513,7 +656,11 @@ export function ConnectDialog({
                 </>
               ) : (
                 <>
-                  {reconnecting ? "Reconnect workspace" : "Open workspace"}{" "}
+                  {saveFirst
+                    ? "Save and connect"
+                    : reconnecting
+                      ? "Reconnect"
+                      : "Connect"}{" "}
                   <ArrowUpRight size={17} />
                 </>
               )}
@@ -534,7 +681,8 @@ export function ConnectDialog({
           <span>
             Checked against OpenSSH and ShellCanvas trusted host keys.
             <br />
-            Passwords and passphrases are never saved.
+            Passwords and key passphrases are saved securely on this PC when you
+            save a host.
           </span>
         </p>
       </dialog>

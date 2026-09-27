@@ -324,6 +324,7 @@ export function AppWindow({
         } as CSSProperties
       }
       className={`app-window window-${app.window?.layout ?? "standard"} ${focused ? "focused" : ""} ${maximized ? "maximized" : ""} ${tiled ? `tiled tiled-${tiled}` : ""} ${!visible ? "hidden-window" : ""}`}
+      data-app-id={app.id}
       onPointerDownCapture={focus}
       onFocusCapture={focus}
       aria-label={`${title} window`}

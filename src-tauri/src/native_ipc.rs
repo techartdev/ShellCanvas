@@ -23,12 +23,10 @@ pub fn initialization_script() -> String {
     // constructing the invocation-key closure.
     let trusted = if cfg!(dev) {
         "http://127.0.0.1:1420"
+    } else if cfg!(windows) {
+        "http://tauri.localhost"
     } else {
-        if cfg!(windows) {
-            "http://tauri.localhost"
-        } else {
-            "tauri://localhost"
-        }
+        "tauri://localhost"
     };
     format!(
         "if (window === window.top && window.location.protocol + '//' + window.location.host === {trusted:?}) {{\n{transport}\n}}"

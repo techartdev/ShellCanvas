@@ -109,8 +109,18 @@ it("captures each source once and attaches it to all native service requests", a
   expect(invoke.mock.lastCall?.[1].binding).toEqual(settings);
   await bound.applyHostSetting(700, "timezone", "UTC", "rev");
   expect(invoke.mock.lastCall?.[1].binding).toEqual(settings);
-  const terminal = await bound.terminal(700, 80, 24, () => {});
+  const terminalDirectory = { path: "/srv/John's site", source: consoleSource };
+  const terminal = await bound.terminal(
+    700,
+    80,
+    24,
+    () => {},
+    terminalDirectory,
+  );
   expect(invoke.mock.lastCall?.[1].binding).toEqual(consoleSource);
+  expect(invoke.mock.lastCall?.[1].terminalDirectory).toEqual(
+    terminalDirectory,
+  );
   // Existing stream/ticket handles remain usable for cleanup after retirement.
   await terminal.close();
   expect(invoke.mock.lastCall?.[1]).not.toHaveProperty("binding");

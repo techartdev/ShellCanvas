@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
-import type { DesktopApp } from "./sdk";
+import type { AppLaunch, DesktopApp } from "./sdk";
 
 export interface DesktopState {
   /** Back-to-front order. Minimized apps remain mounted and keep their state. */
@@ -12,7 +12,7 @@ export interface DesktopState {
       ordinal: number;
       /** Host-owned runtime lease; never supplied by an extension RPC request. */
       extension?: string;
-      launch?: { path?: string; directory?: string };
+      launch?: AppLaunch;
       dirty?: boolean;
       busy?: boolean;
       title?: string;
@@ -25,7 +25,7 @@ export type DesktopAction =
   | {
       type: "new";
       id: string;
-      launch?: { path?: string; directory?: string };
+      launch?: AppLaunch;
       extension?: string;
     }
   | { type: "show-desktop" }

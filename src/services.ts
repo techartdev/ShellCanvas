@@ -189,7 +189,11 @@ function createNativeServices(pins?: SourcePins): HostServices {
     profiles: () => invoke("profiles"),
     saveProfile: (profile) => invoke("save_profile", { profile }),
     removeProfile: (id) => invoke("remove_profile", { id }),
-    connect: async (options, signal, reviewHostKey) => {
+    hostCredentialStatus: (id) => invoke("host_credential_status", { id }),
+    saveHostCredential: (id, options) =>
+      invoke("save_host_credential", { id, options }),
+    forgetHostCredential: (id) => invoke("forget_host_credential", { id }),
+    connect: async (options, signal, reviewHostKey, savedHostId) => {
       if (signal?.aborted) throw new Error("Connection canceled");
       const requestId = await invoke<number>("begin_connect");
       const cancel = () => {
@@ -228,6 +232,7 @@ function createNativeServices(pins?: SourcePins): HostServices {
         }
         const result = await invoke<Session>("connect", {
           options,
+          savedHostId,
           requestId,
           onHostKey,
         });
@@ -255,7 +260,7 @@ function createNativeServices(pins?: SourcePins): HostServices {
     readText: (sessionId, path) => invoke("read_text", { sessionId, path }),
     saveText: (sessionId, path, text, revision, allowNonAtomic) =>
       invoke("save_text", { sessionId, path, text, revision, allowNonAtomic }),
-    terminal: async (sessionId, cols, rows, onEvent) => {
+    terminal: async (sessionId, cols, rows, onEvent, terminalDirectory) => {
       const channel = new Channel<
         TerminalEvent & { sequence?: number | null }
       >();
@@ -298,6 +303,7 @@ function createNativeServices(pins?: SourcePins): HostServices {
         cols,
         rows,
         onEvent: channel,
+        terminalDirectory,
       });
       const { id: terminalId, resizable } = await opening;
       // Preserve input ordering across IPC calls, including large pasted text.

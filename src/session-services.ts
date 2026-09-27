@@ -655,7 +655,7 @@ export function bindSession(
       check("files.read", expected);
       return result;
     },
-    terminal: async (cols, rows, onEvent) => {
+    terminal: async (cols, rows, onEvent, terminalDirectory) => {
       const expected = generation;
       const handle = await backend.terminal(
         check("terminal"),
@@ -664,6 +664,7 @@ export function bindSession(
         (event) => {
           if (valid("terminal", expected)) return onEvent(event);
         },
+        terminalDirectory,
       );
       if (!valid("terminal", expected)) {
         await handle.close();

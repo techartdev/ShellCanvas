@@ -332,8 +332,13 @@ enum Job {
         revision: String,
     },
 }
+// Each root contains its destination name and entry kind.
+type DestinationRoot = (String, String);
+type DestinationRoots = (String, Vec<DestinationRoot>);
+type ConflictCandidates = (Arc<dyn FileTransferService>, String, Vec<DestinationRoot>);
+
 impl Job {
-    fn destination_roots(&self) -> Result<Option<(String, Vec<(String, String)>)>> {
+    fn destination_roots(&self) -> Result<Option<DestinationRoots>> {
         match self {
             Job::Selection { catalog, parent } => {
                 let mut roots = Vec::new();
@@ -397,7 +402,7 @@ impl TransferRegistry {
         &self,
         owner: u64,
         id: u64,
-    ) -> Result<Option<(Arc<dyn FileTransferService>, String, Vec<(String, String)>)>, String> {
+    ) -> Result<Option<ConflictCandidates>, String> {
         let pending = self
             .jobs
             .get(&id)

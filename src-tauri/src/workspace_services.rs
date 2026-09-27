@@ -153,6 +153,20 @@ macro_rules! bind_role {
     };
 }
 impl WorkspaceServices {
+    /// Resolve both roles under the registry lock before starting a directory console.
+    pub fn directory_terminal(
+        &self,
+        files: &ConnectionIdentity,
+        console: Option<&ConnectionIdentity>,
+    ) -> Result<Arc<dyn TerminalService>, String> {
+        self.check_source(&ServiceRole::Console, console)?;
+        self.check_source(&ServiceRole::Console, Some(files))?;
+        self.check_source(&ServiceRole::Files, Some(files))?;
+        self.terminal
+            .clone()
+            .ok_or("Terminal is unavailable".into())
+    }
+
     /// Capture a particular accepted SSH source; never follow a replacement.
     pub fn ssh_source(
         &self,
@@ -771,8 +785,19 @@ impl TerminalWriter for Writer {
 #[async_trait]
 impl TerminalService for Bound<dyn TerminalService> {
     async fn open(&self, size: TerminalSize) -> Result<TerminalStream> {
+        self.open_console(size, None).await
+    }
+    async fn open_directory(&self, size: TerminalSize, path: &str) -> Result<TerminalStream> {
+        self.open_console(size, Some(path)).await
+    }
+}
+impl Bound<dyn TerminalService> {
+    async fn open_console(&self, size: TerminalSize, path: Option<&str>) -> Result<TerminalStream> {
         self.binding.check()?;
-        let mut stream = self.service.open(size).await?;
+        let mut stream = match path {
+            Some(path) => self.service.open_directory(size, path).await?,
+            None => self.service.open(size).await?,
+        };
         if let Err(error) = self.binding.after(false) {
             let _ = tokio::time::timeout(Duration::from_secs(3), stream.writer.close()).await;
             return Err(error);
