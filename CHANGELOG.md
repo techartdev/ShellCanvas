@@ -25,7 +25,7 @@ Notable changes to ShellCanvas, newest first. Published SDK packages follow [sem
 
 ### Release validation pending
 
-- Keep issue #27 open while awaiting the reporter's GNOME Wayland appearance comparison. This release does not claim to resolve the remaining title-bar styling difference.
+- The Fedora 44 / GNOME 50 reporter's Follow system comparison shows the ShellCanvas toolbar using light mode. The outer Wayland title bar still differs from the expected appearance; issue #27 remains open and this release does not claim to resolve that styling difference.
 - The FTP adapter currently supports browsing, text preview and downloads; uploads and file changes are not supported by that adapter.
 - Database and Assistant package icons are separate companion-app updates and require their own reviewed package releases.
 
